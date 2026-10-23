@@ -117,7 +117,7 @@ function appendChunk(
  *
  *   * `%` -- cmd.exe performs `%VAR%` expansion *before* the quote/caret processing phase, so it
  *     happens even inside a fully quoted token and cannot be suppressed by any quoting this
- *     function can emit [observed: `pct-%PATH%-end` arrived as `pct-C:\Users\hp\bin;...-end`].
+ *     function can emit [observed: `pct-%PATH%-end` arrived as `pct-C:\Users\me\bin;...-end`].
  *     Rust's std works around this with a `%%cd:~,%` no-op-substring trick that depends on command
  *     extensions being enabled; this file refuses instead, which is strictly safer and needs no
  *     assumption about the inherited cmd.exe configuration.
@@ -151,7 +151,7 @@ const CMD_IRREDUCIBLY_UNSAFE_CHARS = /[%\r\n\0]/;
  *   3. Double any run of backslashes that immediately precedes a `"` (embedded or the closing one),
  *      per the documented `CommandLineToArgvW` rule that `2n` backslashes before a quote mean `n`
  *      literal backslashes. Backslashes elsewhere are literal and are left alone, so ordinary
- *      Windows paths (`C:\Users\hp\OSA`) pass through untouched.
+ *      Windows paths (`C:\Users\me\OSA`) pass through untouched.
  *
  * Verified by round-tripping every case in `exec.test.ts` through both a real `%*`-forwarding
  * `.cmd` shim and a directly-spawned `.exe`, in both cases recovering the argv byte-for-byte.
