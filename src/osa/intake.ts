@@ -35,6 +35,8 @@ export interface IntakeInput {
 export interface IntakeDeps {
   readonly textCall: TextCall;
   readonly provider: ProviderId;
+  /** The model for the call; `null`/absent = the provider's default. */
+  readonly model?: string | null;
   readonly cwd: string;
   readonly timeoutMs: number;
   readonly events: EventSink;
@@ -271,7 +273,7 @@ export async function runIntake(input: IntakeInput, deps: IntakeDeps): Promise<I
         timeoutMs: deps.timeoutMs,
         tier: "research-grade",
         webSearch: false,
-        modelOverride: null,
+        modelOverride: deps.model ?? null,
       },
       "intake",
     );

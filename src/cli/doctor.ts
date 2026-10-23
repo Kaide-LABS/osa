@@ -17,7 +17,7 @@ import { listScannedSourceFiles, scanBoundary } from "../verify/boundary.ts";
 import type { BuildFreshness } from "../verify/build-stamp.ts";
 import { checkBuildFreshness } from "../verify/build-stamp.ts";
 import type { ToolCheck } from "../verify/preflight.ts";
-import { MIN_HEALTHY_PROVIDERS, runPreflight } from "../verify/preflight.ts";
+import { MIN_HEALTHY_PROVIDERS, experimentalProviderWarnings, runPreflight } from "../verify/preflight.ts";
 import { acquireRunLock, releaseRunLock } from "../util/lock.ts";
 import { loadOsaConfig } from "../util/config-file.ts";
 import { applyFeatureFlags, describeFeatures } from "../features/features.ts";
@@ -254,6 +254,7 @@ export async function runDoctor(
   }
 
   warnings.push(...providerWarnings);
+  warnings.push(...experimentalProviderWarnings(providerReports));
   const featureInfo = await featureReport(repoRoot, opts.features ?? {});
   warnings.push(...featureInfo.warnings);
 

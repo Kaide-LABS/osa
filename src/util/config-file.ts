@@ -18,6 +18,8 @@ export interface LoadedOsaConfig {
   readonly warnings: readonly string[];
   /** Which feature switches the file sets itself (everything else is a default): feeds `osa features` and the `feature_state` event. */
   readonly explicit: ExplicitFeatureKeys;
+  /** The config file sets `providers.pair` itself. When it does not, OSA chooses the seats from the providers that are installed. */
+  readonly pairSet: boolean;
 }
 
 /** Which of the feature switches appear in the raw JSON of the config file. Pure. */
@@ -42,7 +44,7 @@ async function readIfExists(path: string): Promise<string | null> {
   }
 }
 
-function parseConfigText(text: string, path: string): { readonly config: OsaConfig; readonly explicit: ExplicitFeatureKeys } {
+function parseConfigText(text: string, path: string): { readonly config: OsaConfig; readonly explicit: ExplicitFeatureKeys; readonly pairSet: boolean } {
   let json: unknown;
   try {
     json = JSON.parse(text);
@@ -53,7 +55,9 @@ function parseConfigText(text: string, path: string): { readonly config: OsaConf
   if (!result.success) {
     throw new UsageError(`Config file "${path}" failed validation: ${z.prettifyError(result.error)}`, { path });
   }
-  return { config: result.data, explicit: explicitFeatureKeys(json) };
+  const providersJson = typeof json === "object" && json !== null ? (json as Record<string, unknown>)["providers"] : undefined;
+  const pairSet = typeof providersJson === "object" && providersJson !== null && "pair" in (providersJson as Record<string, unknown>);
+  return { config: result.data, explicit: explicitFeatureKeys(json), pairSet };
 }
 
 /** Loads the config for `repoDir` (see the module comment for the lookup order). */
@@ -64,5 +68,5 @@ export async function loadOsaConfig(repoDir: string): Promise<LoadedOsaConfig> {
   if (primary !== null) {
     return { ...parseConfigText(primary, primaryPath), source: CONFIG_FILE_NAME, warnings: [] };
   }
-  return { config: OsaConfig.parse({}), source: null, warnings: [], explicit: NO_EXPLICIT_KEYS };
+  return { config: OsaConfig.parse({}), source: null, warnings: [], explicit: NO_EXPLICIT_KEYS, pairSet: false };
 }

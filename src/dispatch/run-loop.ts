@@ -201,7 +201,7 @@ interface DispatchOneAttemptInput {
 async function dispatchOneAttempt(input: DispatchOneAttemptInput) {
   const { config, slot, turnIndex } = input;
   const tier = getRole(slot.archetype).tier;
-  const modelOverride = config.model_overrides?.[slot.provider] ?? null;
+  const modelOverride = slot.model ?? config.model_overrides?.[slot.provider] ?? null;
   const handoffAbsPath = handoffPath(config.repo_dir, config.run_id, config.phase, turnIndex, slot.archetype, slot.provider);
   const prompt = buildPromptForSlot({
     slot,
@@ -387,7 +387,7 @@ async function runTurnLoop(
     if (slot.archetype === "reviewer" && slot.reviewerReviewedOwnWork) {
       warnings.push(
         `Turn ${String(attemptCounter)} (reviewer/${slot.provider}) is reviewing its own prior work: ` +
-          `role_pins left no other provider eligible for the reviewer role this run.`,
+          `the reviewer seat and the seat whose diff it reviews are the same provider and the same model (role_pins left no other seat eligible, or no second model was set).`,
       );
     }
 

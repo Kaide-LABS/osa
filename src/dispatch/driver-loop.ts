@@ -175,6 +175,7 @@ function buildPhaseRunConfig(config: DriveConfig, phase: number, specPath: strin
     chat_log_id: config.driver_run_id,
     chat_log_gitignored: config.chat_log_gitignored,
     ...(config.model_overrides !== undefined ? { model_overrides: config.model_overrides } : {}),
+    ...(config.seat_models !== undefined ? { seat_models: config.seat_models } : {}),
     ...(config.executor_prompt_path !== undefined ? { executor_prompt_path: config.executor_prompt_path } : {}),
     ...(config.reviewer_prompt_path !== undefined ? { reviewer_prompt_path: config.reviewer_prompt_path } : {}),
     ...(config.role_pins !== undefined ? { role_pins: config.role_pins } : {}),

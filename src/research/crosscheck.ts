@@ -53,6 +53,8 @@ export interface CrosscheckInput {
   readonly timeoutMs: number;
   readonly events: EventSink;
   readonly modelOverride?: string | null;
+  /** How independent the reviewer is from the researcher, in plain words (src/domain/independence.ts); printed in the report's closing section. */
+  readonly independenceNote?: string;
 }
 
 /** Builds the reviewer prompt. Pure. */
@@ -102,12 +104,12 @@ export function renderPlantedSection(planted: readonly InjectionFlag[]): string 
 }
 
 /** Renders the verdict as the report's closing section. Pure. */
-export function renderCrosscheckSection(r: { verdict: CrosscheckVerdict; degraded: boolean; researcher: ProviderId; reviewer: ProviderId }): string {
+export function renderCrosscheckSection(r: { verdict: CrosscheckVerdict; degraded: boolean; researcher: ProviderId; reviewer: ProviderId; independenceNote?: string }): string {
   const bad = r.verdict.claims.filter((c) => c.status !== "supported");
   const lines = [
-    "## Cross-provider check",
+    "## Independent check",
     "",
-    `Researched by ${r.researcher}; checked by ${r.reviewer} (a different provider). Verdict: **${r.verdict.verdict}**${r.degraded ? " -- DEGRADED: the reviewer could not open sources, so this is a consistency check only." : "."}`,
+    `Researched by ${r.researcher}; checked by ${r.reviewer}${r.independenceNote !== undefined ? ` (${r.independenceNote})` : ""}. Verdict: **${r.verdict.verdict}**${r.degraded ? " -- DEGRADED: the reviewer could not open sources, so this is a consistency check only." : "."}`,
     "",
     r.verdict.summary,
   ];
@@ -121,17 +123,11 @@ export function renderCrosscheckSection(r: { verdict: CrosscheckVerdict; degrade
 }
 
 /**
- * Runs the check. Throws {@link StageError} (loudly) if researcher and reviewer are the same provider,
- * or if the reviewer cannot produce a valid verdict after one retry. Emits `research_crosscheck`.
+ * Runs the check. The reviewer may be the same provider as the researcher (on a different model: the stage picks the seats so that it is);
+ * how independent it is gets reported, never refused. Throws {@link StageError} (loudly) if the reviewer cannot produce a valid verdict
+ * after one retry. Emits `research_crosscheck`.
  */
 export async function crossCheckReport(input: CrosscheckInput): Promise<CrosscheckResult> {
-  if (input.researcher === input.reviewer) {
-    throw new StageError(
-      `Refusing a same-provider research check: ${input.researcher} would be reviewing its own report. ` +
-        "The cross-provider check requires the reviewer to be a different provider from the researcher.",
-      { researcher: input.researcher, reviewer: input.reviewer },
-    );
-  }
   let note: string | null = null;
   let lastError = "no attempt was made";
   for (let attempt = 1; attempt <= 2; attempt++) {
@@ -167,7 +163,12 @@ export async function crossCheckReport(input: CrosscheckInput): Promise<Crossche
         degraded,
         plantedInstructions: (input.planted ?? []).length,
       });
-      return { verdict: finalVerdict, degraded, flagged, sectionMd: renderCrosscheckSection({ verdict: finalVerdict, degraded, researcher: input.researcher, reviewer: input.reviewer }) + renderPlantedSection(planted) };
+      return {
+        verdict: finalVerdict,
+        degraded,
+        flagged,
+        sectionMd: renderCrosscheckSection({ verdict: finalVerdict, degraded, researcher: input.researcher, reviewer: input.reviewer, ...(input.independenceNote !== undefined ? { independenceNote: input.independenceNote } : {}) }) + renderPlantedSection(planted),
+      };
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
       note = lastError;

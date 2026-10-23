@@ -23,6 +23,8 @@ export const OSA_EVENT_NAMES = [
   "lateral_arch_done",
   "application_check",
   "feature_state",
+  "seats_resolved",
+  "review_independence",
   "application_sandbox_leftover",
   "index_updated",
   "memory_written",

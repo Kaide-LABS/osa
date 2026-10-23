@@ -30,6 +30,9 @@ import { buildFields, buildOutline, writeOutlineFiles } from "./outline.ts";
 import { flagsOf, screenUntrusted } from "../osa/untrusted.ts";
 import { compileReport } from "./report.ts";
 import { chooseResearchProviders } from "./routing.ts";
+import { classifyModel } from "../adapters/model-classes.ts";
+import { describeIndependence, independenceOf } from "../domain/independence.ts";
+import type { Seat } from "../domain/independence.ts";
 import type { ResearchRouting } from "./routing.ts";
 
 /** Inputs of {@link runResearchStage}. */
@@ -114,7 +117,11 @@ export async function runResearchStage(input: ResearchStageInput): Promise<Resea
 
   const warnings: string[] = [];
   const hasWeb = input.hasWebSearch ?? defaultHasWebSearch;
-  const routing = chooseResearchProviders(config.providers.pair, hasWeb, input.hasWebSearch === undefined ? defaultNoFileAccess : () => false);
+  const routing = chooseResearchProviders(config.providers.pair, hasWeb, input.hasWebSearch === undefined ? defaultNoFileAccess : () => false, config.providers.seatModels);
+  const researcherSeat: Seat = { provider: routing.researcher, model: routing.researcherModel ?? config.providers.modelOverrides?.[routing.researcher] ?? null };
+  const reviewerSeat: Seat = { provider: routing.reviewer, model: routing.reviewerModel ?? config.providers.modelOverrides?.[routing.reviewer] ?? null };
+  const independence = independenceOf(researcherSeat, reviewerSeat, classifyModel);
+  await events.emit("review_independence", { role: "research", author: researcherSeat, reviewer: reviewerSeat, level: independence });
   if (routing.routedAway) await events.emit("research_routed", { to: routing.researcher, reason: routing.reason });
 
   const researchDir = repoRelToAbs(repoDir, researchDirRel);
@@ -141,7 +148,7 @@ export async function runResearchStage(input: ResearchStageInput): Promise<Resea
     await writeFile(`${resultsDir}/academic-papers.json`, JSON.stringify(academic, null, 2) + "\n", "utf8");
   }
 
-  const modelOverride = config.providers.modelOverrides?.[routing.researcher] ?? null;
+  const modelOverride = researcherSeat.model;
   let priorArt: PriorArtResult | null = null;
   if (outline.execution.githubLookup.enabled) {
     priorArt = await runGithubLookup({
@@ -201,14 +208,16 @@ export async function runResearchStage(input: ResearchStageInput): Promise<Resea
       cwd: repoDir,
       timeoutMs: config.providers.textTimeoutMs,
       events,
-      modelOverride: config.providers.modelOverrides?.[routing.reviewer] ?? null,
+      modelOverride: reviewerSeat.model,
+      independenceNote: describeIndependence(independence, researcherSeat, reviewerSeat),
     });
+    if (independence === "same-model" || independence === "unverified") warnings.push(describeIndependence(independence, researcherSeat, reviewerSeat));
     reportMd = appendCrosscheck(reportMd, crosscheck.sectionMd);
     if (crosscheck.degraded) warnings.push(`The research check by ${routing.reviewer} was consistency-only: it has no web access to open the cited sources.`);
     if (crosscheck.flagged.length > 0) warnings.push(`${String(crosscheck.flagged.length)} research claim(s) were not confirmed by the cross-provider check.`);
   } else {
     await events.emit("research_crosscheck", { skipped: true, reason: "research.crossProviderCheck is false" });
-    reportMd = appendCrosscheck(reportMd, "## Cross-provider check\n\n_Skipped: research.crossProviderCheck is false in the configuration. This report was NOT independently checked._");
+    reportMd = appendCrosscheck(reportMd, "## Independent check\n\n_Skipped: research.crossProviderCheck is false in the configuration. This report was NOT independently checked._");
     warnings.push("The cross-provider research check was disabled by configuration; the research report was not independently checked.");
   }
   await writeFile(`${researchDir}/report.md`, reportMd, "utf8");

@@ -19,6 +19,7 @@ import { NO_QUESTIONS } from "./prompt-rules.ts";
 import { mkdir, readdir, writeFile } from "node:fs/promises";
 import type { BabyPrd } from "../domain/intake.ts";
 import type { OsaConfig } from "../domain/osa-config.ts";
+import { modelFor } from "./seats.ts";
 import type { HandoffRecord } from "../domain/relay.ts";
 import { readHandoffRecord } from "../domain/relay.ts";
 import type { TextCall } from "../ports/text-provider.ts";
@@ -271,7 +272,7 @@ export async function runStep14(input: Step14Input): Promise<Step14Result> {
       timeoutMs: input.config.providers.textTimeoutMs,
       tier: "high-volume-low-effort",
       webSearch: false,
-      modelOverride: input.config.providers.modelOverrides?.[input.config.providers.pair[0]] ?? null,
+      modelOverride: modelFor(input.config, input.config.providers.pair[0], 0),
     },
     `step14-summary-${String(input.phase)}`,
   );

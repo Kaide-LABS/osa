@@ -1,10 +1,10 @@
 # OSA -- One-Shot Anything
 
 Give OSA **one prompt**. It turns it into a plain-language plan, asks you to confirm **once**, and then runs to
-completion on its own: it researches, writes a spec, builds across two different AI coding tools (so one
-always reviews the other), tests the result like a user would, and hands you a summary you can read without being
-an engineer. It runs entirely on your machine with the AI tools you already have signed in (Claude Code, Codex
-CLI, Antigravity CLI), and uses no paid API of its own.
+completion on its own: it researches, writes a spec, builds with one AI model writing and a different one
+reviewing, tests the result like a user would, and hands you a summary you can read without being an engineer. It runs
+entirely on your machine with the AI tools you already have signed in (Claude Code, Codex CLI, Antigravity CLI,
+OpenCode, GitHub Copilot CLI), **one is enough**, and it uses no paid API of its own.
 
 ```
 osa "Build a command line tool that counts the words in text files and prints a total"
@@ -16,10 +16,10 @@ osa "Build a command line tool that counts the words in text files and prints a 
 |---|---|---|
 | 1 | **Intake** | A TL;DR (3-5 plain lines) and a *baby PRD*: problem, who it's for, in/out of scope, falsifiable acceptance criteria, constraints, research plan, and every **assumption** OSA had to make, tagged `[risky]` (would change scope, architecture, data, cost or security if wrong -- listed first) or `[safe]`. No questions are asked. |
 | 2 | **The lock** | The only human touchpoint: **Lock and run / Edit / Cancel.** *Edit* opens the PRD in your editor and re-shows it. On lock, the PRD is hashed (`prd_locked`) and committed. It is immutable from here: any later change is a hard failure (exit 20). |
-| 3 | **Research** | Runs unattended against the **locked** PRD: official documentation for every library/framework/API named (mandatory), arXiv + OpenAlex papers, public prior-art repos on GitHub -- then a **second AI on a different provider** checks the report against its sources. |
+| 3 | **Research** | Runs unattended against the **locked** PRD: official documentation for every library/framework/API named (mandatory), arXiv + OpenAlex papers, public prior-art repos on GitHub -- then a **second AI model** (a different provider when you have two, otherwise a different model) checks the report against its sources. |
 | 4 | **Spec** | `context.md` + `PHASE_1_SPEC.md`, with documentation sources (a spec with none fails the phase). Gaps become logged *spec decisions*, never questions. |
-| 5 | **Agents** | A *lateral architecture* agent (independent provider) proposes a materially different design and the planner records which it chose and why; an *implication* agent turns second-order consequences into extra acceptance criteria / out-of-scope lines **in the spec** (never the PRD). |
-| 6 | **Build** | The cross-provider dispatcher: per phase, executor / executor / reviewer turns across two providers, verified through git, file hashes and continuity checks. Around every phase: the PRD hash is re-verified, and **step 14** writes a trimmed handoff for the next phase plus a plain-language note for you. |
+| 5 | **Agents** | A *lateral architecture* agent (the most independent model available) proposes a materially different design and the planner records which it chose and why; an *implication* agent turns second-order consequences into extra acceptance criteria / out-of-scope lines **in the spec** (never the PRD). |
+| 6 | **Build** | The dispatcher: per phase, executor / executor / reviewer turns across two seats (two providers, or two models of one), verified through git, file hashes and continuity checks. Around every phase: the PRD hash is re-verified, and **step 14** writes a trimmed handoff for the next phase plus a plain-language note for you. |
 | 7 | **Application check** | An agent *runs the finished project* in a disposable copy and tries each acceptance criterion. Unmet criteria **fail the run** (exit 24); a "met" without evidence doesn't count. |
 | 8 | **Summary + memory** | `runs/<id>/summary.md` (what was built, what was decided for you, what's uncertain, how it was checked) and facts saved to `.osa/memory/` for next time. |
 
@@ -49,27 +49,55 @@ Every key is optional; these are the defaults. A typo'd key is an error, not sil
                 "semanticScholar": false, "githubLookup": true, "crossProviderCheck": true,
                 "maxItems": 8, "batchSize": 4 },
   "trim":     { "enabled": false, "engine": "trim1", "binaryPath": "", "point": "balanced", "budgetTokens": 6000 },
-  "agents":   { "implication": true, "lateralArchitecture": true, "lateralArchitectureProvider": "codex",
-                "lateralArchitecturePinned": false, "application": true },
+  "agents":   { "implication": true, "lateralArchitecture": true, "application": true },
+  // optional: "lateralArchitectureProvider" + "lateralArchitectureModel" (default: OSA picks the most independent model)
   "index":    { "enabled": true, "embedder": "local", "topK": 8, "engine": "lexical",
                 "cbm": { "binaryPath": "", "workDir": "", "indexMode": "full" } },
   "memory":   { "enabled": true, "maxFactsPerFile": 200, "readBudgetChars": 3000 },
-  "providers": { "pair": ["claude-code", "codex-cli"], "turnTimeoutMs": 1800000, "textTimeoutMs": 900000 }
-  // optional: "providers.rolePins", "providers.modelOverrides", "agents.implicationProvider", "agents.applicationProvider"
+  "providers": { "independence": "auto", "turnTimeoutMs": 1800000, "textTimeoutMs": 900000 }
+  // optional: "providers.pair", "providers.seatModels", "providers.models", "providers.rolePins", "providers.modelOverrides",
+  //           "agents.implicationProvider", "agents.applicationProvider"  (see "Providers, models and review independence")
 }
 ```
 
-Provider names accept `claude`/`codex`/`antigravity` as short aliases. **`providers.modelOverrides`** matters if a
+Provider names accept `claude`/`codex`/`antigravity`/`opencode`/`copilot` as short aliases. **`providers.modelOverrides`** matters if a
 provider CLI's own default model has gone stale (e.g. `{"codex-cli": "gpt-6-luna"}`): it applies to every OSA call and build turn.
 
 Optional environment variables (see `.env.example`; none is required, each feature degrades gracefully):
 `GITHUB_TOKEN` (raises GitHub limits, enables code search), `OPENALEX_API_KEY` (OpenAlex now gives unauthenticated
 callers only a small shared daily budget; `mailto` no longer raises it), `S2_API_KEY` (only with `research.semanticScholar`).
 
+## Providers, models and review independence
+
+OSA does **not** require two providers. A run has two *seats*: seat 0 plans, writes the first turn and reviews; seat 1 writes
+the second turn, whose work seat 0 then reviews. A seat is a provider **and a model**, so one subscription is enough.
+
+- **Nothing set** (no `providers.pair` in `osa.config.json`): OSA checks which of the five tools are installed and signed in
+  and chooses. Two or more: the pair from the most different model families (e.g. Claude + GPT). One: both seats on it, with
+  different models (Claude Code: a mid-size model writes, the strongest reviews).
+- **Your own choice**: `providers.pair` (the same provider twice is fine), `providers.seatModels` (a model per seat),
+  `providers.models` (the models a provider may use, for providers whose models differ per account). `"independence": "off"`
+  uses exactly what you wrote.
+- **It never refuses.** How independent the review is gets logged (`review_independence`), shown in the run report and
+  summary, and, when weak (the same model, or an unverifiable default), accompanied by advice. The ladder, strongest first:
+  *different model family* > *different capability class* > *different provider (families unknown)* > *different model* >
+  *unverified (a default model on one side)* > *same model*. A model tends to favour its own output, which is why a
+  different family or a stronger model is better, and why OSA tells you when it could not arrange one.
+- The same rule picks the **lateral architecture** agent's seat, the research cross-check's reviewer, and the other agents.
+
+| Tool | Notes |
+|---|---|
+| Claude Code | web search; model aliases `opus`/`sonnet`/`haiku` known to OSA |
+| Codex CLI | web search; name your models in `providers.models` |
+| Antigravity CLI | no web search; long outputs have timed out on some runs |
+| OpenCode | any vendor's model (`opencode models --standalone`); `docs/osa/OPENCODE.md` (verified against v2.1.1); no web search tool that works headless |
+| GitHub Copilot CLI | **experimental**: written from GitHub's documentation, not yet run against the real CLI (`docs/osa/COPILOT.md`) |
+
 ## Research, without a paid API
 
 Research runs on **each provider's own built-in web search** (Claude Code `WebSearch`/`WebFetch`, Codex web search); if
-a provider has none (Antigravity, unverified) research is routed to one that does and logged. Academic search uses
+a seat's provider has none (Antigravity, OpenCode, Copilot) research is routed to the other seat and logged. With no web-capable seat
+at all, research stops with a message (set `research.enabled` to false, or use Claude Code or Codex for one seat). Academic search uses
 the public **arXiv API** (>= 3 s between calls, one connection) and **OpenAlex**, de-duplicated by DOI, then arXiv id,
 then title; "nothing relevant" is a valid, logged result. Prior art uses the **GitHub REST API** (READMEs and key
 files; rate-limit headers honoured). One research agent runs per outline item, results are validated against
@@ -135,8 +163,8 @@ sequentially; `osa evidence --repo-dir <path> --run-id <uuid>` re-derives AC1/AC
 (`run`, `drive`, `doctor`, `evidence`, `code_search`, `memory_read`, `memory_append`); `osa setup` registers it in
 Claude Code at user scope.
 
-Guarantees that were never weakened: executor and reviewer on **different** providers (a pinned self-review is
-loud, never silent); git verification of every commit (neutral messages, no AI attribution trailers); SHA-256
+Guarantees that were never weakened: the reviewer is a different seat from the author (a different model whenever one is
+available, and a weak review is reported, never silent); git verification of every commit (neutral messages, no AI attribution trailers); SHA-256
 attestation of every artifact read and written; verbatim JSONL chat logs; resume.
 
 Antigravity CLI requires operator-configured authentication via either headless mode (`modelProvider: "gemini"` and
@@ -154,10 +182,10 @@ credential-shaped content (`sk-`, `ghp_`, `xoxb-`) as a warning only. Read a log
 ## Documentation
 
 `docs/osa/` -- `CURRENT_STATE.md` (the code as found), `CONFLICTS.md` (every place the directive and the code
-disagreed, and every judgement call), `ATTRIBUTION.md`, `TRIM1_NOTES.md`, `ANTIGRAVITY.md`, `archive/RUN_REPORT.md` (what
+disagreed, and every judgement call), `ATTRIBUTION.md`, `TRIM1_NOTES.md`, `ANTIGRAVITY.md`, `OPENCODE.md`, `COPILOT.md`, `INDEPENDENCE.md`, `archive/RUN_REPORT.md` (what
 was done per workstream, what was deferred and why, open risks).
 
 ## Requirements and scripts
 
-- Node.js `>=24.0.0`; git; at least two of Claude Code / Codex CLI / Antigravity CLI installed and signed in.
+- Node.js `>=24.0.0`; git; at least one of Claude Code / Codex CLI / Antigravity CLI / OpenCode / GitHub Copilot CLI installed and signed in (two from different model families make the review more independent).
 - `npm run typecheck`, `npm test`, `npm run check` (typecheck + test + boundary scan).

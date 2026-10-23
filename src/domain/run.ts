@@ -84,9 +84,10 @@ export const RolePinSchema = z.enum(ROLE_PINS);
 const RunConfigShape = z.strictObject({
   run_id: z.uuid(),
   repo_dir: z.string().min(1),
-  executor_providers: z
-    .tuple([ProviderIdSchema, ProviderIdSchema])
-    .refine(([a, b]) => a !== b, "executor_providers must be two different provider ids"),
+  /** The two seats' providers. They may be the SAME provider when `seat_models` puts different models in them. */
+  executor_providers: z.tuple([ProviderIdSchema, ProviderIdSchema]),
+  /** The model of each seat, aligned with `executor_providers` (`null` = that provider's default). Absent = both default. */
+  seat_models: z.tuple([z.string().min(1).nullable(), z.string().min(1).nullable()]).optional(),
   reviewer_provider: ProviderIdSchema.nullable().default(null),
   /**
    * Pins a provider exclusively to the executor role, exclusively to the reviewer role, or leaves it

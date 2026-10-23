@@ -348,3 +348,42 @@ three switches explicitly to off, as asked. The file is git-excluded (machine-sp
 looked for, so a missing CBM or trim-1 binary neither fails nor warns. An enabled one whose configured binary path does not exist is
 a non-fatal warning (it never changes `ok` or the exit code), because the user asked for the feature and it will fall back. An
 unreadable project config is also only a warning in doctor. *(safe)*
+
+## Added in this repository (S-series: decisions made after the original directive)
+
+**S-01 -- Cross-provider review is no longer enforced; review independence is by MODEL.** This reverses the directive's ground rule 5
+("never weaken cross-provider review ... loud failure on self-review configs") at the owner's explicit instruction: many users can afford
+only one provider. `providers.pair` may name one provider twice; a seat is a provider plus a model (`providers.seatModels`); `src/domain/independence.ts`
+ranks how independent the reviewer is (different family > different class > different provider > different model > unverified > same
+model); `src/osa/seats.ts` chooses seats (from the installed tools when `pair` is unset, with different models when only one provider exists);
+the result is logged (`seats_resolved`, `review_independence`), shown in the run report and warned about, with advice, when weak. Nothing
+refuses. Removed: the `providers.pair` distinctness refine, the `executor_providers` distinctness refines (RunConfig, DriveConfig), the
+research cross-check's same-provider throw, the lateral agent's re-route/pin logic (`lateralArchitecturePinned` is gone; the agent picks
+the most independent seat or the one the operator names), the acceptance AC1 same-provider structural failure, and the two-healthy-providers
+preflight minimum (now one). *(risky -- a weaker default guarantee; the guarantee is now measured and reported instead of mandated)*
+Documented in `INDEPENDENCE.md`.
+
+**S-02 -- Tests that encoded the old rule were replaced, not weakened.** Eight tests asserted the refusal ("providers.pair must be two
+different providers", DriveConfig identical ids, the research check refusing a same-provider pair, AC1 failing on one provider, the lateral
+re-route and pin warnings, the CLI's same-provider config failure). Each is now a test of the new behaviour (one provider runs; the
+independence level is reported; a weak review warns with advice). Every other assertion is unchanged.
+
+**S-03 -- Two tests asserted the author's machine.** `runPreflight` and `doctor --providers` tests asserted "all three providers are healthy
+here". Which CLIs a person has installed is not part of the contract; they now assert consistency with the one-healthy-provider rule and
+that a provider that is not installed is never mentioned. The 30 s child-process timeouts in the test helpers are 120 s (a timeout, not an
+assertion): a Windows Modern Standby of 13 minutes made two tests fail on resume in the original repository.
+
+**S-04 -- OpenCode and GitHub Copilot CLI adapters.** OpenCode was verified against v2.1.1 (`OPENCODE.md`); Copilot was not (the CLI is not
+installed here) and is marked experimental in `COPILOT.md`, `osa doctor` and the README. New provider ids: `opencode-cli`, `copilot-cli`.
+
+**S-05 -- Codex is optional.** Nothing defaults to Codex any more (no default lateral provider, no default pair when the config sets none).
+The Codex adapter is kept.
+
+**S-06 -- Not carried over: the spec chain (Steps 6-8) and the first-output window.** The chain's default providers included Codex, its
+audit loop was unproven on this machine (two Antigravity timeouts, one permission failure, a REPOSITION-REQUIRED halt on a small project)
+and it cost about 4x the wall time of the single spec author for a better URL-validation rule. It lives on the original repository's
+`osa/ws9-spec-chain` branch and can be ported as a patch.
+
+**S-07 -- Naming.** Every mention of the previous product name, its run directory (`.osa/` is now the single data directory), its alias
+binary, its config-file fallback and its legacy MCP server name was removed; the build-process documents of the original project were dropped.
+The licence line "the OSA contributors" replaces the previous contributors line (the copyright holder is the owner's to set).

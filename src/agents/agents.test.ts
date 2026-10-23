@@ -97,33 +97,34 @@ test("lateral: at least one alternative is required, with pros, cons and how it 
   assert.equal(LateralReportSchema.safeParse({ ...lateralJson, leaning: "maybe" }).success, false);
 });
 
-test("lateral provider: default codex when the planner is claude; re-routed (with a note) when it would equal the planner; pinned => runs with a LOUD warning (WS6.2)", () => {
-  const cfg = (agents: object, pair: [string, string]) => OsaConfig.parse({ agents, providers: { pair } });
-  const normal = cfg({}, ["claude-code", "codex-cli"]);
-  const a = chooseLateralProvider(normal.agents, normal.providers.pair);
-  assert.deepEqual([a.provider, a.warning, a.rerouted, a.sharesPlannerProvider], ["codex-cli", null, false, false]);
-
-  const clash = cfg({}, ["codex-cli", "claude-code"]); // planner is codex == default lateral provider
-  const b = chooseLateralProvider(clash.agents, clash.providers.pair);
-  assert.equal(b.provider, "claude-code");
-  assert.equal(b.rerouted, true);
-  assert.equal(b.sharesPlannerProvider, false);
-  assert.match(b.warning ?? "", /re-routed to claude-code/);
-
-  const pinned = cfg({ lateralArchitecturePinned: true }, ["codex-cli", "claude-code"]);
-  const c = chooseLateralProvider(pinned.agents, pinned.providers.pair);
-  assert.equal(c.provider, "codex-cli");
-  assert.equal(c.sharesPlannerProvider, true);
-  assert.match(c.warning ?? "", /^LOUD WARNING: .*SAME provider as the planner/);
-
-  const explicit = cfg({ lateralArchitectureProvider: "antigravity" }, ["claude-code", "codex-cli"]);
-  assert.equal(chooseLateralProvider(explicit.agents, explicit.providers.pair).provider, "antigravity-cli");
+test("lateral provider: the most independent seat wins; naming the planner's own provider is allowed and only reported; nothing is refused", () => {
+  const planner = (provider: "claude-code" | "codex-cli", model: string | null) => ({ provider, model });
+  const cands = [planner("claude-code", null), planner("codex-cli", null), { provider: "antigravity-cli" as const, model: null }];
+  // a different model family is available -> it is chosen, with no warning
+  const normal = OsaConfig.parse({});
+  const a = chooseLateralProvider(normal.agents, planner("claude-code", null), cands);
+  assert.deepEqual([a.provider, a.level, a.warning, a.sharesPlannerProvider], ["codex-cli", "different-family", null, false]);
+  // the planner is the other family -> the choice flips
+  const b = chooseLateralProvider(normal.agents, planner("codex-cli", null), cands);
+  assert.deepEqual([b.provider, b.level], ["claude-code", "different-family"]);
+  // ONE provider only: still runs, on the planner's own provider, and says the check is weak
+  const alone = chooseLateralProvider(normal.agents, planner("claude-code", null), [planner("claude-code", null)]);
+  assert.equal(alone.provider, "claude-code");
+  assert.equal(alone.sharesPlannerProvider, true);
+  assert.equal(alone.level, "same-model");
+  assert.match(alone.warning ?? "", /weakly independent/);
+  assert.doesNotMatch(alone.warning ?? "", /refus|LOUD/);
+  // the operator names a provider and a model: used as named, even the planner's own
+  const named = OsaConfig.parse({ agents: { lateralArchitectureProvider: "claude", lateralArchitectureModel: "named-model" } });
+  const c = chooseLateralProvider(named.agents, planner("claude-code", null), cands);
+  assert.deepEqual([c.provider, c.model, c.sharesPlannerProvider], ["claude-code", "named-model", true]);
+  assert.equal(OsaConfig.parse({}).agents.lateralArchitectureProvider, undefined, "no provider is the default: OSA picks one");
 });
 
 test("lateral agent: runs on the chosen provider, logs lateral_arch_done, retries once, and reports failure instead of throwing", async () => {
   const events = new MemoryEventSink();
   const s = scriptedTextCall(["not json", JSON.stringify(lateralJson)]);
-  const choice = { provider: "codex-cli" as const, warning: null, rerouted: false, sharesPlannerProvider: false };
+  const choice = { provider: "codex-cli" as const, model: null, level: "different-family" as const, warning: null, sharesPlannerProvider: false };
   const r = await runLateralArchitectureAgent({ prdMarkdown: "PRD", contextMarkdown: "## Planned architecture\nA single script.\n\n## Other\nx", researchDigest: "digest", choice, textCall: s.call, events, cwd: "/r", timeoutMs: 1000 });
   assert.equal(r.ok, true);
   assert.equal(s.requests[0]?.provider, "codex-cli");

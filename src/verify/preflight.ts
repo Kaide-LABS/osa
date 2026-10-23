@@ -525,3 +525,10 @@ export async function runPreflight(repoDir: string): Promise<PreflightSummary> {
   if (healthyCount < MIN_HEALTHY_PROVIDERS) problems.push(`${String(healthyCount)} providers are usable; at least ${String(MIN_HEALTHY_PROVIDERS)} is required. Install and sign in to one of Claude Code, Codex CLI, Antigravity CLI, OpenCode or GitHub Copilot CLI.`);
   return { node, git, providers, ok, problems, warnings };
 }
+
+/** Providers whose adapter has not been run against the real CLI. `osa doctor` says so whenever one is installed. Pure. */
+export function experimentalProviderWarnings(reports: readonly PreflightReport[]): string[] {
+  return reports
+    .filter((r) => r.provider === "copilot-cli" && r.cliFound)
+    .map(() => "GitHub Copilot CLI support is experimental: it was written from GitHub's documentation and has not been run against the real CLI (docs/osa/COPILOT.md has a smoke test).");
+}

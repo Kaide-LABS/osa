@@ -54,9 +54,10 @@ const DriveConfigShape = z.strictObject({
   target_total_phases: z.number().int().min(1),
   /** The AC6 cap. Sane default chosen for a target build expected to need low-single-digit-to-low-double-digit phases; generous enough not to trip on a legitimate build, small enough to bound a runaway reviewer. */
   max_phases: z.number().int().min(1).default(25),
-  executor_providers: z
-    .tuple([ProviderIdSchema, ProviderIdSchema])
-    .refine(([a, b]) => a !== b, "executor_providers must be two different provider ids"),
+  /** The two seats' providers. They may be the SAME provider when `seat_models` puts different models in them. */
+  executor_providers: z.tuple([ProviderIdSchema, ProviderIdSchema]),
+  /** The model of each seat, aligned with `executor_providers` (`null` = that provider's default). Absent = both default. */
+  seat_models: z.tuple([z.string().min(1).nullable(), z.string().min(1).nullable()]).optional(),
   reviewer_provider: ProviderIdSchema.nullable().default(null),
   /** Same treatment as {@link RunConfig.role_pins} -- threaded unchanged into every phase's own
    * `RunConfig` by `buildPhaseRunConfig` (`src/dispatch/driver-loop.ts` §1.1). Implements

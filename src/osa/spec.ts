@@ -10,6 +10,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import { StageError } from "../domain/errors.ts";
 import type { OsaConfig } from "../domain/osa-config.ts";
+import { modelFor } from "./seats.ts";
 import type { TextCall } from "../ports/text-provider.ts";
 import type { DocsReport } from "../research/docs.ts";
 import { repoRelToAbs } from "../util/paths.ts";
@@ -220,7 +221,7 @@ export async function runSpecStage(input: SpecStageInput): Promise<SpecStageResu
         timeoutMs: input.config.providers.textTimeoutMs,
         tier: "research-grade",
         webSearch: false,
-        modelOverride: input.config.providers.modelOverrides?.[input.config.providers.pair[0]] ?? null,
+        modelOverride: modelFor(input.config, input.config.providers.pair[0], 0),
       },
       "spec",
     );
@@ -374,7 +375,7 @@ export async function runArchitectureDecision(i: ArchitectureDecisionInput): Pro
         timeoutMs: i.config.providers.textTimeoutMs,
         tier: "research-grade",
         webSearch: false,
-        modelOverride: i.config.providers.modelOverrides?.[planner] ?? null,
+        modelOverride: modelFor(i.config, planner, 0),
       },
       "architecture-decision",
     );

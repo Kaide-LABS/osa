@@ -35,22 +35,19 @@ export interface TurnPlan {
    * criterion 3.
    */
   readonly reviewerReviewedOwnWork: boolean;
+  /** The model this slot's seat names; absent = the provider's default (or the run's per-provider `model_overrides`). */
+  readonly model?: string;
 }
 
 /**
- * [DET] Total over this run's two active executor identities: returns the member of
- * `config.executor_providers` that is not `id`. It intentionally does not consult the global
- * provider identity registry (PHASE_11_SPEC.md §6.1).
+ * [DET] The member of `config.executor_providers` that is not `id`; when both seats are the same provider (different models), that provider.
+ * It intentionally does not consult the global provider identity registry (PHASE_11_SPEC.md §6.1).
  */
 export function otherExecutorProvider(config: RunConfig, id: ProviderId): ProviderId {
   if (!config.executor_providers.includes(id)) {
     throw new InternalError(`otherExecutorProvider: provider "${id}" is not in executor_providers`, { id });
   }
-  const other = config.executor_providers.find((p) => p !== id);
-  if (other === undefined) {
-    throw new InternalError(`otherExecutorProvider: no other provider for "${id}"`, { id });
-  }
-  return other;
+  return config.executor_providers.find((p) => p !== id) ?? id;
 }
 
 /** `true` iff `config.role_pins` pins `provider` to `role`. */
@@ -58,61 +55,54 @@ function isPinned(config: RunConfig, provider: ProviderId, role: RolePin): boole
   return config.role_pins?.[provider] === role;
 }
 
+type SeatIndex = 0 | 1;
+const SEAT_INDEXES: readonly SeatIndex[] = [0, 1];
+
 /**
- * [DET, DECISION Phase 3, AMENDED Phase 7 §6.3a] Resolves PRD §6.3's DECISION -- extended by §6.3a
- * to admit operator role pinning -- into the concrete, ordered, three-slot V1 turn sequence for one
- * run: two executor slots, then one reviewer slot. With no `role_pins` set, this is byte-identical
- * to the pre-Phase-7 behaviour: executor slots ordered exactly as `executor_providers`, reviewer
- * slot defaulting to whichever provider did *not* produce the diff under review
- * (`otherExecutorProvider(config, executor_providers[1])`) unless the operator set `reviewer_provider`
- * explicitly (PHASE_7_SPEC.md §6.1 worked table row 1, AC2). A `role_pins` pinning a provider to
- * `"reviewer"` removes it from the executor pool (collapsing both executor slots onto the sole
- * remaining eligible provider, RP1 guarantees this pool is never empty); a `role_pins` pinning a
- * provider to `"executor"` removes it from reviewer eligibility. No other archetype ever appears.
+ * [DET] Resolves the concrete, ordered, three-slot turn sequence for one run: two executor slots, then one reviewer slot. The slots are
+ * filled from two SEATS -- `executor_providers[i]` on `seat_models[i]` -- so the same provider on two different models is a valid pair.
+ * With no `role_pins` set the executor slots are seat 0 then seat 1, and the reviewer slot defaults to the seat that did NOT write the diff
+ * under review (seat 0), unless the operator set `reviewer_provider` explicitly. A `role_pins` pinning a provider to `"reviewer"` removes
+ * its seat from the executor pool (collapsing both executor slots onto the sole remaining seat; RP1 guarantees the pool is never empty); a
+ * pin to `"executor"` removes it from reviewer eligibility. For two different providers this is byte-identical to the behaviour before
+ * seats existed. `reviewerReviewedOwnWork` is true only when the reviewer's seat and the diff writer's seat are the same provider AND the
+ * same model; a reviewer on a different model of the same provider is an independent-enough review that is reported, not warned about.
  * Implements PHASE_3_SPEC.md §6.1, PHASE_7_SPEC.md §6.1.
  */
 export function planTurnSequence(config: RunConfig): readonly TurnPlan[] {
-  const [firstExecutor, secondExecutor] = config.executor_providers;
+  const seats = SEAT_INDEXES.map((i) => ({ provider: config.executor_providers[i], model: config.seat_models?.[i] ?? null }));
+  const seat = (i: SeatIndex) => seats[i] as { provider: ProviderId; model: string | null };
 
-  // Executor pool: every provider NOT pinned "reviewer" is eligible to fill an executor slot. RP1
-  // (PHASE_7_SPEC.md §3.3) guarantees this pool is never empty.
-  const executorPool = config.executor_providers.filter((p) => !isPinned(config, p, "reviewer"));
+  // Executor pool: every seat whose provider is NOT pinned "reviewer" can fill an executor slot. RP1 (§3.3) guarantees it is never empty.
+  const executorPool = SEAT_INDEXES.filter((i) => !isPinned(config, seat(i).provider, "reviewer"));
+  const [execA, execB]: readonly [SeatIndex, SeatIndex] = executorPool.length === 2 ? [0, 1] : [executorPool[0] as SeatIndex, executorPool[0] as SeatIndex];
 
-  const [execA, execB]: readonly [ProviderId, ProviderId] =
-    executorPool.length === 2
-      ? [firstExecutor, secondExecutor] // byte-identical to today's default (AC2) -- nobody is pinned "reviewer"
-      : [executorPool[0] as ProviderId, executorPool[0] as ProviderId]; // collapse: the sole eligible provider fills both executor slots
-
-  // The provider whose diff the reviewer slot reviews is always the second executor slot's
-  // provider -- unchanged from today's definition (`run-loop.ts`'s own diff computation keys off
-  // exactly this slot, PHASE_3_SPEC.md §6.1).
+  // The seat whose diff the reviewer slot reviews is always the second executor slot's seat (`run-loop.ts`'s diff computation keys off it).
   const diffWriter = execB;
 
-  const pinnedReviewer = config.executor_providers.find((p) => isPinned(config, p, "reviewer")) ?? null;
+  const pinnedReviewer = SEAT_INDEXES.find((i) => isPinned(config, seat(i).provider, "reviewer"));
 
-  let reviewerProvider: ProviderId;
-  if (pinnedReviewer !== null) {
-    // A provider pinned "reviewer" is always the reviewer when one exists -- RP4 (§3.3) guarantees
-    // this agrees with `reviewer_provider` if that was also set explicitly.
-    reviewerProvider = pinnedReviewer;
+  let reviewer: SeatIndex;
+  if (pinnedReviewer !== undefined) {
+    // A provider pinned "reviewer" is always the reviewer when one exists (RP4 guarantees this agrees with `reviewer_provider`).
+    reviewer = pinnedReviewer;
   } else if (config.reviewer_provider !== null) {
-    // Today's existing explicit override, unaffected when no provider is pinned "reviewer". RP3
-    // (§3.3) already guarantees this is not pinned "executor".
-    reviewerProvider = config.reviewer_provider;
+    // The operator's explicit override (RP3 guarantees it is not pinned "executor"): the seat holding that provider, preferring the one
+    // that did not write the diff when both seats hold it.
+    const holders = SEAT_INDEXES.filter((i) => seat(i).provider === config.reviewer_provider);
+    reviewer = holders.find((i) => i !== diffWriter) ?? holders[0] ?? diffWriter;
   } else {
-    // Today's existing default: whichever provider did not write the diff under review.
-    const naiveDefault = otherExecutorProvider(config, diffWriter);
-    // If the naive default is pinned "executor" it is banned from the reviewer role (§6.3a). With
-    // exactly two providers and no provider pinned "reviewer" in this branch (else we would already
-    // be in the `pinnedReviewer !== null` branch above), the diff-writer itself is the only
-    // remaining candidate -- RP2 (§3.3) guarantees at least one of {naiveDefault, diffWriter} is not
-    // pinned "executor", so this always resolves to a valid provider.
-    reviewerProvider = isPinned(config, naiveDefault, "executor") ? diffWriter : naiveDefault;
+    // The default: the seat that did not write the diff under review, unless its provider is pinned "executor" (then only the diff writer remains).
+    const naive: SeatIndex = diffWriter === 0 ? 1 : 0;
+    reviewer = isPinned(config, seat(naive).provider, "executor") ? diffWriter : naive;
   }
 
-  return [
-    { archetype: "executor", provider: execA, reviewerReviewedOwnWork: false },
-    { archetype: "executor", provider: execB, reviewerReviewedOwnWork: false },
-    { archetype: "reviewer", provider: reviewerProvider, reviewerReviewedOwnWork: reviewerProvider === diffWriter },
-  ];
+  const slot = (archetype: "executor" | "reviewer", i: SeatIndex, own: boolean): TurnPlan => ({
+    archetype,
+    provider: seat(i).provider,
+    ...(seat(i).model !== null ? { model: seat(i).model as string } : {}),
+    reviewerReviewedOwnWork: own,
+  });
+  const ownWork = seat(reviewer).provider === seat(diffWriter).provider && seat(reviewer).model === seat(diffWriter).model;
+  return [slot("executor", execA, false), slot("executor", execB, false), slot("reviewer", reviewer, ownWork)];
 }

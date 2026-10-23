@@ -194,10 +194,10 @@ test("assessAcceptanceEvidence: a genuine, continued, fully-referenced 3-turn ru
 });
 
 // -------------------------------------------------------------------------------------------
-// §8 #11 -- same-provider executor turns fails AC1 specifically; AC2/AC3 evaluated independently.
+// §8 #11 (amended) -- two executor turns on the SAME provider are a valid run (two seats, different models): AC1 is decided by the continuity checks.
 // -------------------------------------------------------------------------------------------
 
-test("assessAcceptanceEvidence: two executor turns reporting the same provider fails AC1 specifically, without short-circuiting AC2/AC3", async () => {
+test("assessAcceptanceEvidence: two executor turns reporting the same provider are not an AC1 failure by themselves -- the continuity checks decide (one provider with two models is a supported setup)", async () => {
   const { dir, initialSha, refs } = await freshRepoWithLooprArtifacts();
   try {
     const headAfter0 = await commitFile(dir, "foo.txt", "v1\n", "turn0");
@@ -226,7 +226,7 @@ test("assessAcceptanceEvidence: two executor turns reporting the same provider f
       record({
         turnIndex: 1,
         role: "executor",
-        provider: "claude-code", // same provider as turn 0 -- AC1's own structural requirement violated
+        provider: "claude-code", // same provider as turn 0 (a different model in the second seat)
         headBefore: headAfter0,
         headAfter: headAfter1,
         commits: [headAfter1],
@@ -256,9 +256,9 @@ test("assessAcceptanceEvidence: two executor turns reporting the same provider f
 
     const evidence = await assessAcceptanceEvidence(dir, RUN_ID, false);
     assert.equal(evidence.turnsFound, 3);
-    assert.equal(evidence.ac1.satisfied, false);
-    assert.match(evidence.ac1.detail, /same provider/);
-    assert.deepStrictEqual(evidence.ac1.continuity, []);
+    assert.equal(evidence.ac1.satisfied, true, evidence.ac1.detail);
+    assert.doesNotMatch(evidence.ac1.detail, /same provider/);
+    assert.equal(evidence.ac1.continuity.length, 2, "both hand-overs were verified");
     assert.equal(evidence.ac2.satisfied, true);
     assert.equal(evidence.ac3.satisfied, true);
   } finally {

@@ -59,6 +59,11 @@ import { readMemoryForPrompt } from "../memory/store.ts";
 import { renderIndexContext } from "../code-index/search.ts";
 import { nextPhaseSpecPath } from "../dispatch/artifacts.ts";
 import type { StageNote } from "./summary.ts";
+import { applySeatPlan, healthyProviders, modelFor, planSeats, seatKey } from "./seats.ts";
+import { describeIndependence } from "../domain/independence.ts";
+import type { Seat } from "../domain/independence.ts";
+import { runPreflight } from "../verify/preflight.ts";
+import type { PreflightSummary } from "../verify/preflight.ts";
 
 /** Flags of `osa "<prompt>"`. */
 export interface OsaCommandOptions {
@@ -77,6 +82,8 @@ export interface OsaCommandOptions {
 
 /** Collaborators; every field defaults to the real thing. */
 export interface OsaDeps {
+  /** Test seam: which providers are usable (default: a real preflight of every provider). Only consulted when the config file sets no `providers.pair`. */
+  readonly preflightFn?: () => Promise<Pick<PreflightSummary, "providers">>;
   readonly textCall?: TextCall;
   readonly io?: LockIO;
   readonly events?: EventSink;
@@ -138,6 +145,8 @@ export interface OsaRunReport {
     readonly implications: { readonly acceptanceAdded: number; readonly outOfScopeAdded: number } | null;
     readonly application: { readonly passed: boolean; readonly met: number; readonly unmet: number; readonly could_not_run: string | null } | null;
   } | null;
+  /** Who wrote and who reviewed, and how independent the review was (the person can act on a weak one). */
+  readonly review?: { readonly author: string; readonly reviewer: string; readonly level: string; readonly text: string };
   /** Repo-relative path of the plain-language run summary, or `null`. */
   readonly summary_path: string | null;
   readonly warnings: readonly string[];
@@ -183,10 +192,16 @@ function lockLabel(outcome: LockOutcome): OsaRunReport["lock"] {
  */
 export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {}): Promise<OsaRunReport> {
   const runId = deps.runId ?? randomUUID();
-  const loaded = deps.config === undefined ? await loadOsaConfig(opts.repoDir) : { config: deps.config, source: null, warnings: [] as string[], explicit: NO_EXPLICIT_KEYS };
+  const loaded = deps.config === undefined ? await loadOsaConfig(opts.repoDir) : { config: deps.config, source: null, warnings: [] as string[], explicit: NO_EXPLICIT_KEYS, pairSet: true };
   // The optional plug-ins (CBM, trim-1, quoted stated rules): config < flag. Each is off unless switched on; nothing of an off feature runs.
-  const config = applyFeatureFlags(loaded.config, opts.features ?? {});
-  const featureStates = describeFeatures(config, loaded.explicit, opts.features ?? {});
+  const baseConfig = applyFeatureFlags(loaded.config, opts.features ?? {});
+  const featureStates = describeFeatures(baseConfig, loaded.explicit, opts.features ?? {});
+  // Who sits where (src/osa/seats.ts): the providers are chosen from what is installed unless the config names a pair, and two seats on
+  // one provider get different models. Nothing here refuses a configuration.
+  const healthy = loaded.pairSet ? [] : healthyProviders(await (deps.preflightFn ?? (() => runPreflight(opts.repoDir)))());
+  const seatPlan = planSeats({ config: baseConfig, pairSet: loaded.pairSet, healthy });
+  const config = applySeatPlan(baseConfig, seatPlan);
+  const seatCandidates = seatPlan.candidates;
   // Every stage logs through a tracker so planted-instruction evidence (`injection_flagged`) reaches the cross-check and the summary.
   const events: EventSink = new InjectionTracker(deps.events ?? new FileEventSink(opts.repoDir, runId));
   const warnings: string[] = [...loaded.warnings];
@@ -210,6 +225,10 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
 
   await events.emit("run_started", { prompt_chars: opts.prompt.length, files: opts.files.length, unattended: opts.yes });
   await events.emit("config_loaded", { source: loaded.source, warnings: loaded.warnings });
+  await events.emit("seats_resolved", { pair: seatPlan.pair, seatModels: seatPlan.seatModels, auto: seatPlan.auto, notes: seatPlan.notes });
+  await events.emit("review_independence", { role: "build", author: seatPlan.review.author, reviewer: seatPlan.review.reviewer, level: seatPlan.review.level });
+  const reviewText = describeIndependence(seatPlan.review.level, seatPlan.review.author, seatPlan.review.reviewer);
+  if (seatPlan.review.level === "same-model" || seatPlan.review.level === "unverified" || seatPlan.auto) warnings.push(...seatPlan.notes);
   for (const f of featureStates) await events.emit("feature_state", { feature: f.id, state: f.enabled ? "enabled" : "disabled", value: f.value, source: f.source });
 
   // Token accounting (Suite 7a): every text exchange and every provider process is recorded by category, per phase and per run.
@@ -224,7 +243,7 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
   // ---- intake ----
   const { prd } = await runIntake(
     { prompt: opts.prompt, files, memory, maxItems: config.research.maxItems, quoteStatedRules: config.intake.quoteStatedRules },
-    { textCall, provider: config.providers.pair[0], cwd: opts.repoDir, timeoutMs: config.providers.textTimeoutMs, events },
+    { textCall, provider: config.providers.pair[0], model: modelFor(config, config.providers.pair[0], 0), cwd: opts.repoDir, timeoutMs: config.providers.textTimeoutMs, events },
   );
   const prdPath = babyPrdRelPath(runId);
   const prdAbs = repoRelToAbs(opts.repoDir, prdPath);
@@ -311,9 +330,10 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
   const contextAbs = repoRelToAbs(opts.repoDir, spec.contextPath);
   const agentTimeout = config.providers.textTimeoutMs;
   const planner = config.providers.pair[0];
+  const plannerSeat: Seat = { provider: planner, model: modelFor(config, planner, 0) };
 
   if (config.agents.lateralArchitecture) {
-    const choice = chooseLateralProvider(config.agents, config.providers.pair);
+    const choice = chooseLateralProvider(config.agents, plannerSeat, seatCandidates);
     if (choice.warning !== null) warnings.push(choice.warning);
     const lateral = await runLateralArchitectureAgent({
       prdMarkdown,
@@ -324,7 +344,7 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
       events,
       cwd: opts.repoDir,
       timeoutMs: agentTimeout,
-      modelOverride: config.providers.modelOverrides?.[choice.provider] ?? null,
+      modelOverride: choice.model ?? config.providers.modelOverrides?.[choice.provider] ?? null,
     });
     if (lateral.report !== null) {
       const decision = await runArchitectureDecision({
@@ -359,7 +379,7 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
       events,
       cwd: opts.repoDir,
       timeoutMs: agentTimeout,
-      modelOverride: config.providers.modelOverrides?.[provider] ?? null,
+      modelOverride: modelFor(config, provider, 1),
     });
     if (implication.ok) {
       await writeFile(specAbs, implication.specMarkdown, "utf8");
@@ -387,6 +407,7 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
     assumptions: spec.specAssumptions.length,
   };
   const base = {
+    review: { author: seatKey(seatPlan.review.author), reviewer: seatKey(seatPlan.review.reviewer), level: seatPlan.review.level, text: reviewText },
     schema_version: 1 as const,
     run_id: runId,
     lock: "locked" as const,
@@ -479,6 +500,7 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
     context_path: spec.contextPath,
     target_total_phases: spec.totalPhases,
     executor_providers: config.providers.pair,
+    seat_models: config.providers.seatModels,
     turn_timeout_ms: config.providers.turnTimeoutMs,
     executor_prompt_path: ctxRel,
     reviewer_prompt_path: ctxRel,
@@ -556,7 +578,7 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
       textCall,
       events,
       timeoutMs: agentTimeout,
-      modelOverride: config.providers.modelOverrides?.[provider] ?? null,
+      modelOverride: modelFor(config, provider, 1),
       ...(deps.sandboxFactory !== undefined ? { sandboxFactory: deps.sandboxFactory } : {}),
     });
     const appDir = await writeApplicationReport(opts.repoDir, runId, application);
@@ -578,7 +600,7 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
     provider: planner,
     cwd: opts.repoDir,
     timeoutMs: agentTimeout,
-    modelOverride: config.providers.modelOverrides?.[planner] ?? null,
+    modelOverride: modelFor(config, planner, 0),
   });
 
   await acct.emit(events, null);
@@ -690,6 +712,7 @@ export function renderOsaRunReport(report: OsaRunReport): string {
         : `Research: ${String(r.items)} topic(s) investigated, ${String(r.docSources)} documentation source(s), ${String(r.papers)} academic paper(s), ${String(r.repos)} prior-art repo(s)${r.crossChecked ? ", independently checked by a second AI" : ", NOT independently checked"}`,
     );
   }
+  if (report.review !== undefined) lines.push(`Review: ${report.review.text}`);
   if (report.spec !== null) lines.push(`Spec: ${report.spec.spec_path} (${String(report.spec.total_phases)} build phase(s) planned, ${String(report.spec.assumptions)} spec decision(s) logged)`);
   if (report.agents?.architecture != null) {
     const a = report.agents.architecture;

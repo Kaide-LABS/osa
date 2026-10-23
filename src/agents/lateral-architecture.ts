@@ -2,14 +2,17 @@
 // least one MATERIALLY DIFFERENT architecture with honest trade-offs. The planner then records which was chosen
 // and why (`runArchitectureDecision` in `src/osa/spec.ts` -> an "Architecture decision" section in context.md).
 //
-// Independence rule: it must not run on the same provider as the planner unless `agents.lateralArchitecturePinned`
-// is on -- a planner critiquing its own architecture is self-review. When the default provider would coincide
-// with the planner, it is re-routed to the other provider of the pair; when pinned, it runs with a LOUD warning.
+// Independence: a planner critiquing its own architecture is a weak check, so unless the operator names a provider the agent runs on the
+// MOST INDEPENDENT seat available (a different model family, else a different capability class, else a different model). It never refuses:
+// a person with one provider still gets a lateral review, by a different model if there is one, and the log says how independent it was.
 
 import { NO_QUESTIONS } from "../osa/prompt-rules.ts";
 import { z } from "zod";
 import type { OsaConfig } from "../domain/osa-config.ts";
 import type { ProviderId } from "../domain/run.ts";
+import { chooseReviewerSeat, describeIndependence, independenceOf } from "../domain/independence.ts";
+import type { Independence, ModelClassifier, Seat } from "../domain/independence.ts";
+import { classifyModel } from "../adapters/model-classes.ts";
 import type { TextCall } from "../ports/text-provider.ts";
 import type { EventSink } from "../osa/events.ts";
 import { extractJsonObject } from "../osa/intake.ts";
@@ -34,38 +37,34 @@ export const LateralReportSchema = z.strictObject({
 export type LateralReport = z.infer<typeof LateralReportSchema>;
 export type Alternative = z.infer<typeof AlternativeSchema>;
 
-/** Which provider the lateral agent runs on, and any warning that goes with the choice. */
+/** Which seat the lateral agent runs on, how independent that is from the planner, and a note when the check is weak. */
 export interface LateralProviderChoice {
   readonly provider: ProviderId;
-  /** Present when the agent would otherwise share the planner's provider. */
+  /** `null` = the provider's own default model. */
+  readonly model: string | null;
+  readonly level: Independence;
+  /** Present only when the check is weak (same model, or a default model that may be the same); advice, never a refusal. */
   readonly warning: string | null;
-  readonly rerouted: boolean;
-  /** True when it runs on the planner's provider because the operator pinned it. */
+  /** The agent runs on the planner's provider (possibly on a different model). */
   readonly sharesPlannerProvider: boolean;
 }
 
 /**
- * Chooses the lateral agent's provider. `planner` is the provider that wrote the spec (`providers.pair[0]`).
- * Pure.
+ * Chooses the lateral agent's seat. `planner` is the seat that wrote the spec; `candidates` are the seats OSA may use. A provider named in
+ * `agents.lateralArchitectureProvider` is used as named (with `lateralArchitectureModel`). Otherwise the most independent candidate wins.
+ * Pure; never refuses.
  */
-export function chooseLateralProvider(agents: OsaConfig["agents"], pair: readonly [ProviderId, ProviderId]): LateralProviderChoice {
-  const planner = pair[0];
-  const wanted = agents.lateralArchitectureProvider;
-  if (wanted !== planner) return { provider: wanted, warning: null, rerouted: false, sharesPlannerProvider: false };
-  if (agents.lateralArchitecturePinned) {
-    return {
-      provider: wanted,
-      warning: `LOUD WARNING: the lateral architecture agent is pinned to ${wanted}, the SAME provider as the planner. The alternative architecture is therefore proposed by the model that chose the plan, which weakens the independent check. Remove agents.lateralArchitecturePinned to get an independent provider.`,
-      rerouted: false,
-      sharesPlannerProvider: true,
-    };
-  }
-  const other = pair[1];
+export function chooseLateralProvider(agents: OsaConfig["agents"], planner: Seat, candidates: readonly Seat[], classify: ModelClassifier = classifyModel): LateralProviderChoice {
+  const named: Seat | null = agents.lateralArchitectureProvider === undefined ? null : { provider: agents.lateralArchitectureProvider, model: agents.lateralArchitectureModel ?? null };
+  const seat = named ?? chooseReviewerSeat(planner, candidates, classify)?.seat ?? planner;
+  const level = independenceOf(planner, seat, classify);
+  const weak = level === "same-model" || level === "unverified";
   return {
-    provider: other,
-    warning: `The lateral architecture agent defaults to ${wanted}, which is the planner's provider; it was re-routed to ${other} so the alternative comes from an independent provider. (Set agents.lateralArchitecturePinned to override.)`,
-    rerouted: true,
-    sharesPlannerProvider: false,
+    provider: seat.provider,
+    model: seat.model,
+    level,
+    warning: weak ? `The lateral architecture review is weakly independent. ${describeIndependence(level, planner, seat)}` : null,
+    sharesPlannerProvider: seat.provider === planner.provider,
   };
 }
 
@@ -181,7 +180,8 @@ export async function runLateralArchitectureAgent(i: LateralInput): Promise<Late
         provider: i.choice.provider,
         alternatives: report.alternatives.length,
         leaning: report.leaning,
-        rerouted: i.choice.rerouted,
+        model: i.choice.model,
+        independence: i.choice.level,
         sharesPlannerProvider: i.choice.sharesPlannerProvider,
       });
       return { ok: true, report, failure: null };
@@ -190,6 +190,6 @@ export async function runLateralArchitectureAgent(i: LateralInput): Promise<Late
       note = last;
     }
   }
-  await i.events.emit("lateral_arch_done", { provider: i.choice.provider, failed: true, reason: last, rerouted: i.choice.rerouted, sharesPlannerProvider: i.choice.sharesPlannerProvider });
+  await i.events.emit("lateral_arch_done", { provider: i.choice.provider, failed: true, reason: last, model: i.choice.model, independence: i.choice.level, sharesPlannerProvider: i.choice.sharesPlannerProvider });
   return { ok: false, report: null, failure: last };
 }

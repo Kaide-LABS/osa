@@ -18,7 +18,7 @@ test("OsaConfig: {} is valid and every directive default is applied", () => {
   assert.equal(c.trim.engine, "trim1");
   assert.equal(c.agents.implication, true);
   assert.equal(c.agents.lateralArchitecture, true);
-  assert.equal(c.agents.lateralArchitectureProvider, "codex-cli");
+  assert.equal(c.agents.lateralArchitectureProvider, undefined);
   assert.equal(c.agents.application, true);
   assert.equal(c.index.enabled, true);
   assert.equal(c.memory.enabled, true);
@@ -35,6 +35,13 @@ test("OsaConfig: an unknown key is a loud error, not silently ignored", () => {
   assert.equal(OsaConfig.safeParse({ nonsense: 1 }).success, false);
 });
 
-test("OsaConfig: providers.pair must be two different providers", () => {
-  assert.equal(OsaConfig.safeParse({ providers: { pair: ["codex", "codex-cli"] } }).success, false);
+test("OsaConfig: providers.pair may name one provider twice (two seats on different models); the seat and independence keys validate", () => {
+  const same = OsaConfig.parse({ providers: { pair: ["codex", "codex-cli"], seatModels: ["m1", "m2"], models: { "codex-cli": ["m1", "m2"] } } });
+  assert.deepEqual(same.providers.pair, ["codex-cli", "codex-cli"]);
+  assert.deepEqual(same.providers.seatModels, ["m1", "m2"]);
+  assert.equal(same.providers.independence, "auto");
+  assert.deepEqual(OsaConfig.parse({}).providers.seatModels, [null, null]);
+  assert.equal(OsaConfig.safeParse({ providers: { independence: "strict" } }).success, false, "only auto and off exist; there is no mode that refuses");
+  assert.equal(OsaConfig.safeParse({ providers: { seatModels: ["x"] } }).success, false);
+  assert.equal(OsaConfig.safeParse({ providers: { models: { "claude-code": [] } } }).success, false);
 });

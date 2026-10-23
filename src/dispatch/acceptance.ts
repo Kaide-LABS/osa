@@ -108,8 +108,8 @@ function emptyEvidence(
 
 /**
  * [DET, DECISION Phase 5] AC1 (cross-provider continuity) re-derivation: exactly 3 persisted turns,
- * shaped executor/executor/reviewer with the two executors reporting different providers
- * (`planTurnSequence`'s own fixed shape, Phase 3, unmodified), and both consecutive-pair
+ * shaped executor/executor/reviewer
+ * (`planTurnSequence`'s own fixed shape, Phase 3; the two executors may be the same provider on different models), and both consecutive-pair
  * `verifyContinuation()` calls (Phase 1, unmodified) returning `CONTINUED`. `providerSequence` is
  * always `records.map(r => r.provider)`, regardless of outcome, so a failing run's evidence still
  * shows which providers were actually dispatched. A `ContinuityError` from `verifyContinuation()`'s
@@ -145,9 +145,8 @@ async function assessAc1(
   if (third.role !== "reviewer") {
     structuralProblems.push(`turn ${String(third.turn_index)}'s role is "${third.role}", expected "reviewer"`);
   }
-  if (first.provider === second.provider) {
-    structuralProblems.push(`both executor turns report the same provider ("${first.provider}"), not a cross-provider handoff`);
-  }
+  // The two executor turns may report the same provider (two seats on different models of one provider): that is a valid run, and the
+  // continuity checks below are what prove the second turn really continued the first one's work.
 
   if (structuralProblems.length > 0) {
     return {

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { RawInvocationResult, TurnRequest } from "../domain/run.ts";
-import { interpretCopilotAuthInputs } from "../verify/preflight.ts";
+import { experimentalProviderWarnings, interpretCopilotAuthInputs } from "../verify/preflight.ts";
 import { assertAdapterConformance } from "./conformance.ts";
 import { COPILOT_INSTRUCTION, CopilotCliAdapter } from "./copilot-cli.ts";
 
@@ -40,4 +40,10 @@ test("sign-in cannot be observed from outside: a token in the environment is the
   assert.equal(interpretCopilotAuthInputs({ COPILOT_GITHUB_TOKEN: "x" }).authState, "authenticated");
   assert.equal(interpretCopilotAuthInputs({}).authState, "indeterminate");
   assert.equal(interpretCopilotAuthInputs({ GITHUB_TOKEN: "" }).authState, "indeterminate");
+});
+
+test("osa doctor says Copilot support is experimental whenever its CLI is installed, and says nothing when it is not", () => {
+  const rep = (cliFound: boolean) => ({ provider: "copilot-cli" as const, cliFound, version: null, versionInRange: false, authenticated: false, authState: "indeterminate" as const, problems: [] });
+  assert.match(experimentalProviderWarnings([rep(true)])[0] ?? "", /experimental.*COPILOT.md/);
+  assert.deepEqual(experimentalProviderWarnings([rep(false)]), []);
 });

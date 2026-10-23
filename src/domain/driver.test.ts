@@ -65,10 +65,12 @@ test("DriveConfig (z.strictObject) rejects an unknown extra key", () => {
   assert.equal(result.success, false);
 });
 
-test("DriveConfig rejects executor_providers with two identical provider ids", () => {
-  const raw = validDriveConfig({ executor_providers: ["claude-code", "claude-code"] });
-  const result = DriveConfig.safeParse(raw);
-  assert.equal(result.success, false);
+test("DriveConfig accepts the same provider in both seats (two models of one provider); seat_models is a pair of model names or nulls", () => {
+  const same = DriveConfig.safeParse(validDriveConfig({ executor_providers: ["claude-code", "claude-code"], seat_models: ["model-a", "model-b"] }));
+  assert.equal(same.success, true);
+  assert.equal(DriveConfig.safeParse(validDriveConfig({ executor_providers: ["claude-code", "claude-code"] })).success, true, "even with no models named: reported, not refused");
+  assert.equal(DriveConfig.safeParse(validDriveConfig({ seat_models: ["only-one"] })).success, false, "a seat_models pair has exactly two entries");
+  assert.equal(DriveConfig.safeParse(validDriveConfig({ seat_models: ["", null] })).success, false, "an empty model name is not a model");
 });
 
 test("DriveConfig rejects target_total_phases < 1", () => {

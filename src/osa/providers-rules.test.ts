@@ -1,5 +1,6 @@
-// Suite 6: cross-provider rules at the OSA level. (Config-level and harness-level rules have their own tests; these go through the
-// whole `osa` command so a bad setup is proven to fail BEFORE anything is dispatched.)
+// Suite 6: provider and seat rules at the OSA level. (Config-level and harness-level rules have their own tests; these go through the
+// whole `osa` command.) A structurally impossible setup (role pins that leave no reviewer or no executor) is refused before anything is
+// dispatched. A setup with ONE provider is not impossible: it runs, with the review separated by model and its independence reported.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -16,13 +17,15 @@ const io = { show: () => undefined, choose: () => Promise.resolve("lock" as cons
 async function attempt(config: ReturnType<typeof defaultOsaConfig>) {
   const repoDir = await tempGitRepo();
   const dispatched: string[] = [];
+  const runConfigs: { executor_providers: readonly string[]; seat_models?: readonly (string | null)[] }[] = [];
+  const events = new MemoryEventSink(RUN);
   let error: unknown = null;
   let report = null;
   try {
     report = await runOsaCommand(
       { prompt: "make a word counter", files: [], repoDir, yes: true, json: false },
       {
-        events: new MemoryEventSink(RUN),
+        events,
         io,
         interactive: true,
         runId: RUN,
@@ -30,17 +33,40 @@ async function attempt(config: ReturnType<typeof defaultOsaConfig>) {
         textCall: fakeModel().call,
         research: { http: { fetchFn: researchFetch, sleepFn: () => Promise.resolve() }, arxivLimiter: new MinIntervalLimiter(0), env: {} },
         trimmer: { trimmer: new NoopTrimmer("noop"), note: null },
-        drive: { runDispatchFn: ((rc: { spec_path: string }) => { dispatched.push(rc.spec_path); return Promise.resolve({ ok: true, exitCode: 0, turns: [], halt: null, problems: [], warnings: [] }); }) as never },
+        drive: { runDispatchFn: ((rc: { spec_path: string; executor_providers: readonly string[]; seat_models?: readonly (string | null)[] }) => { dispatched.push(rc.spec_path); runConfigs.push(rc); return Promise.resolve({ ok: true, exitCode: 0, turns: [], halt: null, problems: [], warnings: [] }); }) as never },
       },
     );
   } catch (e) {
     error = e;
   }
-  return { error, report, dispatched };
+  return { error, report, dispatched, runConfigs, events };
 }
 
-test("a setup where both providers are the same fails when the config is parsed, loudly, before any run", () => {
-  assert.throws(() => OsaConfig.parse({ providers: { pair: ["claude-code", "claude-code"] } }), /two different providers/);
+test("ONE provider in both seats is a valid setup: it parses, runs to completion, hands the build two different models, and reports the review's independence", async () => {
+  const cfg = OsaConfig.parse({ providers: { pair: ["claude-code", "claude-code"] } });
+  const { error, report, dispatched, runConfigs, events } = await attempt(cfg);
+  assert.equal(error, null);
+  // (this harness's fake dispatch never writes the next-phase marker, so the run itself ends "ambiguous"; what matters here is that nothing refused it)
+  assert.ok(!(report?.problems ?? []).some((x) => /provider|model|seat|independen/i.test(x)), JSON.stringify(report?.problems));
+  assert.ok(dispatched.length > 0, "the build was dispatched");
+  const rc = runConfigs[0];
+  assert.deepEqual(rc?.executor_providers, ["claude-code", "claude-code"]);
+  const [m0, m1] = rc?.seat_models ?? [null, null];
+  assert.ok(m0 !== null && m1 !== null && m0 !== m1, "the two seats run different models");
+  const ev = events.events.find((e) => e.event === "review_independence" && e.data["role"] === "build");
+  assert.equal(ev?.data["level"], "different-class");
+  assert.match(report?.review?.text ?? "", /same model family but a different capability class/);
+  assert.equal(events.names().includes("seats_resolved"), true);
+});
+
+test("a same-model setup the person wrote on purpose is still not refused: it runs, and the weak review is a warning with advice", async () => {
+  const cfg = OsaConfig.parse({ providers: { pair: ["claude-code", "claude-code"], independence: "off" } });
+  const { error, report } = await attempt(cfg);
+  assert.equal(error, null);
+  assert.ok(!(report?.problems ?? []).some((x) => /provider|model|seat|independen/i.test(x)), JSON.stringify(report?.problems));
+  assert.equal(report?.review?.level, "same-model");
+  assert.ok(report?.warnings.some((w) => /the same model/.test(w)), "the weak review is stated");
+  assert.ok(report?.warnings.some((w) => /install a second provider|seatModels/.test(w)), "with advice on how to make the review more independent");
 });
 
 test("role pins that remove the reviewer (both providers pinned to executor) are refused by the whole command and nothing is dispatched", async () => {

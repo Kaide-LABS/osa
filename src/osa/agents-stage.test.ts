@@ -160,18 +160,21 @@ test("advisory agents are config-gated and their failure is a visible warning, n
   assert.equal(model2.log.filter((l) => ["lateral-architecture", "architecture-decision", "implication"].includes(l.purpose)).length, 0);
 });
 
-test("lateral independence: re-routed away from the planner by default; pinned to the planner => a LOUD warning in the run report", async () => {
+test("lateral independence: the most independent seat by default (a different model family, on a named model); naming the planner's own provider is allowed and reported as a weak check", async () => {
   const repoDir = await tempGitRepo();
   const m1 = fakeModel();
-  const rerouted = await runOsaCommand(opts(repoDir, false), deps(repoDir, { textCall: m1.call, config: OsaConfig.parse({ providers: { pair: ["codex-cli", "claude-code"] } }) }));
-  assert.equal(m1.log.find((l) => l.purpose === "lateral-architecture")?.provider, "claude-code", "not the planner (codex)");
-  assert.ok(rerouted.warnings.some((w) => /re-routed to claude-code/.test(w)));
+  const picked = await runOsaCommand(opts(repoDir, false), deps(repoDir, { textCall: m1.call, config: OsaConfig.parse({ providers: { pair: ["codex-cli", "claude-code"] } }) }));
+  const lateral = m1.log.find((l) => l.purpose === "lateral-architecture");
+  assert.equal(lateral?.provider, "claude-code", "a different model family from the planner (codex)");
+  assert.equal(typeof lateral?.req.modelOverride, "string", "and on a named, most capable model of that family");
+  assert.ok(!picked.warnings.some((w) => /weakly independent/.test(w)), "a different family needs no apology");
 
   const repoDir2 = await tempGitRepo();
   const m2 = fakeModel();
-  const pinned = await runOsaCommand(opts(repoDir2, false), deps(repoDir2, { textCall: m2.call, config: OsaConfig.parse({ providers: { pair: ["codex-cli", "claude-code"] }, agents: { lateralArchitecturePinned: true } }) }));
-  assert.equal(m2.log.find((l) => l.purpose === "lateral-architecture")?.provider, "codex-cli", "pinned to the planner's own provider");
-  assert.ok(pinned.warnings.some((w) => /^LOUD WARNING: .*SAME provider as the planner/.test(w)));
+  const named = await runOsaCommand(opts(repoDir2, false), deps(repoDir2, { textCall: m2.call, config: OsaConfig.parse({ providers: { pair: ["codex-cli", "claude-code"] }, agents: { lateralArchitectureProvider: "codex" } }) }));
+  assert.equal(m2.log.find((l) => l.purpose === "lateral-architecture")?.provider, "codex-cli", "the operator's choice, even the planner's own provider, is used");
+  assert.equal(named.ok, true);
+  assert.ok(named.warnings.some((w) => /weakly independent/.test(w) && /same model/.test(w)), "reported as a weak check, never refused");
 });
 
 test("when the planner adopts the alternative, the spec the build reads is the revised one and still carries its documentation sources", async () => {

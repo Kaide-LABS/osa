@@ -24,7 +24,9 @@ test("without a containment preference, or when only one provider has web search
   const c = chooseResearchProviders(["antigravity-cli", "claude-code"], hasWeb, noFile);
   assert.equal(c.researcher, "claude-code");
   assert.match(c.reason, /no built-in web search/);
-  assert.throws(() => chooseResearchProviders(["antigravity-cli", "antigravity-cli"], hasWeb, noFile), /two different providers/);
+  assert.throws(() => chooseResearchProviders(["antigravity-cli", "antigravity-cli"], hasWeb, noFile), /web search/, "two seats on a provider that cannot browse: loud, for the right reason");
+  const same = chooseResearchProviders(["claude-code", "claude-code"], hasWeb, noFile, ["checker", "researcher"]);
+  assert.deepEqual([same.researcher, same.researcherModel, same.reviewerModel, same.routedAway], ["claude-code", "researcher", "checker", false]);
 });
 
 test("the real adapters declare their web containment (live-verified in redteam-live.test.ts)", () => {

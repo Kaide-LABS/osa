@@ -77,17 +77,18 @@ const TrimConfig = z.strictObject({
 const AgentsConfig = z.strictObject({
   /** After the spec, before build: second-order consequences -> acceptance criteria / out-of-scope lines in the SPEC. */
   implication: z.boolean().default(true),
-  /** Default: the other provider of the pair (an independent read of the spec). */
+  /** Default: the second seat's provider (an independent read of the spec). */
   implicationProvider: ProviderRefSchema.optional(),
   /** Proposes a materially different architecture; the planner records which was chosen and why. */
   lateralArchitecture: z.boolean().default(true),
-  /** Must differ from the planner's provider (`providers.pair[0]`) unless `lateralArchitecturePinned`. */
-  lateralArchitectureProvider: ProviderRefSchema.default("codex-cli"),
   /**
-   * Explicitly allow the lateral agent to run on the SAME provider as the planner. Off by default: a planner
-   * critiquing its own architecture is self-review. When on, the run proceeds with a loud warning.
+   * Which provider runs the lateral agent. Absent = OSA picks the most independent seat available (a different model family if there is one,
+   * else a different capability class, else a different model) and says how independent it is. Any provider and any model can be named;
+   * naming the planner's own is allowed (it is reported, never refused).
    */
-  lateralArchitecturePinned: z.boolean().default(false),
+  lateralArchitectureProvider: ProviderRefSchema.optional(),
+  /** The model for the lateral agent when `lateralArchitectureProvider` is named. Absent = that provider's default. */
+  lateralArchitectureModel: z.string().min(1).optional(),
   /** After build: exercises the result against the acceptance criteria; unmet criteria fail the run. */
   application: z.boolean().default(true),
   /** Default: the provider of the pair that can run commands, preferring `providers.pair[1]`. */
@@ -125,11 +126,25 @@ const MemoryConfig = z.strictObject({
 });
 
 const ProvidersConfig = z.strictObject({
-  /** The two providers a run activates (executor/reviewer alternate between them). */
-  pair: z
-    .tuple([ProviderRefSchema, ProviderRefSchema])
-    .refine(([a, b]) => a !== b, "providers.pair must be two different providers")
-    .default(["claude-code", "codex-cli"]),
+  /**
+   * The two seats a run uses: seat 0 plans, writes the first executor turn and (by default) reviews; seat 1 writes the second executor turn,
+   * whose work seat 0 then reviews. The two may be the SAME provider on different models (`seatModels`), which is how one subscription is
+   * enough. If a config FILE does not set `pair` at all, OSA picks the seats itself from the providers that are installed and signed in.
+   */
+  pair: z.tuple([ProviderRefSchema, ProviderRefSchema]).default(["claude-code", "codex-cli"]),
+  /** The model each seat uses (`null` = that provider's own default). With the pair set and a model left null, OSA may choose one (see `independence`). */
+  seatModels: z.tuple([z.string().min(1).nullable(), z.string().min(1).nullable()]).default([null, null]),
+  /**
+   * Models a provider may be asked to use, for choosing a reviewer from a different model class. Absent = the provider's well-known aliases
+   * (Claude Code: opus, sonnet, haiku). Name them here for providers whose models differ per account (Codex, OpenCode, Copilot).
+   */
+  models: z.partialRecord(ProviderIdSchema, z.array(z.string().min(1)).min(1)).optional(),
+  /**
+   * "auto" (default): where the config leaves a seat's model open and the two seats would otherwise be the same model, OSA picks models from
+   * different capability classes. "off": use `pair` and `seatModels` exactly as written. Neither mode ever refuses a configuration; a
+   * weak review is reported in the log and the run summary, with advice on how to make it more independent.
+   */
+  independence: z.enum(["auto", "off"]).default("auto"),
   /** Optional exclusive-role pins, same semantics as RunConfig.role_pins. */
   rolePins: z.partialRecord(ProviderIdSchema, RolePinSchema).optional(),
   /**

@@ -61,7 +61,7 @@ test("full stage: outline/fields, one agent per item, academic + prior art, docs
   assert.match(report, /## Documentation sources[\s\S]*example\.org\/docs-node-js/);
   assert.match(report, /## Academic literature[\s\S]*Word segmentation algorithms for text/);
   assert.match(report, /## Prior art[\s\S]*o\/wc[\s\S]*Reuse the CLI layout/);
-  assert.match(report, /## Cross-provider check[\s\S]*checked by codex-cli/);
+  assert.match(report, /## Independent check[\s\S]*checked by codex-cli/);
   assert.equal(report, result.reportMd);
 
   assert.deepEqual(events.names().filter((n) => ["academic_query", "github_lookup", "research_validated", "research_docs_checked", "research_crosscheck"].includes(n)), [
@@ -139,8 +139,10 @@ test("resume: a second run skips every item whose JSON already validates (WS3.5)
   assert.equal(events.events.filter((e) => e.event === "research_item_done" && e.data["status"] === "resumed").length, 3);
 });
 
-test("cross-provider check refuses a same-provider configuration loudly (WS3.5)", () => {
-  assert.throws(() => chooseResearchProviders(["codex-cli", "codex-cli"], () => true), (e: unknown) => e instanceof StageError && /two different providers/.test(e.message));
+test("the research check works with ONE provider: the second seat researches, the first (stronger) seat checks, on its own model", () => {
+  const r = chooseResearchProviders(["codex-cli", "codex-cli"], () => true, () => false, ["model-checker", "model-researcher"]);
+  assert.deepEqual([r.researcher, r.reviewer, r.researcherModel, r.reviewerModel, r.routedAway], ["codex-cli", "codex-cli", "model-researcher", "model-checker", false]);
+  assert.throws(() => chooseResearchProviders(["codex-cli", "codex-cli"], () => false), (e: unknown) => e instanceof StageError && /web search/.test(e.message), "still loud when nothing can browse");
 });
 
 test("a provider without web search is routed around, and logged; no web search anywhere is a loud failure", async () => {
