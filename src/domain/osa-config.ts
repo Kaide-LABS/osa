@@ -10,6 +10,9 @@ import type { ProviderId } from "./run.ts";
 const PROVIDER_ALIASES: Readonly<Record<string, ProviderId>> = {
   claude: "claude-code",
   codex: "codex-cli",
+  opencode: "opencode-cli",
+  copilot: "copilot-cli",
+  "github-copilot": "copilot-cli",
   antigravity: "antigravity-cli",
   agy: "antigravity-cli",
 };

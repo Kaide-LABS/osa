@@ -11,6 +11,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { fileURLToPath } from "node:url";
 import pkg from "../../package.json" with { type: "json" };
+import { PROVIDER_IDS } from "../domain/run.ts";
 import { runProcess } from "../util/exec.ts";
 import { DoctorReport } from "./doctor.ts";
 import { renderHumanReport, renderRunHumanReport } from "./main.ts";
@@ -121,7 +122,7 @@ test("doctor --json emits a single JSON object on stdout satisfying DoctorReport
   assert.equal(stderr, "");
   const parsed: unknown = JSON.parse(stdout);
   const report = DoctorReport.parse(parsed);
-  assert.equal(report.providers.length, 3);
+  assert.deepStrictEqual(report.providers.map((p) => p.provider).sort(), [...PROVIDER_IDS].sort());
 });
 
 test("doctor --boundary --json exits 0 on this clean repo and reports zero violations", async () => {
@@ -131,17 +132,16 @@ test("doctor --boundary --json exits 0 on this clean repo and reports zero viola
   assert.deepStrictEqual(report.boundary.violations, []);
 });
 
-test("doctor --providers exits 0 on this machine with all three providers healthy (§8 #18; updated as this machine's own signed-in state changed, and again once Antigravity's subscription-OAuth auth mode was recognized)", async () => {
+test("doctor --providers: exit 0 exactly when at least one provider is healthy (which CLIs this machine has is not part of the contract)", async () => {
   const { exitCode, stdout } = await runMain(["doctor", "--providers", "--json"]);
-  assert.equal(exitCode, 0);
   const report = DoctorReport.parse(JSON.parse(stdout));
-  const claude = report.providers.find((p) => p.provider === "claude-code");
-  const codex = report.providers.find((p) => p.provider === "codex-cli");
-  const antigravity = report.providers.find((p) => p.provider === "antigravity-cli");
-  assert.equal(claude?.authenticated, true);
-  assert.equal(codex?.authenticated, true);
-  assert.equal(antigravity?.authenticated, true);
-  assert.deepStrictEqual(report.problems, []);
+  const healthy = report.providers.filter((p) => p.problems.length === 0).length;
+  const toolchainOk = report.toolchain.node.inRange && report.toolchain.git.inRange;
+  assert.equal(exitCode === 0, toolchainOk && healthy >= 1);
+  if (exitCode === 0) {
+    assert.deepStrictEqual(report.problems, []);
+    for (const p of report.providers) if (!p.cliFound) assert.ok(!(report.warnings ?? []).some((w) => p.problems.includes(w)), "an uninstalled provider is not mentioned");
+  }
 });
 
 /**

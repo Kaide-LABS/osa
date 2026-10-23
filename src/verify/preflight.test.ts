@@ -7,6 +7,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { PROVIDER_IDS } from "../domain/run.ts";
 import type { RawInvocationResult } from "../domain/run.ts";
 import {
   checkGitAvailable,
@@ -15,6 +16,7 @@ import {
   parseClaudeAuthResult,
   parseCodexAuthResult,
   interpretAntigravityAuthInputs,
+  MIN_HEALTHY_PROVIDERS,
   parseProviderCliVersionResult,
   parseSemverish,
   PROVIDER_VERSION_RANGES,
@@ -57,7 +59,7 @@ test("inRange is false when any operand fails to parse", () => {
 });
 
 test("PROVIDER_VERSION_RANGES and TOOL_VERSION_RANGES are declared in exactly this module", () => {
-  assert.deepStrictEqual(Object.keys(PROVIDER_VERSION_RANGES).sort(), ["antigravity-cli", "claude-code", "codex-cli"]);
+  assert.deepStrictEqual(Object.keys(PROVIDER_VERSION_RANGES).sort(), ["antigravity-cli", "claude-code", "codex-cli", "copilot-cli", "opencode-cli"]);
   assert.deepStrictEqual(Object.keys(TOOL_VERSION_RANGES).sort(), ["git", "node"]);
 });
 
@@ -232,30 +234,23 @@ test("both parsers keep the shipped invariant: authenticated === true iff authSt
   }
 });
 
-test("runPreflight probes every provider identity while requiring only two healthy providers", async () => {
+test("runPreflight probes every provider identity and needs only ONE healthy provider; the rest are warnings, never failures (machine-independent)", async () => {
   const dir = await mkdtemp(`${tmpdir()}/osa-preflight-test-`);
   try {
     const summary = await runPreflight(dir);
-    assert.equal(summary.providers.length, 3);
-    assert.deepStrictEqual(
-      summary.providers.map((p) => p.provider).sort(),
-      ["antigravity-cli", "claude-code", "codex-cli"],
-    );
-    // This machine's real, currently-reproducible state (originally PHASE_1_SPEC.md §8 acceptance
-    // check #18; updated as the machine's own signed-in state changed, and again once Antigravity's
-    // subscription-OAuth auth mode was recognized -- all three providers are now genuinely healthy
-    // here, including Antigravity via its cached ~/.gemini/oauth_creds.json session).
-    const antigravity = summary.providers.find((p) => p.provider === "antigravity-cli");
-    const claude = summary.providers.find((p) => p.provider === "claude-code");
-    const codex = summary.providers.find((p) => p.provider === "codex-cli");
-    assert.equal(claude?.authenticated, true);
-    assert.equal(claude?.authState, "authenticated");
-    assert.equal(codex?.authenticated, true);
-    assert.equal(codex?.authState, "authenticated");
-    assert.equal(antigravity?.authenticated, true);
-    assert.equal(antigravity?.authState, "authenticated");
-    assert.equal(summary.ok, true);
-    assert.deepStrictEqual(summary.problems, []);
+    assert.deepStrictEqual(summary.providers.map((p) => p.provider).sort(), [...PROVIDER_IDS].sort());
+    const healthy = summary.providers.filter((p) => p.problems.length === 0);
+    assert.equal(summary.ok, summary.node.inRange && summary.git.inRange && healthy.length >= MIN_HEALTHY_PROVIDERS);
+    assert.equal(MIN_HEALTHY_PROVIDERS, 1);
+    for (const p of summary.providers) assert.equal(p.authenticated, p.authState === "authenticated");
+    if (healthy.length >= MIN_HEALTHY_PROVIDERS) {
+      // enough providers: a missing CLI is silence, an installed-but-broken one is a warning, and neither is a problem
+      for (const p of summary.providers) if (p.problems.length > 0) assert.ok(!summary.problems.some((x) => p.problems.includes(x)), `${p.provider}'s remediation must not be a problem`);
+      for (const p of summary.providers) if (p.cliFound && p.problems.length > 0) assert.ok(p.problems.every((x) => (summary.warnings ?? []).includes(x)));
+      for (const p of summary.providers) if (!p.cliFound) assert.ok(!(summary.warnings ?? []).some((x) => p.problems.includes(x)), "a provider that is not installed is not mentioned");
+    } else {
+      assert.ok(summary.problems.length > 0, "nothing healthy to run on is a problem");
+    }
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }
@@ -307,4 +302,14 @@ test("interpretAntigravityAuthInputs never exposes the refresh_token value in it
   const secret = "rt-super-secret-value-for-test";
   const result = interpretAntigravityAuthInputs(null, {}, JSON.stringify({ refresh_token: secret }));
   assert.doesNotMatch(result.detail, new RegExp(secret));
+});
+
+test("parseOpenCodeAuthResult: one stored/env/config login line is authenticated, none is unauthenticated, a failing probe is indeterminate", async () => {
+  const { parseOpenCodeAuthResult } = await import("./preflight.ts");
+  const r = (stdout: string, exitCode = 0): RawInvocationResult => ({ exitCode, signal: null, stdout, stderr: "", durationMs: 1, timedOut: false });
+  assert.equal(parseOpenCodeAuthResult(r("Anthropic  Anthropic                   stored\r\n")).authState, "authenticated");
+  assert.equal(parseOpenCodeAuthResult(r("OpenAI  OpenAI  env\n")).authState, "authenticated");
+  assert.equal(parseOpenCodeAuthResult(r("")).authState, "unauthenticated");
+  assert.equal(parseOpenCodeAuthResult(r("some banner text\n")).authState, "unauthenticated");
+  assert.equal(parseOpenCodeAuthResult(r("", 1)).authState, "indeterminate");
 });

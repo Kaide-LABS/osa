@@ -18,11 +18,15 @@ import { ADAPTER_REGISTRY } from "./registry.ts";
 import { CLAUDE_EFFORT_VALUES } from "./claude-code.ts";
 import { CODEX_EFFORT_VALUES } from "./codex-cli.ts";
 import { ANTIGRAVITY_EFFORT_VALUES } from "./antigravity-cli.ts";
+import { OPENCODE_EFFORT_VALUES } from "./opencode-cli.ts";
+import { COPILOT_EFFORT_VALUES } from "./copilot-cli.ts";
 
 const EFFORT_VALUE_SETS: Readonly<Record<ProviderId, readonly string[]>> = {
   "claude-code": CLAUDE_EFFORT_VALUES,
   "codex-cli": CODEX_EFFORT_VALUES,
   "antigravity-cli": ANTIGRAVITY_EFFORT_VALUES,
+  "opencode-cli": OPENCODE_EFFORT_VALUES,
+  "copilot-cli": COPILOT_EFFORT_VALUES,
 };
 
 /** Reuses PHASE_1_SPEC.md §4.2's own credential-looking-value shape, applied to `Invocation.env`. */

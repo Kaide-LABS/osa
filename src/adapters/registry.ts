@@ -8,6 +8,8 @@ import type { AdapterRegistry } from "../ports/provider-adapter.ts";
 import { ClaudeCodeAdapter } from "./claude-code.ts";
 import { CodexCliAdapter } from "./codex-cli.ts";
 import { AntigravityCliAdapter } from "./antigravity-cli.ts";
+import { OpenCodeCliAdapter } from "./opencode-cli.ts";
+import { CopilotCliAdapter } from "./copilot-cli.ts";
 
 /**
  * The provider registry. Provider identities may grow while each run remains a two-provider pair.
@@ -17,4 +19,6 @@ export const ADAPTER_REGISTRY: AdapterRegistry = Object.freeze({
   "claude-code": new ClaudeCodeAdapter(),
   "codex-cli": new CodexCliAdapter(),
   "antigravity-cli": new AntigravityCliAdapter(),
+  "opencode-cli": new OpenCodeCliAdapter(),
+  "copilot-cli": new CopilotCliAdapter(),
 });

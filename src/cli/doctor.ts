@@ -17,7 +17,7 @@ import { listScannedSourceFiles, scanBoundary } from "../verify/boundary.ts";
 import type { BuildFreshness } from "../verify/build-stamp.ts";
 import { checkBuildFreshness } from "../verify/build-stamp.ts";
 import type { ToolCheck } from "../verify/preflight.ts";
-import { runPreflight } from "../verify/preflight.ts";
+import { MIN_HEALTHY_PROVIDERS, runPreflight } from "../verify/preflight.ts";
 import { acquireRunLock, releaseRunLock } from "../util/lock.ts";
 import { loadOsaConfig } from "../util/config-file.ts";
 import { applyFeatureFlags, describeFeatures } from "../features/features.ts";
@@ -188,7 +188,7 @@ function computeExitCode(input: {
 
   if (input.mode !== "boundary") {
     const preflightFailed =
-      !input.toolchainNode.inRange || !input.toolchainGit.inRange || input.providers.some((p) => p.problems.length > 0);
+      !input.toolchainNode.inRange || !input.toolchainGit.inRange || input.providers.filter((p) => p.problems.length === 0).length < MIN_HEALTHY_PROVIDERS;
     if (preflightFailed) {
       candidates.push(ExitCode.PREFLIGHT_FAILED);
     }
@@ -224,6 +224,7 @@ export async function runDoctor(
   let toolchainNode: ToolCheck = { found: true, version: null, inRange: true };
   let toolchainGit: ToolCheck = { found: true, version: null, inRange: true };
   let providerReports: readonly PreflightReport[] = [];
+  let providerWarnings: readonly string[] = [];
 
   if (runProviders) {
     const summary = await runPreflight(repoRoot);
@@ -231,6 +232,7 @@ export async function runDoctor(
     toolchainGit = summary.git;
     providerReports = summary.providers;
     problems.push(...summary.problems);
+    providerWarnings = summary.warnings ?? [];
   }
 
   let boundaryFilesScanned = 0;
@@ -251,6 +253,7 @@ export async function runDoctor(
     if (build.status !== "fresh" && build.status !== "not-applicable") warnings.push(`Build is ${build.status}: ${build.detail}`);
   }
 
+  warnings.push(...providerWarnings);
   const featureInfo = await featureReport(repoRoot, opts.features ?? {});
   warnings.push(...featureInfo.warnings);
 

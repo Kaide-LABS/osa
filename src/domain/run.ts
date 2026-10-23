@@ -33,8 +33,8 @@ const RepoRelPathLike = z
   .max(1024)
   .refine(isSafeRepoRelPath, "must be a safe, repo-relative POSIX path (no absolute path, no backslash separators, no upward traversal)");
 
-/** Provider identities OSA can drive; each run activates exactly two (PHASE_11_SPEC.md §3.1). */
-export const PROVIDER_IDS = ["claude-code", "codex-cli", "antigravity-cli"] as const;
+/** Provider identities OSA can drive. A run uses one or two of them (two seats; they may be the same provider on different models). */
+export const PROVIDER_IDS = ["claude-code", "codex-cli", "antigravity-cli", "opencode-cli", "copilot-cli"] as const;
 
 /** A member of {@link PROVIDER_IDS}. */
 export type ProviderId = (typeof PROVIDER_IDS)[number];

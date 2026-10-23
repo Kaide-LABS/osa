@@ -27,6 +27,8 @@ export const PROVIDER_VERSION_RANGES: Readonly<Record<ProviderId, { min: string;
   "claude-code": { min: "2.1.200", maxExclusive: "3.0.0" },
   "codex-cli": { min: "0.128.0", maxExclusive: "1.0.0" },
   "antigravity-cli": { min: "1.1.20", maxExclusive: "2.0.0" },
+  "opencode-cli": { min: "2.0.0", maxExclusive: "3.0.0" },
+  "copilot-cli": { min: "0.0.1", maxExclusive: "1000.0.0" },
 };
 
 /**
@@ -54,6 +56,8 @@ export interface PreflightSummary {
   readonly providers: readonly PreflightReport[];
   readonly ok: boolean;
   readonly problems: readonly string[];
+  /** Installed-but-broken providers when at least one other provider is healthy: worth knowing, not a reason to stop. */
+  readonly warnings?: readonly string[];
 }
 
 /**
@@ -120,10 +124,15 @@ const PROVIDER_COMMAND: Readonly<Record<ProviderId, string>> = {
   "claude-code": "claude",
   "codex-cli": "codex",
   "antigravity-cli": "agy",
+  "opencode-cli": "opencode",
+  "copilot-cli": "copilot",
 };
 
-/** The two-provider handoff requires two healthy identities; extra installed identities are optional. */
-export const MIN_HEALTHY_PROVIDERS = 2;
+/**
+ * One healthy provider is enough to run: OSA then separates author and reviewer by MODEL (src/domain/independence.ts) instead of by
+ * provider. A second provider, ideally from another model family, makes the review more independent and is recommended, never required.
+ */
+export const MIN_HEALTHY_PROVIDERS = 1;
 
 /**
  * Pure interpretation of a `<cli> --version` invocation's raw result. Exported (alongside the
@@ -328,6 +337,28 @@ async function observeAntigravityHeadlessAuth(): Promise<AuthProbeResult> {
   return interpretAntigravityAuthInputs(settingsRaw, process.env, oauthCredsRaw);
 }
 
+/**
+ * Pure: OpenCode's `auth list` prints one line per stored login (`<name>  <id>  stored`, or `env` / `config` when the credential comes
+ * from the environment or its config). Any such line means a provider is usable; nothing means only the free built-in models are.
+ */
+export function parseOpenCodeAuthResult(result: RawInvocationResult): AuthProbeResult {
+  if (result.exitCode !== 0) return authProbeResult("indeterminate", `opencode auth list exited ${String(result.exitCode)}`);
+  const logins = result.stdout.split("\n").map((l) => l.trim()).filter((l) => /\s(stored|env|config)$/i.test(l));
+  return logins.length > 0
+    ? authProbeResult("authenticated", `${String(logins.length)} stored login(s)`)
+    : authProbeResult("unauthenticated", "no provider login stored in OpenCode");
+}
+
+/** Pure: Copilot CLI's sign-in cannot be observed from outside; a token in the environment is the only conclusive sign. */
+export function interpretCopilotAuthInputs(env: Readonly<Record<string, string | undefined>>): AuthProbeResult {
+  const named = ["COPILOT_GITHUB_TOKEN", "GH_TOKEN", "GITHUB_TOKEN"].find((k) => (env[k] ?? "") !== "");
+  return named !== undefined ? authProbeResult("authenticated", `token in ${named}`) : authProbeResult("indeterminate", "no token in COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN");
+}
+
+async function observeCopilotAuth(env: Readonly<Record<string, string | undefined>>): Promise<AuthProbeResult> {
+  return interpretCopilotAuthInputs(env);
+}
+
 /** Runs `<cli> --version` for `id` and reports whether the CLI was found and its raw version banner. */
 export async function checkProviderCli(id: ProviderId): Promise<{ found: boolean; version: string | null }> {
   const result = await runProcess({
@@ -365,6 +396,12 @@ export async function checkProviderAuth(id: ProviderId): Promise<AuthProbeResult
     }
     case "antigravity-cli":
       return observeAntigravityHeadlessAuth();
+    case "opencode-cli": {
+      const result = await runProcess({ command: PROVIDER_COMMAND[id], args: ["auth", "list"], cwd: process.cwd(), timeoutMs: CLI_PROBE_TIMEOUT_MS });
+      return parseOpenCodeAuthResult(result);
+    }
+    case "copilot-cli":
+      return observeCopilotAuth(process.env);
     default:
       // Implements PHASE_11_SPEC.md §6.3. Keep a future identity from silently taking
       // another provider's credential path if this exhaustive dispatch is ever widened.
@@ -376,12 +413,16 @@ const NOT_FOUND_REMEDIATIONS: Readonly<Record<ProviderId, string>> = {
   "claude-code": "Claude Code CLI was not found on PATH. Install it and sign in yourself; osa never installs or signs in on your behalf.",
   "codex-cli": "Codex CLI was not found on PATH. Install it and sign in yourself; osa never installs or signs in on your behalf.",
   "antigravity-cli": "Antigravity CLI (`agy`) was not found on PATH. Install it yourself; osa never installs or signs in on your behalf.",
+  "opencode-cli": "OpenCode (`opencode`) was not found on PATH. Install it yourself; osa never installs or signs in on your behalf.",
+  "copilot-cli": "GitHub Copilot CLI (`copilot`) was not found on PATH. Install it yourself; osa never installs or signs in on your behalf.",
 };
 
 const AUTH_REMEDIATIONS: Readonly<Record<ProviderId, string>> = {
   "claude-code": "Claude Code CLI is not authenticated. Run `claude --help` yourself to find its own sign-in flow; osa only observes credential state and never signs you in.",
   "codex-cli": "Codex CLI is not authenticated. Run `codex --help` yourself to find its own sign-in flow, or set CODEX_API_KEY / OPENAI_API_KEY; osa only observes credential state and never signs you in.",
   "antigravity-cli": "Antigravity CLI is not authenticated via either recognized mode: headless Gemini API key mode (both the modelProvider setting and the GEMINI_API_KEY environment variable) or a cached Google account (subscription) OAuth session (observed from ~/.gemini/oauth_creds.json). Consult `agy --help` and provider documentation; osa only observes credential state.",
+  "opencode-cli": "OpenCode has no stored provider login. Run `opencode auth login` yourself to add one (its free built-in models work without a login but are not recognised by osa's model classes); osa only observes credential state and never signs you in.",
+  "copilot-cli": "GitHub Copilot CLI has no token in COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN. Sign in with `copilot` (its /login command) or set a fine-grained token with the \"Copilot Requests\" permission; osa only observes credential state and never signs you in.",
 };
 
 /**
@@ -395,6 +436,8 @@ const INDETERMINATE_AUTH_REMEDIATIONS: Readonly<Record<ProviderId, (detail: stri
   "claude-code": (detail) => `Claude Code CLI's credential state could NOT be determined -- this is not the same as being signed out, and signing in again will not fix it. The probe failed to produce a conclusive answer (${detail}). Run \`claude --help\` yourself and invoke that CLI's own status command directly to see what it actually reports; osa only observes credential state and never signs you in.`,
   "codex-cli": (detail) => `Codex CLI's credential state could NOT be determined -- this is not the same as being signed out, and signing in again will not fix it. The probe failed to produce a conclusive answer (${detail}). Run \`codex --help\` yourself and invoke that CLI's own status command directly to see what it actually reports; osa only observes credential state and never signs you in.`,
   "antigravity-cli": (detail) => `Antigravity CLI credential state could NOT be determined (${detail}). This is not the same as being signed out; inspect its settings, ~/.gemini/oauth_creds.json, and \`agy --help\` yourself.`,
+  "opencode-cli": (detail) => `OpenCode's credential state could NOT be determined (${detail}). This is not the same as being signed out; run \`opencode auth list\` yourself.`,
+  "copilot-cli": (detail) => `GitHub Copilot CLI's sign-in state cannot be observed from outside (${detail}). This is not the same as being signed out: if \`copilot\` already works for you, set COPILOT_GITHUB_TOKEN so osa can see it, or run it once and use /login.`,
 };
 
 /**
@@ -466,15 +509,19 @@ export async function runPreflight(repoDir: string): Promise<PreflightSummary> {
     );
   }
 
-  const providers: PreflightReport[] = [];
-  for (const id of PROVIDER_IDS) {
-    const report = await buildProviderPreflightReport(id);
-    providers.push(report);
-    problems.push(...report.problems);
-  }
+  // Probed in parallel: each probe spawns a CLI and can take seconds.
+  const providers: PreflightReport[] = await Promise.all(PROVIDER_IDS.map((id) => buildProviderPreflightReport(id)));
 
   const healthyCount = providers.filter((p) => p.problems.length === 0).length;
   const ok = node.inRange && git.inRange && healthyCount >= MIN_HEALTHY_PROVIDERS;
-  if (healthyCount < MIN_HEALTHY_PROVIDERS) problems.push(`${String(healthyCount)} providers are usable; at least ${String(MIN_HEALTHY_PROVIDERS)} are required.`);
-  return { node, git, providers, ok, problems };
+  // A provider that is not installed is simply not in use. Once enough providers are healthy, a broken one is a warning (an installed CLI
+  // that is signed out is worth a line); until then every provider's remediation is a problem, because there is nothing to run on.
+  const warnings: string[] = [];
+  if (healthyCount >= MIN_HEALTHY_PROVIDERS) {
+    for (const report of providers) if (report.cliFound && report.problems.length > 0) warnings.push(...report.problems);
+  } else {
+    for (const report of providers) problems.push(...report.problems);
+  }
+  if (healthyCount < MIN_HEALTHY_PROVIDERS) problems.push(`${String(healthyCount)} providers are usable; at least ${String(MIN_HEALTHY_PROVIDERS)} is required. Install and sign in to one of Claude Code, Codex CLI, Antigravity CLI, OpenCode or GitHub Copilot CLI.`);
+  return { node, git, providers, ok, problems, warnings };
 }
