@@ -10,14 +10,16 @@
 // and is what that schema's single `.refine()` calls, so the safety rule is defined in exactly
 // one place rather than duplicated between the schema and the path layer (PHASE_1_SPEC.md §6.3).
 
-import { relative } from "node:path";
+import { relative, win32 } from "node:path";
 
 /**
  * Converts an absolute filesystem path to a POSIX-separated, repo-relative path. Always replaces
  * `\` with `/` regardless of host platform.
  */
 export function toRepoRelPosix(repoDir: string, absPath: string): string {
-  const rel = relative(repoDir, absPath);
+  // Two Windows-style paths are related with Windows semantics even on a POSIX host (where `relative` would treat "C:\\repo" as a relative name).
+  const windows = /^(?:[A-Za-z]:[\\/]|\\\\)/;
+  const rel = windows.test(repoDir) && windows.test(absPath) ? win32.relative(repoDir, absPath) : relative(repoDir, absPath);
   return rel.replace(/\\/g, "/");
 }
 

@@ -14,7 +14,7 @@ change is considered complete.
 
 ## Ground rules
 
-- Node 24 runs the TypeScript directly (type stripping): no enums, no parameter properties, `.ts`
+- Node 22.18+ and 24 run the TypeScript directly (type stripping), which is how the tests run: no enums, no parameter properties, `.ts`
   import extensions. The only runtime dependencies are `zod` and `@modelcontextprotocol/sdk`.
 - `child_process` is used in exactly one file (`src/util/exec.ts`); the boundary scan enforces this and
   the other rules listed in `src/verify/boundary-rules.ts`.

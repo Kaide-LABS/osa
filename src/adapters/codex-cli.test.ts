@@ -176,9 +176,13 @@ test("buildProviderPreflightReport('codex-cli') matches runPreflight()'s corresp
   }
 });
 
-test("on this machine's current, real state: CodexCliAdapter().preflight() resolves authenticated: true with an empty problems array (§8 check #20; updated as this machine's own signed-in state changed)", async () => {
+test("CodexCliAdapter().preflight() against the real machine is self-consistent whatever is installed (a missing CLI is indeterminate, never 'signed out'; no problems means authenticated)", async () => {
   const report = await new CodexCliAdapter().preflight();
   assert.equal(report.provider, "codex-cli");
-  assert.equal(report.authenticated, true);
-  assert.deepStrictEqual(report.problems, []);
+  assert.equal(report.authenticated, report.authState === "authenticated");
+  if (!report.cliFound) {
+    assert.equal(report.authState, "indeterminate");
+    assert.ok(report.problems.length > 0);
+  }
+  if (report.problems.length === 0) assert.equal(report.authenticated, true);
 });

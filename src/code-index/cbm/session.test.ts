@@ -11,7 +11,8 @@ const FAKE = new URL("../../../scripts/fake-cbm-server.mjs", import.meta.url).pa
 function fakeStart(scenario: object, logPath?: string): typeof startLongLived {
   return (o) => startLongLived({ ...o, command: process.execPath, args: [FAKE], env: { ...(o.env ?? {}), FAKE_CBM_SCENARIO: JSON.stringify(scenario), ...(logPath !== undefined ? { FAKE_CBM_LOG: logPath } : {}) } });
 }
-const paths = { binaryPath: "C:/osa-cbm/bin/codebase-memory-mcp.exe", workDir: "C:/osa-cbm" };
+// The session starts its process in workDir, which must exist: a real temporary directory, not a path that only exists on one machine.
+const paths = { binaryPath: "unused-the-fake-server-replaces-it", workDir: await mkdtemp(`${tmpdir()}/osa-cbmwork-`) };
 
 test("cbmEnvironment: private cache, runtime and allowed-root directories under workDir, a quiet log level, and the caller's other variables kept", () => {
   const BS = String.fromCharCode(92);

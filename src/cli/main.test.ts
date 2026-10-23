@@ -209,10 +209,10 @@ test("doctor's human-readable output distinguishes an indeterminate probe from a
 test("doctor (no flags) runs the full report and exits per §4.3 precedence", async () => {
   const { exitCode, stdout } = await runMain(["doctor"]);
   assert.match(stdout, /^osa doctor --/);
-  // On this machine every provider is now authenticated (Codex signed in; Antigravity via its
-  // cached subscription-OAuth session) and the boundary scan is clean, so exit 0 is the only
-  // candidate. Updated as this machine's own signed-in state changed.
-  assert.equal(exitCode, 0);
+  // The boundary scan of this repository is clean and the lock is acquirable, so the only thing that can fail the report is the preflight: no
+  // usable provider (or a toolchain out of range). Exit 0 and an "OK" header go together; whether this machine has a provider is not the test's business.
+  assert.ok(exitCode === 0 || exitCode === 3, `unexpected exit code ${String(exitCode)}`);
+  assert.equal(exitCode === 0, /^osa doctor -- OK/.test(stdout));
 });
 
 // PHASE_8_SPEC.md §1.2 -- `mcp` subcommand parsing and usage-text additions.

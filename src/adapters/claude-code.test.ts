@@ -167,8 +167,13 @@ test("buildProviderPreflightReport('claude-code') matches runPreflight()'s corre
   }
 });
 
-test("on this machine's current, real state: ClaudeCodeAdapter().preflight() resolves authenticated: true (§8 check #20)", async () => {
+test("ClaudeCodeAdapter().preflight() against the real machine is self-consistent whatever is installed (a missing CLI is indeterminate, never 'signed out'; healthy means authenticated)", async () => {
   const report = await new ClaudeCodeAdapter().preflight();
   assert.equal(report.provider, "claude-code");
-  assert.equal(report.authenticated, true);
+  assert.equal(report.authenticated, report.authState === "authenticated");
+  if (!report.cliFound) {
+    assert.equal(report.authState, "indeterminate");
+    assert.ok(report.problems.length > 0);
+  }
+  if (report.problems.length === 0) assert.equal(report.authenticated, true);
 });

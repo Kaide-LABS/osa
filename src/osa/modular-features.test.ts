@@ -234,6 +234,9 @@ test("PRECEDENCE in a real run: osa.config.json switches CBM and trim-1 on, then
     const trimCalls: string[] = [];
     const deps = baseDeps(repoDir, { events, openCbm: () => (cbmCalls.push("OPENED"), Promise.resolve(fakeCbm(cbmCalls))), trimSpawn: absentBinary(trimCalls) as never });
     delete (deps as { config?: unknown }).config; // read osa.config.json for real
+    // The config file sets no providers.pair, so OSA chooses the seats from the usable providers: say which are usable, whatever this machine has.
+    const healthy = (provider: "claude-code" | "codex-cli") => ({ provider, cliFound: true, version: "1.0.0", versionInRange: true, authenticated: true, authState: "authenticated" as const, problems: [] });
+    (deps as { preflightFn?: unknown }).preflightFn = () => Promise.resolve({ providers: [healthy("claude-code"), healthy("codex-cli")] });
     const r = await runOsaCommand(runOpts(repoDir, { features }), deps);
     return { r, events, cbmCalls, trimCalls };
   };

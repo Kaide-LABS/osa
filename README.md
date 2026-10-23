@@ -10,6 +10,21 @@ OpenCode, GitHub Copilot CLI), **one is enough**, and it uses no paid API of its
 osa "Build a command line tool that counts the words in text files and prints a total"
 ```
 
+## Quick start
+
+You need **Node.js 22 or newer**, **git**, and at least one AI coding tool already signed in (Claude Code, Codex CLI, Antigravity CLI, OpenCode, or
+GitHub Copilot CLI). One is enough.
+
+```
+npm install -g github:Kaide-LABS/osa      # builds itself on install
+osa doctor                                 # shows which of your tools OSA can use
+cd your-project                            # a git repository with at least one commit
+osa "Build a command line tool that counts the words in text files and prints a total"
+```
+
+OSA shows a plain-language plan and asks you to confirm once; after that it runs on its own. To use it from an AI tool instead, run `osa setup`
+once (it registers OSA's MCP server with Claude Code). From a clone: `npm ci && npm run build && npm link`.
+
 ## What happens, in order
 
 | # | Stage | What you see / get |
@@ -193,5 +208,5 @@ was done per workstream, what was deferred and why, open risks).
 
 ## Requirements and scripts
 
-- Node.js `>=24.0.0`; git; at least one of Claude Code / Codex CLI / Antigravity CLI / OpenCode / GitHub Copilot CLI installed and signed in (two from different model families make the review more independent).
+- Node.js `>=22.0.0` (the tests run the TypeScript directly and need 22.18 or newer); git; at least one of Claude Code / Codex CLI / Antigravity CLI / OpenCode / GitHub Copilot CLI installed and signed in (two from different model families make the review more independent).
 - `npm run typecheck`, `npm test`, `npm run check` (typecheck + test + boundary scan).

@@ -37,7 +37,7 @@ export const PROVIDER_VERSION_RANGES: Readonly<Record<ProviderId, { min: string;
  * uniform two-sided comparison for every range in this file.
  */
 export const TOOL_VERSION_RANGES: Readonly<Record<"node" | "git", { min: string; maxExclusive: string }>> = {
-  node: { min: "24.0.0", maxExclusive: "1000.0.0" },
+  node: { min: "22.0.0", maxExclusive: "1000.0.0" },
   git: { min: "2.40.0", maxExclusive: "1000.0.0" },
 };
 
