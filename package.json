@@ -20,7 +20,6 @@
     "test": "node --test \"src/**/*.test.ts\"",
     "check": "npm run typecheck && npm run test && node src/cli/main.ts doctor --boundary",
     "build": "tsc -p tsconfig.build.json && node scripts/stamp-build.mjs",
-    "prepare": "npm run build",
     "prepublishOnly": "npm run build"
   },
   "dependencies": {

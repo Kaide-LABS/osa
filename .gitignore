@@ -9,3 +9,4 @@ dist/
 
 # code-search eval snapshots (copies of third-party / private trees; labels + manifests are committed, trees are not)
 evals/code-search/snapshots/
+*.tgz

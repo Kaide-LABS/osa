@@ -16,14 +16,17 @@ You need **Node.js 22 or newer**, **git**, and at least one AI coding tool alrea
 GitHub Copilot CLI). One is enough.
 
 ```
-npm install -g github:Kaide-LABS/osa      # builds itself on install
+# install (either way gives you the `osa` command)
+npm install -g https://github.com/Kaide-LABS/osa/releases/latest/download/osa.tgz     # the prebuilt package from the latest release
+#   or, from a clone:   git clone https://github.com/Kaide-LABS/osa && cd osa && npm ci && npm run build && npm link
+
 osa doctor                                 # shows which of your tools OSA can use
 cd your-project                            # a git repository with at least one commit
 osa "Build a command line tool that counts the words in text files and prints a total"
 ```
 
 OSA shows a plain-language plan and asks you to confirm once; after that it runs on its own. To use it from an AI tool instead, run `osa setup`
-once (it registers OSA's MCP server with Claude Code). From a clone: `npm ci && npm run build && npm link`.
+once (it registers OSA's MCP server with Claude Code). `npm install -g github:Kaide-LABS/osa` does not work: the compiled files are not committed.
 
 ## What happens, in order
 
