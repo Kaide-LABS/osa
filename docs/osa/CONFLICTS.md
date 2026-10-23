@@ -396,3 +396,11 @@ ranking the right function 31st of 50 on a paraphrase, so it must be tried and m
 could not be run live here (no endpoint or key), only against a fake embeddings server; `scripts/embeddings-smoke.ts` is the real-endpoint check.
 The embeddings client lives in `src/research/net/` (the one network-exempt directory, held to B9) and contacts only the configured host. No
 dependency was added. *(risky -- unverified live)*
+
+**S-09 -- The CBM engine runs ranked, with a query rewrite, instead of abstaining.** Requested: optimise codebase-memory-mcp rather than accept the earlier
+negative result. Findings (docs/osa/CBM_NOTES.md section 6): the earlier tuning optimised "confident-wrong <= 2%" by abstaining on 65% of questions;
+CBM's text-search channel alone beat the fused engine; and the question was never translated into code vocabulary. The engine now defaults to
+`guard: false` with `RANKED_TUNING`, plus a model-written rewrite (`index.rewrite`, a cheap model, cached, fail-soft, run in an empty directory).
+`index.cbm.abstain: true` restores the previous mode. `index.engine` still defaults to `lexical`. The gain is measured on retrieval only (79% vs 64% right file in
+the top 5 on 70 queries, 30 of them held out); token savings and answer quality are not yet measured, and for greenfield builds the ceiling is low.
+*(risky -- changes what CBM returns for anyone who had enabled it; reversible with index.cbm.abstain)*

@@ -1,0 +1,483 @@
+{
+  "schema_version": 1,
+  "note": "HELD-OUT set: written after the 40-query set had been used for tuning, over code the tuning never saw. Labels made from the code at the pinned commit BEFORE any engine was run on these queries. Do not tune on it; use it to confirm.",
+  "repos": {
+    "osa-clean": {
+      "language": "TypeScript",
+      "snapshot": {
+        "type": "git",
+        "path": "C:\\Users\\hp\\OSA-clean",
+        "commit": "4e2c5179905d849cc33484bdaf551f96692f287b",
+        "note": "tree of the commit (git archive)"
+      },
+      "description": "OSA as published: seats / independence, adapters, hybrid search, embeddings, doctor."
+    }
+  },
+  "queries": [
+    {
+      "id": "oc-01",
+      "repo": "osa-clean",
+      "kind": "exact-name",
+      "query": "planSeats",
+      "expect": [
+        {
+          "path": "src/osa/seats.ts",
+          "startLine": 97,
+          "endLine": 154
+        }
+      ],
+      "answer": "planSeats(input) chooses the two seats of a run: from the usable providers when the config sets no pair (best different-family pair, or one provider on two models), or as written; it returns pair, seatModels, candidates, the review's independence level and notes."
+    },
+    {
+      "id": "oc-02",
+      "repo": "osa-clean",
+      "kind": "exact-name",
+      "query": "embeddingsEndpoint",
+      "expect": [
+        {
+          "path": "src/research/net/embeddings.ts",
+          "startLine": 42,
+          "endLine": 56
+        }
+      ],
+      "answer": "embeddingsEndpoint(baseUrl) validates the configured base URL (https except localhost, no credentials, query or fragment) and returns <origin><path>/embeddings."
+    },
+    {
+      "id": "oc-03",
+      "repo": "osa-clean",
+      "kind": "exact-name",
+      "query": "classifyModelName",
+      "expect": [
+        {
+          "path": "src/adapters/model-classes.ts",
+          "startLine": 53,
+          "endLine": 59
+        }
+      ],
+      "answer": "classifyModelName(model) strips a routing prefix and variant suffix and returns the model's family and capability band by name pattern, or unknown/unknown."
+    },
+    {
+      "id": "oc-04",
+      "repo": "osa-clean",
+      "kind": "exact-name",
+      "query": "fuseRanks",
+      "expect": [
+        {
+          "path": "src/code-index/hybrid.ts",
+          "startLine": 96,
+          "endLine": 100
+        }
+      ],
+      "answer": "fuseRanks(lexicalOrder, denseOrder) is reciprocal rank fusion of the two orderings over the same candidate ids."
+    },
+    {
+      "id": "oc-05",
+      "repo": "osa-clean",
+      "kind": "exact-name",
+      "query": "isEntryPoint",
+      "expect": [
+        {
+          "path": "src/util/entry.ts",
+          "startLine": 18,
+          "endLine": 21
+        }
+      ],
+      "answer": "isEntryPoint(moduleUrl, argv1) compares real paths so a binary started through a link or npm link still runs."
+    },
+    {
+      "id": "oc-06",
+      "repo": "osa-clean",
+      "kind": "paraphrase",
+      "query": "which function stops a command from silently doing nothing when it was launched through a symbolic link instead of its real path?",
+      "expect": [
+        {
+          "path": "src/util/entry.ts",
+          "startLine": 18,
+          "endLine": 21
+        }
+      ],
+      "answer": "isEntryPoint compares the real (symlink-resolved) paths of the module and argv[1]."
+    },
+    {
+      "id": "oc-07",
+      "repo": "osa-clean",
+      "kind": "paraphrase",
+      "query": "where does the program refuse to send a prompt to a web address that is not encrypted?",
+      "expect": [
+        {
+          "path": "src/research/net/embeddings.ts",
+          "startLine": 42,
+          "endLine": 56
+        }
+      ],
+      "answer": "embeddingsEndpoint requires https except for localhost/loopback."
+    },
+    {
+      "id": "oc-08",
+      "repo": "osa-clean",
+      "kind": "paraphrase",
+      "query": "what turns a short alias such as opus or sonnet into a capability level for comparing two AI models?",
+      "expect": [
+        {
+          "path": "src/adapters/model-classes.ts",
+          "startLine": 53,
+          "endLine": 59
+        }
+      ],
+      "answer": "classifyModelName maps names to family and band (high/mid/low)."
+    },
+    {
+      "id": "oc-09",
+      "repo": "osa-clean",
+      "kind": "paraphrase",
+      "query": "how does it measure how alike two lists of numbers are, for ranking by meaning?",
+      "expect": [
+        {
+          "path": "src/research/net/embeddings.ts",
+          "startLine": 118,
+          "endLine": 131
+        }
+      ],
+      "answer": "cosine(a, b) is cosine similarity of two equal-length vectors, 0 for mismatched/empty/zero vectors."
+    },
+    {
+      "id": "oc-10",
+      "repo": "osa-clean",
+      "kind": "paraphrase",
+      "query": "which helper makes a windows-style folder path come out with forward slashes relative to a project root, even on linux?",
+      "expect": [
+        {
+          "path": "src/util/paths.ts",
+          "startLine": 19,
+          "endLine": 24
+        }
+      ],
+      "answer": "toRepoRelPosix uses win32 relative semantics when both paths are Windows-style."
+    },
+    {
+      "id": "oc-11",
+      "repo": "osa-clean",
+      "kind": "paraphrase",
+      "query": "how does it tell whether the opencode tool has any saved sign-ins?",
+      "expect": [
+        {
+          "path": "src/verify/preflight.ts",
+          "startLine": 344,
+          "endLine": 350
+        }
+      ],
+      "answer": "parseOpenCodeAuthResult counts stored/env/config login lines from `opencode auth list`."
+    },
+    {
+      "id": "oc-12",
+      "repo": "osa-clean",
+      "kind": "paraphrase",
+      "query": "when the github assistant command line cannot be asked who is logged in, what is used as evidence instead?",
+      "expect": [
+        {
+          "path": "src/verify/preflight.ts",
+          "startLine": 353,
+          "endLine": 356
+        }
+      ],
+      "answer": "interpretCopilotAuthInputs treats a token in COPILOT_GITHUB_TOKEN, GH_TOKEN or GITHUB_TOKEN as authenticated, else indeterminate."
+    },
+    {
+      "id": "oc-13",
+      "repo": "osa-clean",
+      "kind": "paraphrase",
+      "query": "with a single subscription, how are the writer and the checker given different models?",
+      "expect": [
+        {
+          "path": "src/osa/seats.ts",
+          "startLine": 68,
+          "endLine": 81
+        },
+        {
+          "path": "src/domain/independence.ts",
+          "startLine": 82,
+          "endLine": 94
+        }
+      ],
+      "answer": "sameProviderSeats picks a mid-size author and chooseReviewerSeat the most independent (different-class) reviewer."
+    },
+    {
+      "id": "oc-14",
+      "repo": "osa-clean",
+      "kind": "concept",
+      "query": "what happens to a code search when the meaning-based ranking service is down or not configured?",
+      "expect": [
+        {
+          "path": "src/code-index/hybrid.ts",
+          "startLine": 107,
+          "endLine": 195
+        }
+      ],
+      "answer": "HybridEngine.search returns the lexical results labelled lexical-fallback with the cause, at low confidence."
+    },
+    {
+      "id": "oc-15",
+      "repo": "osa-clean",
+      "kind": "concept",
+      "query": "how does the program avoid paying to describe the same piece of code twice?",
+      "expect": [
+        {
+          "path": "src/code-index/hybrid.ts",
+          "startLine": 49,
+          "endLine": 69
+        },
+        {
+          "path": "src/code-index/hybrid.ts",
+          "startLine": 71,
+          "endLine": 76
+        }
+      ],
+      "answer": "Chunk vectors are cached on disk in vectors.jsonl keyed by a hash of model and text; loadVectors/appendVectors read and append them."
+    },
+    {
+      "id": "oc-16",
+      "repo": "osa-clean",
+      "kind": "concept",
+      "query": "how is a weak double-check, where a model reviews its own work, explained to the user?",
+      "expect": [
+        {
+          "path": "src/domain/independence.ts",
+          "startLine": 97,
+          "endLine": 114
+        }
+      ],
+      "answer": "describeIndependence returns a plain sentence per level with advice for same-model and unverified."
+    },
+    {
+      "id": "oc-17",
+      "repo": "osa-clean",
+      "kind": "concept",
+      "query": "why is the task for the github assistant tool sent through standard input rather than on the command line?",
+      "expect": [
+        {
+          "path": "src/adapters/copilot-cli.ts",
+          "startLine": 30,
+          "endLine": 67
+        }
+      ],
+      "answer": "CopilotCliAdapter passes a one-line instruction on -p and the real prompt on stdin because a command line is limited to about 32k characters on Windows."
+    },
+    {
+      "id": "oc-18",
+      "repo": "osa-clean",
+      "kind": "concept",
+      "query": "how does the system decide which of the installed AI tools are healthy enough to use?",
+      "expect": [
+        {
+          "path": "src/osa/seats.ts",
+          "startLine": 21,
+          "endLine": 24
+        },
+        {
+          "path": "src/verify/preflight.ts",
+          "startLine": 492,
+          "endLine": 527
+        }
+      ],
+      "answer": "healthyProviders keeps providers whose preflight has no problems; runPreflight needs MIN_HEALTHY_PROVIDERS healthy."
+    },
+    {
+      "id": "oc-19",
+      "repo": "osa-clean",
+      "kind": "concept",
+      "query": "how are credentials kept out of the long-term notes the tool writes about a project?",
+      "expect": [
+        {
+          "path": "src/memory/store.ts",
+          "startLine": 98,
+          "endLine": 108
+        },
+        {
+          "path": "src/memory/secrets.ts",
+          "startLine": 62,
+          "endLine": 67
+        }
+      ],
+      "answer": "rejectReason rejects facts that findSecret recognises as secret-shaped or that read as instructions."
+    },
+    {
+      "id": "oc-20",
+      "repo": "osa-clean",
+      "kind": "call-path",
+      "query": "where is applySeatPlan called?",
+      "expect": [
+        {
+          "path": "src/osa/pipeline.ts",
+          "startLine": 203,
+          "endLine": 203
+        }
+      ],
+      "answer": "runOsaCommand in pipeline.ts applies the chosen seat plan to the base config."
+    },
+    {
+      "id": "oc-21",
+      "repo": "osa-clean",
+      "kind": "call-path",
+      "query": "what calls chooseLateralProvider?",
+      "expect": [
+        {
+          "path": "src/osa/pipeline.ts",
+          "startLine": 336,
+          "endLine": 336
+        }
+      ],
+      "answer": "the lateral architecture step of runOsaCommand."
+    },
+    {
+      "id": "oc-22",
+      "repo": "osa-clean",
+      "kind": "call-path",
+      "query": "who calls experimentalProviderWarnings?",
+      "expect": [
+        {
+          "path": "src/cli/doctor.ts",
+          "startLine": 260,
+          "endLine": 260
+        }
+      ],
+      "answer": "runDoctor adds the experimental-provider warnings."
+    },
+    {
+      "id": "oc-23",
+      "repo": "osa-clean",
+      "kind": "call-path",
+      "query": "where does the pipeline pick the model used by the implication review?",
+      "expect": [
+        {
+          "path": "src/osa/pipeline.ts",
+          "startLine": 372,
+          "endLine": 385
+        }
+      ],
+      "answer": "the implication agent block of runOsaCommand calls modelFor(config, provider, 1)."
+    },
+    {
+      "id": "oc-24",
+      "repo": "osa-clean",
+      "kind": "cross-file",
+      "query": "how does a provider's command line tool get registered so doctor can probe it and the dispatcher can run it?",
+      "expect": [
+        {
+          "path": "src/adapters/registry.ts",
+          "startLine": 18,
+          "endLine": 25
+        },
+        {
+          "path": "src/verify/preflight.ts",
+          "startLine": 123,
+          "endLine": 129
+        }
+      ],
+      "answer": "ADAPTER_REGISTRY maps provider ids to adapters; PROVIDER_COMMAND in preflight maps ids to the CLI binary name."
+    },
+    {
+      "id": "oc-25",
+      "repo": "osa-clean",
+      "kind": "cross-file",
+      "query": "trace how the code-search setting in the config file ends up changing which engine answers a search.",
+      "expect": [
+        {
+          "path": "src/domain/osa-config.ts",
+          "startLine": 110,
+          "endLine": 110
+        },
+        {
+          "path": "src/code-index/searcher.ts",
+          "startLine": 56,
+          "endLine": 152
+        }
+      ],
+      "answer": "index.engine in osa-config.ts is read by createCodeSearcher in searcher.ts, which opens the hybrid or cbm engine."
+    },
+    {
+      "id": "oc-26",
+      "repo": "osa-clean",
+      "kind": "cross-file",
+      "query": "how does the decision about how independent the review was travel from planning to the final run report?",
+      "expect": [
+        {
+          "path": "src/osa/seats.ts",
+          "startLine": 97,
+          "endLine": 154
+        },
+        {
+          "path": "src/osa/pipeline.ts",
+          "startLine": 410,
+          "endLine": 410
+        },
+        {
+          "path": "src/osa/pipeline.ts",
+          "startLine": 229,
+          "endLine": 229
+        }
+      ],
+      "answer": "planSeats computes review.level; runOsaCommand emits review_independence and puts review into the report."
+    },
+    {
+      "id": "oc-27",
+      "repo": "osa-clean",
+      "kind": "cross-file",
+      "query": "which code defines what a seat is and which code uses the seats to order the build turns?",
+      "expect": [
+        {
+          "path": "src/domain/independence.ts",
+          "startLine": 11,
+          "endLine": 15
+        },
+        {
+          "path": "src/dispatch/plan.ts",
+          "startLine": 72,
+          "endLine": 108
+        }
+      ],
+      "answer": "Seat in domain/independence.ts; planTurnSequence in dispatch/plan.ts builds executor/executor/reviewer slots from the seats."
+    },
+    {
+      "id": "oc-28",
+      "repo": "osa-clean",
+      "kind": "spec-artifact",
+      "query": "where is it written down why the github assistant support is only experimental?",
+      "expect": [
+        {
+          "path": "docs/osa/COPILOT.md",
+          "startLine": 1,
+          "endLine": 31
+        }
+      ],
+      "answer": "docs/osa/COPILOT.md."
+    },
+    {
+      "id": "oc-29",
+      "repo": "osa-clean",
+      "kind": "spec-artifact",
+      "query": "which document explains how to switch on meaning-based code search and what it needs?",
+      "expect": [
+        {
+          "path": "docs/osa/SEMANTIC.md",
+          "startLine": 1,
+          "endLine": 20
+        }
+      ],
+      "answer": "docs/osa/SEMANTIC.md."
+    },
+    {
+      "id": "oc-30",
+      "repo": "osa-clean",
+      "kind": "spec-artifact",
+      "query": "where is the decision to stop requiring two different providers recorded?",
+      "expect": [
+        {
+          "path": "docs/osa/CONFLICTS.md",
+          "startLine": 354,
+          "endLine": 365
+        }
+      ],
+      "answer": "docs/osa/CONFLICTS.md S-01."
+    }
+  ]
+}

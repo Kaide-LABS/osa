@@ -11,6 +11,7 @@ import type { UpdateResult } from "../../code-index/indexer.ts";
 import { searchIndex } from "../../code-index/search.ts";
 import { CODE_SEARCH_NOTICE, screenHits } from "../../code-index/guard.ts";
 import { createCodeSearcher } from "../../code-index/searcher.ts";
+import { rewriteSeatFor } from "../../code-index/rewrite-seat.ts";
 import type { CodeSearcher } from "../../code-index/searcher.ts";
 import { loadOsaConfig } from "../../util/config-file.ts";
 import type { SearchHit } from "../../code-index/search.ts";
@@ -80,7 +81,7 @@ export async function runCodeSearch(rawInput: z.input<typeof CodeSearchToolInput
     const key = `${input.repo_dir}|${JSON.stringify(config.index)}`;
     let searcher = searchers.get(key);
     if (searcher === undefined) {
-      searcher = createCodeSearcher({ repoDir: input.repo_dir, index: config.index });
+      searcher = createCodeSearcher({ repoDir: input.repo_dir, index: config.index, rewriteSeat: rewriteSeatFor(config) });
       searchers.set(key, searcher);
     }
     return searcher;

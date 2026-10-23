@@ -52,6 +52,7 @@ import { executorContextRel, initialExecutorContext, runStep14, step14DirRel } f
 import { writeRunSummary } from "./summary.ts";
 import { plainChoices } from "./plain-choices.ts";
 import { caveatFor, createCodeSearcher } from "../code-index/searcher.ts";
+import { rewriteSeatFor } from "../code-index/rewrite-seat.ts";
 import type { CodeSearchEngine } from "../code-index/engine.ts";
 import { writeRunMemory } from "../memory/derive.ts";
 import type { PhaseRecord } from "../memory/derive.ts";
@@ -458,7 +459,7 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
   const ctxRel = executorContextRel(runId);
   await mkdir(repoRelToAbs(opts.repoDir, step14DirRel(runId)), { recursive: true });
   // The semantic code index (WS7): refresh it and hand the build agents a ranked "where to look first" list.
-  const searcher = createCodeSearcher({ repoDir: opts.repoDir, index: config.index, events, ...(deps.openCbm !== undefined ? { openCbm: deps.openCbm } : {}) });
+  const searcher = createCodeSearcher({ repoDir: opts.repoDir, index: config.index, events, rewriteSeat: rewriteSeatFor(config), textCall, ...(deps.openCbm !== undefined ? { openCbm: deps.openCbm } : {}) });
   const indexContextFor = async (queryText: string): Promise<string> => {
     if (!config.index.enabled) return "";
     try {

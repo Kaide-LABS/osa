@@ -104,8 +104,7 @@ const IndexConfig = z.strictObject({
   /**
    * Which engine ranks the results. "lexical" (default) is OSA's own offline index. "hybrid" re-ranks the lexical candidates by MEANING with an
    * embeddings model you configure under `index.semantic` (docs/osa/SEMANTIC.md); it needs an endpoint and is off until you set one. "cbm" is
-   * codebase-memory-mcp behind OSA's confidence guard, with the lexical index as the fallback; it is OFF by default because on the 40-query eval
-   * it did not meet the confident-wrong bar (docs/osa/archive/TEST_REPORT.md, suite 7).
+   * codebase-memory-mcp with a model-written query rewrite and a tuned channel mix (docs/osa/CBM_NOTES.md); it needs the CBM binary, so it is OFF by default.
    */
   engine: z.enum(["lexical", "cbm", "hybrid"]).default("lexical"),
   /** The embeddings endpoint for engine "hybrid": any OpenAI-compatible `/embeddings` API (hosted with a key, or a local server without one). */
@@ -122,12 +121,33 @@ const IndexConfig = z.strictObject({
       timeoutMs: z.number().int().min(1000).max(300_000).default(30_000),
     })
     .prefault({}),
+  /**
+   * Query rewriting for engine "cbm": a small model turns the question into the identifiers and keywords the code likely contains, and those are
+   * searched IN ADDITION to the question (the question is never dropped). One cheap call per new question, cached in .osa/index/rewrites.json. Unavailable
+   * or failing = the search runs on the question alone. On 70 labelled queries it lifted right-file-in-top-5 from 64% to 79% (docs/osa/CBM_NOTES.md, section 6).
+   */
+  rewrite: z
+    .strictObject({
+      enabled: z.boolean().default(true),
+      /** Default: the first seat's provider. */
+      provider: ProviderRefSchema.optional(),
+      /** Default: the provider's cheapest known model, else its own default. */
+      model: z.string().min(1).optional(),
+      timeoutMs: z.number().int().min(1000).max(300_000).default(60_000),
+    })
+    .prefault({}),
   /** Where the codebase-memory-mcp binary and its private work directory live (both required for engine "cbm"; docs/osa/CBM_NOTES.md). */
   cbm: z
     .strictObject({
       binaryPath: z.string().default(""),
       workDir: z.string().default(""),
       indexMode: z.enum(["full", "moderate"]).default("full"),
+      /**
+       * Abstain-and-fall-back mode (the original design): when a confidence guard doubts the top hit the engine answers from the lexical index instead.
+       * OFF by default: it cut confident-wrong answers but abstained on 65% of questions and lowered right-file-in-top-5 from 72% to 47% (an agent can
+       * open a file and check it, so it is better served by a ranked list than by silence).
+       */
+      abstain: z.boolean().default(false),
     })
     .prefault({}),
 });

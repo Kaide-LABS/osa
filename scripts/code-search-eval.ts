@@ -19,6 +19,8 @@ import type { CodeSearchEngine } from "../src/code-index/engine.ts";
 import { aggregate, markdownTable, scoreQuery } from "../src/code-index/eval-score.ts";
 import type { Label, QueryScore } from "../src/code-index/eval-score.ts";
 import { DEFAULT_TUNING } from "../src/code-index/fusion.ts";
+import { tableRewriter } from "../src/code-index/rewrite.ts";
+import type { QueryRewrite } from "../src/code-index/rewrite.ts";
 import type { ChannelName, Tuning } from "../src/code-index/fusion.ts";
 
 function arg(name: string, fallback: string): string {
@@ -56,14 +58,24 @@ interface Run {
   readonly tuning: Tuning;
   /** Per-channel result size (the "result cap" lever); default is the engine's. */
   readonly per?: number;
+  /** Name of a rewrite table (--rewrites name=file.json) whose terms are searched in addition to the question. */
+  readonly rewrite?: string;
 }
 let runs: Run[];
 const tuningsFile = arg("tunings", "");
 if (tuningsFile !== "") {
-  const entries = JSON.parse(readFileSync(tuningsFile, "utf8")) as { name: string; config?: string; tuning?: TuningPatch; per?: number }[];
-  runs = entries.map((e) => ({ label: e.name, base: e.config ?? "cbm-guarded", tuning: merge(e.tuning ?? {}), ...(e.per !== undefined ? { per: e.per } : {}) }));
+  const entries = JSON.parse(readFileSync(tuningsFile, "utf8")) as { name: string; config?: string; tuning?: TuningPatch; per?: number; rewrite?: string }[];
+  runs = entries.map((e) => ({ label: e.name, base: e.config ?? "cbm-guarded", tuning: merge(e.tuning ?? {}), ...(e.per !== undefined ? { per: e.per } : {}), ...(e.rewrite !== undefined ? { rewrite: e.rewrite } : {}) }));
 } else {
   runs = arg("configs", "grep,lexical,cbm-bm25,cbm-semantic,cbm-guarded").split(",").filter((c) => c !== "").map((c) => ({ label: c, base: c, tuning: globalTuning }));
+}
+
+// --rewrites name=file.json,name2=file2.json : precomputed query rewrites (question -> { identifiers, keywords }), so a run is repeatable and costs no model calls.
+const rewriteTables: Record<string, Record<string, QueryRewrite>> = {};
+for (const spec of arg("rewrites", "").split(",").filter((s) => s !== "")) {
+  const [name, file] = spec.split("=");
+  if (name === undefined || file === undefined) throw new Error(`--rewrites wants name=file.json, got "${spec}"`);
+  rewriteTables[name] = JSON.parse(readFileSync(file, "utf8")) as Record<string, QueryRewrite>;
 }
 
 const doc = JSON.parse(readFileSync(queriesPath, "utf8")) as { queries: (Label & { repo: string })[] };
@@ -88,7 +100,9 @@ for (const repo of repos) {
     if (run.base === "grep") engine = grep;
     else if (run.base === "lexical") engine = lexical;
     else if (cbm !== null && CBM_CONFIGS[run.base] !== undefined) {
-      cbm.configure({ ...(CBM_CONFIGS[run.base] as Pick<CbmEngineOptions, "guard" | "channels">), tuning: run.tuning, perChannel: run.per ?? globalPer });
+      const table = run.rewrite === undefined ? undefined : rewriteTables[run.rewrite];
+      if (run.rewrite !== undefined && table === undefined) throw new Error(`run "${run.label}" asks for rewrite table "${run.rewrite}" which was not given with --rewrites`);
+      cbm.configure({ ...(CBM_CONFIGS[run.base] as Pick<CbmEngineOptions, "guard" | "channels">), tuning: run.tuning, perChannel: run.per ?? globalPer, rewrite: table === undefined ? undefined : tableRewriter(table) });
       engine = cbm;
     } else throw new Error(`unknown config ${run.base}`);
     for (const label of labels.filter((l) => l.repo === repo)) {

@@ -1,0 +1,1506 @@
+{
+ "assertNeutralCommits": {
+  "identifiers": [
+   "assertNeutralCommits",
+   "neutralCommits",
+   "Commit",
+   "CommitMessage",
+   "commits",
+   "assert",
+   "checkCommits",
+   "staging"
+  ],
+  "keywords": [
+   "assert",
+   "neutral",
+   "commits",
+   "test",
+   "check",
+   "verify",
+   "equal",
+   "stage"
+  ]
+ },
+ "parseCodexAuthResult": {
+  "identifiers": [
+   "parseCodexAuthResult",
+   "CodexAuthResult",
+   "token",
+   "userId",
+   "authToken",
+   "decodeToken",
+   "CodexAuth",
+   "validateAuth"
+  ],
+  "keywords": [
+   "parse",
+   "auth",
+   "codex",
+   "result",
+   "token",
+   "user",
+   "decode",
+   "validate"
+  ]
+ },
+ "where do we hash the PRD": {
+  "identifiers": [
+   "PRD",
+   "hashPRD",
+   "computeHash",
+   "crypto",
+   "sha256",
+   "digest",
+   "blake"
+  ],
+  "keywords": [
+   "hash",
+   "compute",
+   "crypto",
+   "digest",
+   "checksum",
+   "algorithm",
+   "encode",
+   "sum"
+  ]
+ },
+ "chooseResearchProviders": {
+  "identifiers": [
+   "chooseResearchProviders",
+   "researchProviders",
+   "Provider",
+   "providers",
+   "ProviderConfig",
+   "research",
+   "selectProvider"
+  ],
+  "keywords": [
+   "choose",
+   "research",
+   "provider",
+   "providers",
+   "semantic",
+   "endpoint",
+   "fallback",
+   "select"
+  ]
+ },
+ "make sure nothing sensitive like credentials ends up in the facts the tool remembers across runs": {
+  "identifiers": [
+   "facts",
+   "credentials",
+   "sanitize",
+   "filter",
+   "redact",
+   "mask",
+   "memory",
+   "cache"
+  ],
+  "keywords": [
+   "credentials",
+   "sensitive",
+   "facts",
+   "filter",
+   "sanitize",
+   "redact",
+   "secret",
+   "remove"
+  ]
+ },
+ "how does the local code search rank its results?": {
+  "identifiers": [
+   "rerank",
+   "ranking",
+   "score",
+   "semantic",
+   "lexical",
+   "embeddings",
+   "hybrid",
+   "fallback"
+  ],
+  "keywords": [
+   "rank",
+   "score",
+   "sort",
+   "semantic",
+   "lexical",
+   "embedding",
+   "rerank",
+   "candidate"
+  ]
+ },
+ "make sure the AI coding assistant is actually signed in before we start work": {
+  "identifiers": [
+   "isSignedIn",
+   "signedIn",
+   "authenticate",
+   "auth",
+   "checkAuth",
+   "assistant",
+   "login",
+   "requireAuth"
+  ],
+  "keywords": [
+   "signed",
+   "auth",
+   "check",
+   "before",
+   "guard",
+   "token",
+   "verify",
+   "session"
+  ]
+ },
+ "how do we make sure the locked PRD, the spec and important lines like file paths and hashes survive when handoff text is shortened?": {
+  "identifiers": [
+   "handoff",
+   "shorten",
+   "truncate",
+   "preserve",
+   "prd",
+   "spec",
+   "fileHashes",
+   "filePaths"
+  ],
+  "keywords": [
+   "handoff",
+   "shorten",
+   "truncate",
+   "preserve",
+   "lock",
+   "spec",
+   "hash",
+   "context"
+  ]
+ },
+ "what calls buildProviderPreflightReport?": {
+  "identifiers": [
+   "buildProviderPreflightReport",
+   "preflightReport",
+   "providerPreflight"
+  ],
+  "keywords": [
+   "preflight",
+   "provider",
+   "report",
+   "build",
+   "call",
+   "await"
+  ]
+ },
+ "how does a run guarantee the locked PRD is not edited after the lock -- where is it hashed and where is it re-verified?": {
+  "identifiers": [
+   "verifyHash",
+   "hashSpec",
+   "lockSpec",
+   "computeHash",
+   "checkIntegrity",
+   "verifyIntegrity",
+   "prdHash",
+   "recomputeHash"
+  ],
+  "keywords": [
+   "hash",
+   "verify",
+   "lock",
+   "integrity",
+   "spec",
+   "checksum",
+   "immutable",
+   "edit"
+  ]
+ },
+ "how do the facts from a finished run get saved into project memory, from the end of the pipeline down to the file write?": {
+  "identifiers": [
+   "memory",
+   "facts",
+   "saveFacts",
+   "persistFacts",
+   "pipeline",
+   "results",
+   "finalize",
+   "writeMemory"
+  ],
+  "keywords": [
+   "memory",
+   "facts",
+   "save",
+   "persist",
+   "write",
+   "serialize",
+   "output",
+   "file"
+  ]
+ },
+ "why did every Antigravity call get reported as failed after upgrading the agy CLI to 1.3.x?": {
+  "identifiers": [
+   "Antigravity",
+   "AntigravityCall",
+   "agy",
+   "cli",
+   "version",
+   "failed",
+   "error",
+   "status"
+  ],
+  "keywords": [
+   "failed",
+   "error",
+   "version",
+   "upgrade",
+   "breaking",
+   "deprecated",
+   "status",
+   "request"
+  ]
+ },
+ "which exit codes does osa add for stopping at the lock, a changed PRD and a failed application check?": {
+  "identifiers": [
+   "exitCode",
+   "exitCodes",
+   "LOCK",
+   "PRD",
+   "prdChanged",
+   "applicationCheck",
+   "process",
+   "exit"
+  ],
+  "keywords": [
+   "exit",
+   "code",
+   "lock",
+   "prd",
+   "application",
+   "check",
+   "changed",
+   "failed"
+  ]
+ },
+ "where is searchIndex called from?": {
+  "identifiers": [
+   "searchIndex",
+   "index",
+   "query",
+   "executeSearch",
+   "handleSearch",
+   "performSearch",
+   "results",
+   "engine"
+  ],
+  "keywords": [
+   "search",
+   "index",
+   "call",
+   "invoke",
+   "query",
+   "execute",
+   "perform",
+   "caller"
+  ]
+ },
+ "confirm_retention": {
+  "identifiers": [
+   "confirm_retention",
+   "retention",
+   "RetentionPolicy",
+   "retention_policy",
+   "expiry",
+   "confirm_delete",
+   "ttl",
+   "archive"
+  ],
+  "keywords": [
+   "retention",
+   "confirm",
+   "policy",
+   "delete",
+   "expire",
+   "storage",
+   "age",
+   "archive"
+  ]
+ },
+ "_snap_to_source": {
+  "identifiers": [
+   "snapToSource",
+   "snap_to_source",
+   "sourceLocation",
+   "snapPosition",
+   "targetSource",
+   "attachToSource",
+   "sourceReference",
+   "source"
+  ],
+  "keywords": [
+   "snap",
+   "source",
+   "attach",
+   "align",
+   "reference",
+   "location",
+   "map",
+   "position"
+  ]
+ },
+ "check_reserved_within_limit": {
+  "identifiers": [
+   "check_reserved_within_limit",
+   "reserved",
+   "limit",
+   "within_limit",
+   "is_within_limit",
+   "max_limit",
+   "current_reserved",
+   "check_limit"
+  ],
+  "keywords": [
+   "reserved",
+   "limit",
+   "within",
+   "check",
+   "exceed",
+   "boundary",
+   "range",
+   "constraint"
+  ]
+ },
+ "a returning student confirmed their room after the cutoff -- do they keep it?": {
+  "identifiers": [
+   "ReturningStudent",
+   "confirm_room",
+   "cutoff_date",
+   "room_assignment",
+   "confirmation_deadline",
+   "keep_room",
+   "retention_policy",
+   "room_confirmation"
+  ],
+  "keywords": [
+   "returning",
+   "confirm",
+   "cutoff",
+   "deadline",
+   "keep",
+   "assignment",
+   "retention",
+   "after"
+  ]
+ },
+ "who gets the room first if two students applied at exactly the same time?": {
+  "identifiers": [
+   "appliedAt",
+   "studentId",
+   "tiebreaker",
+   "roomAssignment",
+   "compareApplications",
+   "priorityOrder",
+   "submittedAt",
+   "assignRoom"
+  ],
+  "keywords": [
+   "student",
+   "room",
+   "same",
+   "time",
+   "first",
+   "priority",
+   "tie",
+   "sort"
+  ]
+ },
+ "how do we generate the human-readable reason a student sees for their outcome without calling the LLM?": {
+  "identifiers": [
+   "generate_reason",
+   "outcome_reason",
+   "reason_template",
+   "fallback_reason",
+   "format_outcome",
+   "student_outcome",
+   "template",
+   "human_readable"
+  ],
+  "keywords": [
+   "reason",
+   "outcome",
+   "generate",
+   "template",
+   "fallback",
+   "format",
+   "student",
+   "explain"
+  ]
+ },
+ "how does the policy compiler stay safe when the AI call fails, the key is missing, or the input is garbage?": {
+  "identifiers": [
+   "PolicyCompiler",
+   "compile",
+   "validate_input",
+   "call_ai",
+   "handle_error",
+   "check_key",
+   "fallback",
+   "sanitize"
+  ],
+  "keywords": [
+   "exception",
+   "try",
+   "except",
+   "error",
+   "validate",
+   "timeout",
+   "retry",
+   "fallback"
+  ]
+ },
+ "outside of tests, where is check_reserved_within_limit invoked?": {
+  "identifiers": [
+   "check_reserved_within_limit",
+   "reserved",
+   "invoke",
+   "call",
+   "function",
+   "import"
+  ],
+  "keywords": [
+   "check",
+   "reserved",
+   "limit",
+   "within",
+   "invoked",
+   "called"
+  ]
+ },
+ "outside of tests, what calls build_explanation?": {
+  "identifiers": [
+   "build_explanation",
+   "explanation",
+   "result",
+   "output",
+   "response",
+   "call"
+  ],
+  "keywords": [
+   "explanation",
+   "build",
+   "return",
+   "result",
+   "output",
+   "invoke"
+  ]
+ },
+ "trace what happens from a student clicking 'Confirm I'm keeping my room' until the allocator decides whether they keep the room": {
+  "identifiers": [
+   "confirmKeepingRoom",
+   "RoomAllocator",
+   "allocate",
+   "submitHandler",
+   "keepRoom",
+   "roomAllocationEngine",
+   "studentId",
+   "roomId"
+  ],
+  "keywords": [
+   "confirm",
+   "keep",
+   "room",
+   "allocate",
+   "student",
+   "submit",
+   "handler",
+   "decision"
+  ]
+ },
+ "make sure the AI provider's secret key can never leak into an error message the user sees": {
+  "identifiers": [
+   "secret_key",
+   "api_key",
+   "redact",
+   "sanitize",
+   "mask",
+   "credentials",
+   "exception",
+   "logging"
+  ],
+  "keywords": [
+   "secret",
+   "redact",
+   "sanitize",
+   "mask",
+   "filter",
+   "exception",
+   "message",
+   "leak"
+  ]
+ },
+ "how does editing the policy from 40% to 30% change how many beds are reserved for new students?": {
+  "identifiers": [
+   "policy",
+   "reservedBeds",
+   "newStudents",
+   "percentage",
+   "bedReservation",
+   "calculateReserved",
+   "allocation",
+   "beds"
+  ],
+  "keywords": [
+   "policy",
+   "reserved",
+   "beds",
+   "students",
+   "percentage",
+   "allocation",
+   "new",
+   "calculate"
+  ]
+ },
+ "if a returning student's room was released but they still win a general bed, do they get a retention-loss reason code, even though the contract only lists those for the waitlist?": {
+  "identifiers": [
+   "retention_loss",
+   "reason_code",
+   "returning_student",
+   "general_bed",
+   "room_released",
+   "contract",
+   "waitlist",
+   "allocate"
+  ],
+  "keywords": [
+   "retention",
+   "loss",
+   "reason",
+   "code",
+   "student",
+   "bed",
+   "released",
+   "contract"
+  ]
+ },
+ "generate_rebalance_dates": {
+  "identifiers": [
+   "generate_rebalance_dates",
+   "rebalance_dates",
+   "rebalance_frequency",
+   "rebalancing",
+   "portfolio_rebalance",
+   "rebalance_schedule",
+   "DatetimeIndex",
+   "period"
+  ],
+  "keywords": [
+   "rebalance",
+   "dates",
+   "generate",
+   "schedule",
+   "frequency",
+   "interval",
+   "period",
+   "portfolio"
+  ]
+ },
+ "compute_divestment_attribution": {
+  "identifiers": [
+   "compute_divestment_attribution",
+   "divestment_attribution",
+   "attribution",
+   "portfolio",
+   "returns",
+   "weights",
+   "performance",
+   "contribution"
+  ],
+  "keywords": [
+   "compute",
+   "divestment",
+   "attribution",
+   "portfolio",
+   "performance",
+   "returns",
+   "weights",
+   "calculate"
+  ]
+ },
+ "how do we work out how much of a stock payout has to be given to charity?": {
+  "identifiers": [
+   "stock_payout",
+   "charity_amount",
+   "donation_percentage",
+   "calculate_charity",
+   "charity_donation",
+   "payout_allocation",
+   "charitable_amount",
+   "donation_ratio"
+  ],
+  "keywords": [
+   "charity",
+   "donation",
+   "payout",
+   "percentage",
+   "amount",
+   "allocation",
+   "threshold",
+   "stock"
+  ]
+ },
+ "how does the screening avoid using financial filings that were published after the date being evaluated?": {
+  "identifiers": [
+   "screening",
+   "filings",
+   "published_date",
+   "evaluation_date",
+   "exclude",
+   "filter",
+   "cutoff_date",
+   "filing_date"
+  ],
+  "keywords": [
+   "filing",
+   "published",
+   "date",
+   "exclude",
+   "after",
+   "before",
+   "filter",
+   "screening"
+  ]
+ },
+ "refuse to run at all if someone has loosened the no-shorting, no-leverage halal ground rules": {
+  "identifiers": [
+   "halal_rules",
+   "no_shorting",
+   "no_leverage",
+   "ground_rules",
+   "validate",
+   "enforce",
+   "loosened",
+   "run"
+  ],
+  "keywords": [
+   "halal",
+   "shorting",
+   "leverage",
+   "rules",
+   "loosened",
+   "enforce",
+   "validate",
+   "check"
+  ]
+ },
+ "how are the fiqh judgment calls kept configurable and visibly unratified instead of hard-coded?": {
+  "identifiers": [
+   "config",
+   "judgment",
+   "decision",
+   "policy",
+   "heuristic",
+   "ranking",
+   "ratified",
+   "override"
+  ],
+  "keywords": [
+   "configurable",
+   "unratified",
+   "provisional",
+   "hardcoded",
+   "settable",
+   "pending",
+   "status",
+   "flag"
+  ]
+ },
+ "what calls transition() in the compliance state machine?": {
+  "identifiers": [
+   "transition",
+   "ComplianceStateMachine",
+   "compliance",
+   "StateMachine",
+   "process",
+   "handle",
+   "execute",
+   "state_machine"
+  ],
+  "keywords": [
+   "transition",
+   "compliance",
+   "state",
+   "machine",
+   "process",
+   "handler",
+   "event",
+   "execute"
+  ]
+ },
+ "which code runs run_backtest?": {
+  "identifiers": [
+   "run_backtest",
+   "main",
+   "backtest",
+   "execute",
+   "runner",
+   "cli",
+   "entry",
+   "strategy"
+  ],
+  "keywords": [
+   "backtest",
+   "run",
+   "call",
+   "import",
+   "main",
+   "def",
+   "invoke",
+   "execute"
+  ]
+ },
+ "where is screen() invoked from, outside tests?": {
+  "identifiers": [
+   "screen",
+   "main",
+   "run",
+   "execute",
+   "call",
+   "start",
+   "handler",
+   "process"
+  ],
+  "keywords": [
+   "screen",
+   "call",
+   "invoke",
+   "import",
+   "from",
+   "return",
+   "entry",
+   "point"
+  ]
+ },
+ "walk me through how a ticker gets its Pure, Mixed or Non-compliant verdict": {
+  "identifiers": [
+   "verdict",
+   "getVerdict",
+   "calculateCompliance",
+   "assessTicker",
+   "PURE",
+   "MIXED",
+   "NON_COMPLIANT",
+   "classifyTicker"
+  ],
+  "keywords": [
+   "verdict",
+   "compliance",
+   "pure",
+   "mixed",
+   "noncompliant",
+   "assess",
+   "evaluate",
+   "classify"
+  ]
+ },
+ "why does the sandbox give idle cash zero return instead of a risk-free rate?": {
+  "identifiers": [
+   "sandbox",
+   "idle_cash",
+   "idleCash",
+   "risk_free_rate",
+   "riskFreeRate",
+   "cash_return",
+   "zero_return",
+   "account"
+  ],
+  "keywords": [
+   "idle",
+   "cash",
+   "return",
+   "rate",
+   "sandbox",
+   "risk",
+   "zero",
+   "yield"
+  ]
+ },
+ "why isn't there a gambling SIC code in the business-activity map, and where do casino companies get caught?": {
+  "identifiers": [
+   "business_activity_map",
+   "gambling",
+   "casino",
+   "sic_code",
+   "SIC_CODES",
+   "unmapped",
+   "default_category",
+   "categories"
+  ],
+  "keywords": [
+   "sic",
+   "gambling",
+   "casino",
+   "mapping",
+   "business",
+   "activity",
+   "category",
+   "default"
+  ]
+ },
+ "when a held stock flips to non-compliant, how does the system end up selling it and working out what to donate?": {
+  "identifiers": [
+   "HeldStock",
+   "holding",
+   "noncompliant",
+   "sell_holding",
+   "proceeds",
+   "calculate_donation",
+   "donate",
+   "liquidate"
+  ],
+  "keywords": [
+   "compliant",
+   "holding",
+   "stock",
+   "sell",
+   "donate",
+   "proceeds",
+   "liquidate",
+   "transition"
+  ]
+ },
+ "planSeats": {
+  "identifiers": [
+   "planSeats",
+   "plan",
+   "seats",
+   "maxSeats",
+   "seatCount",
+   "Seat",
+   "capacity"
+  ],
+  "keywords": [
+   "seat",
+   "plan",
+   "capacity",
+   "limit",
+   "subscription",
+   "allocation",
+   "member",
+   "available"
+  ]
+ },
+ "embeddingsEndpoint": {
+  "identifiers": [
+   "embeddingsEndpoint",
+   "embeddingsModel",
+   "embeddingsCache",
+   "semanticSearch",
+   "hybridSearch",
+   "engineConfig",
+   "openaiEndpoint",
+   "lexicalCandidates"
+  ],
+  "keywords": [
+   "embeddings",
+   "endpoint",
+   "semantic",
+   "openai",
+   "hybrid",
+   "cache",
+   "model",
+   "operator"
+  ]
+ },
+ "classifyModelName": {
+  "identifiers": [
+   "classifyModelName",
+   "ModelName",
+   "modelType",
+   "parseModelName",
+   "classification",
+   "getModelName",
+   "modelClass",
+   "detectModel"
+  ],
+  "keywords": [
+   "classify",
+   "model",
+   "name",
+   "type",
+   "parse",
+   "detect",
+   "pattern",
+   "identify"
+  ]
+ },
+ "fuseRanks": {
+  "identifiers": [
+   "fuseRanks",
+   "fuse_ranks",
+   "rankFusion",
+   "mergeRanks",
+   "combineRanks",
+   "fusedRanks",
+   "rankMerge"
+  ],
+  "keywords": [
+   "fuse",
+   "ranks",
+   "rank",
+   "merge",
+   "combine",
+   "fusion",
+   "score",
+   "rerank"
+  ]
+ },
+ "isEntryPoint": {
+  "identifiers": [
+   "isEntryPoint",
+   "entryPoint",
+   "entryPoints",
+   "getEntryPoint",
+   "checkEntryPoint",
+   "isRoot",
+   "rootEntry",
+   "mainEntry"
+  ],
+  "keywords": [
+   "entry",
+   "point",
+   "root",
+   "main",
+   "start",
+   "module",
+   "initial",
+   "entrypoint"
+  ]
+ },
+ "which function stops a command from silently doing nothing when it was launched through a symbolic link instead of its real path?": {
+  "identifiers": [
+   "realpathSync",
+   "realpath",
+   "resolvePath",
+   "argv",
+   "execPath",
+   "mainFilename"
+  ],
+  "keywords": [
+   "symlink",
+   "symbolic",
+   "link",
+   "resolve",
+   "real",
+   "path",
+   "command"
+  ]
+ },
+ "where does the program refuse to send a prompt to a web address that is not encrypted?": {
+  "identifiers": [
+   "url",
+   "protocol",
+   "endpoint",
+   "https",
+   "baseUrl",
+   "validateUrl",
+   "isSecure",
+   "address"
+  ],
+  "keywords": [
+   "https",
+   "protocol",
+   "validate",
+   "throw",
+   "error",
+   "secure",
+   "encrypted",
+   "http"
+  ]
+ },
+ "how does it measure how alike two lists of numbers are, for ranking by meaning?": {
+  "identifiers": [
+   "cosineSimilarity",
+   "similarity",
+   "embeddings",
+   "distance",
+   "dotProduct",
+   "normalize",
+   "ranking",
+   "score"
+  ],
+  "keywords": [
+   "cosine",
+   "similarity",
+   "embedding",
+   "distance",
+   "dot",
+   "product",
+   "vector",
+   "rank"
+  ]
+ },
+ "what turns a short alias such as opus or sonnet into a capability level for comparing two AI models?": {
+  "identifiers": [
+   "CapabilityLevel",
+   "getCapabilityLevel",
+   "modelCapability",
+   "compareModels",
+   "aliasMap",
+   "aliasToCapability",
+   "opus",
+   "sonnet"
+  ],
+  "keywords": [
+   "capability",
+   "level",
+   "model",
+   "alias",
+   "map",
+   "compare",
+   "enum",
+   "convert"
+  ]
+ },
+ "which helper makes a windows-style folder path come out with forward slashes relative to a project root, even on linux?": {
+  "identifiers": [
+   "normalizePath",
+   "toPosix",
+   "toForwardSlashes",
+   "normalizeWindowsPath",
+   "relativeToRoot",
+   "posixPath",
+   "windowsPath",
+   "resolve"
+  ],
+  "keywords": [
+   "normalize",
+   "forward",
+   "slash",
+   "windows",
+   "relative",
+   "posix",
+   "path",
+   "sep"
+  ]
+ },
+ "how does it tell whether the opencode tool has any saved sign-ins?": {
+  "identifiers": [
+   "getSavedSignins",
+   "hasSavedSignins",
+   "savedSignins",
+   "checkSignins",
+   "credentials",
+   "signins",
+   "loadSignins",
+   "authData"
+  ],
+  "keywords": [
+   "signin",
+   "saved",
+   "check",
+   "exists",
+   "credentials",
+   "auth",
+   "has",
+   "detect"
+  ]
+ },
+ "when the github assistant command line cannot be asked who is logged in, what is used as evidence instead?": {
+  "identifiers": [
+   "process.env",
+   "GITHUB_TOKEN",
+   "fallback",
+   "currentUser",
+   "credential",
+   "GITHUB_USER",
+   "getLoggedIn",
+   "machineUser"
+  ],
+  "keywords": [
+   "logged",
+   "login",
+   "token",
+   "environment",
+   "fallback",
+   "credential",
+   "user",
+   "github"
+  ]
+ },
+ "with a single subscription, how are the writer and the checker given different models?": {
+  "identifiers": [
+   "subscription",
+   "writer",
+   "checker",
+   "model",
+   "writerModel",
+   "checkerModel",
+   "provider",
+   "modelFor"
+  ],
+  "keywords": [
+   "different",
+   "single",
+   "reuse",
+   "forward",
+   "delegate",
+   "distinct",
+   "shared",
+   "separate"
+  ]
+ },
+ "what happens to a code search when the meaning-based ranking service is down or not configured?": {
+  "identifiers": [
+   "semantic",
+   "fallback",
+   "lexical",
+   "hybrid",
+   "embeddings",
+   "engine",
+   "configured",
+   "disabled"
+  ],
+  "keywords": [
+   "semantic",
+   "fallback",
+   "lexical",
+   "hybrid",
+   "configured",
+   "error",
+   "embeddings",
+   "rerank"
+  ]
+ },
+ "how does the program avoid paying to describe the same piece of code twice?": {
+  "identifiers": [
+   "cache",
+   "cached",
+   "embedding",
+   "embeddings",
+   "deduplicate",
+   "dedup",
+   "hash",
+   "normalize"
+  ],
+  "keywords": [
+   "cache",
+   "embedding",
+   "hash",
+   "dedup",
+   "duplicate",
+   "cost",
+   "memoize",
+   "semantic"
+  ]
+ },
+ "how is a weak double-check, where a model reviews its own work, explained to the user?": {
+  "identifiers": [
+   "weakDoubleCheck",
+   "doubleCheck",
+   "independentCheck",
+   "selfReview",
+   "userFacingWording",
+   "semanticCheck",
+   "embeddings",
+   "explainToUser"
+  ],
+  "keywords": [
+   "weak",
+   "double",
+   "check",
+   "review",
+   "independent",
+   "model",
+   "user",
+   "wording"
+  ]
+ },
+ "how does the system decide which of the installed AI tools are healthy enough to use?": {
+  "identifiers": [
+   "healthCheck",
+   "healthy",
+   "isHealthy",
+   "filter",
+   "validate",
+   "installed",
+   "tools",
+   "status"
+  ],
+  "keywords": [
+   "health",
+   "check",
+   "filter",
+   "validate",
+   "status",
+   "installed",
+   "available",
+   "decide"
+  ]
+ },
+ "how are credentials kept out of the long-term notes the tool writes about a project?": {
+  "identifiers": [
+   "queryTerms",
+   "removeCredentials",
+   "sanitizeQuery",
+   "redact",
+   "secrets",
+   "tokens",
+   "engine",
+   "cbm"
+  ],
+  "keywords": [
+   "credential",
+   "secret",
+   "token",
+   "redact",
+   "filter",
+   "sanitize",
+   "mask",
+   "sensitive"
+  ]
+ },
+ "why is the task for the github assistant tool sent through standard input rather than on the command line?": {
+  "identifiers": [
+   "stdin",
+   "task",
+   "process",
+   "argv",
+   "readStdin",
+   "input",
+   "args",
+   "githubAssistant"
+  ],
+  "keywords": [
+   "stdin",
+   "argument",
+   "command",
+   "input",
+   "process",
+   "task",
+   "sensitive",
+   "exposure"
+  ]
+ },
+ "what calls chooseLateralProvider?": {
+  "identifiers": [
+   "chooseLateralProvider",
+   "lateralProvider",
+   "selectProvider",
+   "initProvider",
+   "getProvider"
+  ],
+  "keywords": [
+   "choose",
+   "lateral",
+   "provider",
+   "invoke",
+   "call",
+   "select"
+  ]
+ },
+ "where is applySeatPlan called?": {
+  "identifiers": [
+   "applySeatPlan",
+   "seatPlan",
+   "applyPlan",
+   "applySeat"
+  ],
+  "keywords": [
+   "call",
+   "import",
+   "export",
+   "const",
+   "apply",
+   "seat",
+   "plan",
+   "invoke"
+  ]
+ },
+ "who calls experimentalProviderWarnings?": {
+  "identifiers": [
+   "experimentalProviderWarnings",
+   "provider",
+   "warnings",
+   "deprecated",
+   "validateProvider",
+   "checkExperimental",
+   "providerWarnings",
+   "warn"
+  ],
+  "keywords": [
+   "experimental",
+   "provider",
+   "warnings",
+   "deprecated",
+   "check",
+   "validate",
+   "warn",
+   "initialization"
+  ]
+ },
+ "where does the pipeline pick the model used by the implication review?": {
+  "identifiers": [
+   "engine",
+   "model",
+   "embeddings",
+   "endpoint",
+   "operatorConfig",
+   "hybrid",
+   "semantic",
+   "selectModel"
+  ],
+  "keywords": [
+   "model",
+   "embeddings",
+   "endpoint",
+   "operator",
+   "pipeline",
+   "configure",
+   "semantic",
+   "selection"
+  ]
+ },
+ "which code defines what a seat is and which code uses the seats to order the build turns?": {
+  "identifiers": [
+   "Seat",
+   "seats",
+   "buildTurn",
+   "orderBuildTurns",
+   "engine",
+   "queue"
+  ],
+  "keywords": [
+   "seat",
+   "build",
+   "turn",
+   "order",
+   "define",
+   "schedule",
+   "queue",
+   "assign"
+  ]
+ },
+ "trace how the code-search setting in the config file ends up changing which engine answers a search.": {
+  "identifiers": [
+   "codeSearch",
+   "engine",
+   "semantic",
+   "lexical",
+   "hybrid",
+   "index",
+   "config",
+   "embeddings"
+  ],
+  "keywords": [
+   "search",
+   "engine",
+   "config",
+   "semantic",
+   "lexical",
+   "hybrid",
+   "setting",
+   "query"
+  ]
+ },
+ "how does the decision about how independent the review was travel from planning to the final run report?": {
+  "identifiers": [
+   "independent",
+   "isIndependent",
+   "runReport",
+   "plan",
+   "review",
+   "engine"
+  ],
+  "keywords": [
+   "independent",
+   "review",
+   "planning",
+   "report",
+   "config",
+   "eval",
+   "propagate",
+   "decision"
+  ]
+ },
+ "how does a provider's command line tool get registered so doctor can probe it and the dispatcher can run it?": {
+  "identifiers": [
+   "Provider",
+   "registerProvider",
+   "CommandLineTool",
+   "ProviderRegistry",
+   "doctor",
+   "dispatcher",
+   "toolRegistry",
+   "probe"
+  ],
+  "keywords": [
+   "register",
+   "provider",
+   "command",
+   "tool",
+   "doctor",
+   "dispatcher",
+   "probe",
+   "cli"
+  ]
+ },
+ "which document explains how to switch on meaning-based code search and what it needs?": {
+  "identifiers": [
+   "semanticSearch",
+   "embeddings",
+   "index.engine",
+   "hybrid",
+   "endpoint",
+   "README",
+   "lexical",
+   "config"
+  ],
+  "keywords": [
+   "semantic",
+   "embeddings",
+   "switch",
+   "enable",
+   "configure",
+   "hybrid",
+   "search",
+   "meaning"
+  ]
+ },
+ "where is the decision to stop requiring two different providers recorded?": {
+  "identifiers": [
+   "twoProviders",
+   "requireTwoProviders",
+   "dualProvider",
+   "providers",
+   "engine",
+   "optional",
+   "hybrid",
+   "semantic"
+  ],
+  "keywords": [
+   "provider",
+   "decision",
+   "require",
+   "optional",
+   "removed",
+   "migration",
+   "two",
+   "fallback"
+  ]
+ },
+ "where is it written down why the github assistant support is only experimental?": {
+  "identifiers": [
+   "githubAssistant",
+   "experimental",
+   "README",
+   "CHANGELOG",
+   "status",
+   "feature",
+   "limitations"
+  ],
+  "keywords": [
+   "experimental",
+   "github",
+   "assistant",
+   "support",
+   "beta",
+   "limited",
+   "unstable",
+   "status"
+  ]
+ }
+}

@@ -44,6 +44,16 @@ export function queryTerms(query: string): QueryTerms {
   return { identifiers, words: ordered, fragments };
 }
 
+/**
+ * The terms of a query after a rewrite (src/code-index/rewrite.ts): the rewrite's identifiers and keywords FIRST, then the question's own, so the
+ * searches that only take the first few terms use the better guesses and the question's own words are still there behind them. Pure.
+ */
+export function mergeRewrite(base: QueryTerms, rw: { readonly identifiers: readonly string[]; readonly keywords: readonly string[] }): QueryTerms {
+  const identifiers = [...new Set([...rw.identifiers, ...base.identifiers])];
+  const words = [...new Set([...rw.keywords.map((k) => k.toLowerCase()), ...base.words])];
+  return { identifiers, words, fragments: base.fragments };
+}
+
 /** A simple plural/-ing/-ed-tolerant comparison key. Pure. */
 export function loose(w: string): string {
   let x = w.toLowerCase();

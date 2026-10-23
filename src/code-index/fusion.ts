@@ -80,6 +80,22 @@ export const TUNED_TUNING: Tuning = {
   minMargin: 0.4,
 };
 
+/**
+ * The ranked-list configuration (no abstaining) used with a query rewrite: the text-search channel leads, BM25 and OSA's lexical index support, CBM's own
+ * embedding channel is off (it found the right file for 20% of questions, and CBM exposes no setting for its embedding model), test files are demoted.
+ * Chosen on 70 labelled queries, see docs/osa/CBM_NOTES.md; only the rewrite itself is a robust gain, the exact weights are not (they moved +-5 points between sets).
+ */
+export const RANKED_TUNING: Tuning = {
+  ...DEFAULT_TUNING,
+  weights: { bm25: 2, semantic: 0, code: 3, lexical: 1, trace: 3 },
+  rrfK: 60,
+  grepWeight: 0,
+  testPenalty: 0.35,
+};
+
+/** Per-channel result size for {@link RANKED_TUNING}. */
+export const RANKED_PER_CHANNEL = 25;
+
 /** How many results each CBM channel contributes to the fusion in the tuned configuration (the engine's own default is 15). */
 export const TUNED_PER_CHANNEL = 25;
 

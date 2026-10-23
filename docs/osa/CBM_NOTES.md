@@ -45,3 +45,43 @@ Coverage of spec-artifact kinds by CBM channel, measured on a fixture with every
 - **Footprint and install:** v0.12.1, 333,716,480-byte binary, 10-13 MB idle working set, 4-18 MB index databases, private cache under `C:osa-cbm`; `install.ps1` / `cbm install` were never run.
 - **To enable:** see `archive/TEST_REPORT.md` section 5, item 5.
 
+## 6. Second round (2026-10-24): the verdict in section 5 was too negative
+
+Section 5 judged CBM against "confident-wrong <= 2%" and shipped a configuration that reached 10% by **abstaining on 65% of questions**, which also
+cut right-file-in-top-5 from 72% (the text-search channel alone) to 47%. That bar suits a system that acts on a hit without checking it. An agent
+opens the file, so a ranked list that is usually right in the top five serves it better than silence. Re-measured without abstaining:
+
+| 70 labelled queries (k=5, file level) | right file in top 5 | top-1 | MRR |
+|---|---:|---:|---:|
+| plain grep (held-out 30 only) | 43% | 23% | 0.311 |
+| OSA lexical index (held-out 30 only) | 37% | 17% | 0.243 |
+| CBM, default fusion, no guard | 57.1% | 34.3% | 0.425 |
+| CBM, reweighted, **no** rewrite | 64.3% | 42.9% | 0.511 |
+| CBM, reweighted + **query rewrite** (the shipped setting: `RANKED_TUNING`, plain rewrite) | **78.6%** | 51% | 0.611 |
+| same with the project's file paths shown to the rewriter | 82.9% | 54.3% | 0.646 |
+
+**What is a robust gain: the query rewrite.** A small model turns the question into the identifiers and keywords the code likely contains
+(`src/code-index/rewrite.ts`); those are searched in addition to the question. It lifted right-file-in-top-5 in both sets (old 40: 72.5% to 82-87%;
+a held-out 30 written afterwards over code the tuning never saw: 53% to 67-80%) and paraphrase questions most (4/8 to 7/8 held-out). Cost: one
+cheap-model call per new question, cached in `.osa/index/rewrites.json`.
+
+**What is not robust: the exact weights.** Reweighting alone gained 15 points on the old 40 (which the tuning had been done on) and lost 3 on the held-out
+set. The choices among the rewrite variants (plain vs file paths, lexical channel weight 0 / 1 / 2) differ by 1-2 queries of 70, which is noise.
+The shipped setting is the cheap one.
+
+**CBM's own embedding channel** (`semantic_query`) found the right file for 20% of questions and CBM exposes no setting for its embedding model, so
+it is weighted 0. Real semantic ranking would come from OSA's `hybrid` engine (docs/osa/SEMANTIC.md), not from CBM.
+
+**Still weak:** concept questions ("how does the system decide which tools are healthy") and spec/document questions (the right document ranks in the top
+five for 1 of 3). Top-1 is 40-54%: when it misses, the right file is usually second to fifth.
+
+**Method and its limits.** `evals/code-search/queries.json` (40, tuned on) and `queries-heldout.json` (30, written before any engine was run on them over
+the OSA code at commit `4e2c517`, never tuned on); rewrites precomputed in `evals/code-search/rewrites/` with Claude Haiku so a run is repeatable; result
+tables in `evals/code-search/results/rewrite-*.md`. n=70: one query is 1.4 points, so differences under about 5 points mean nothing. The rewriting
+model ran with read tools in a directory containing the OSA code (the product now runs it in an empty directory); the rewrites name the exact target
+symbol in only 2 of 21 non-trivial held-out queries, both obvious guesses, so leakage looks unlikely but is not excluded. **Not measured:** whether better
+retrieval lowers a real run's token use or raises answer quality (the earlier answer eval had CBM at 42.5% against grep + read at 77.5%, with 12-line
+snippets against whole files), and anything on greenfield builds, where exploration was only about 10% of a run's tokens.
+
+**Defaults:** `index.engine` stays `lexical` (CBM is a 318 MB external binary). With `"engine": "cbm"` the engine now runs ranked (no abstaining, `index.cbm.abstain:
+false`) with the rewrite (`index.rewrite.enabled: true`). `"abstain": true` restores the old guarded behaviour.

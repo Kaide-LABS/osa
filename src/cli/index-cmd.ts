@@ -5,6 +5,7 @@ import { updateIndex } from "../code-index/indexer.ts";
 import type { UpdateResult } from "../code-index/indexer.ts";
 import { renderIndexContext, searchIndex } from "../code-index/search.ts";
 import { caveatFor, createCodeSearcher } from "../code-index/searcher.ts";
+import { rewriteSeatFor } from "../code-index/rewrite-seat.ts";
 import { loadOsaConfig } from "../util/config-file.ts";
 import { applyFeatureFlags } from "../features/features.ts";
 import type { FeatureFlags } from "../features/features.ts";
@@ -41,7 +42,7 @@ export async function runIndexCommand(opts: IndexCommandOptions): Promise<{ text
 export async function runSearchCommand(opts: SearchCommandOptions): Promise<{ text: string; exitCode: number; hits: SearchHit[] }> {
   const config = applyFeatureFlags((await loadOsaConfig(opts.repoDir)).config, opts.features ?? {});
   if (config.index.engine === "cbm") {
-    const searcher = createCodeSearcher({ repoDir: opts.repoDir, index: config.index });
+    const searcher = createCodeSearcher({ repoDir: opts.repoDir, index: config.index, rewriteSeat: rewriteSeatFor(config) });
     try {
       const answer = await searcher.search(opts.query, { k: opts.k, purpose: "osa search" });
       const hits = [...answer.hits];

@@ -118,3 +118,13 @@ and `_retained`, hms `rebalance` and `compute_divestment_attribution`).
   labelled in `osa-07` and `osa-10` (as targets/decoys), which is intentional but means that engine indexes its own
   scoring code.
 * The 'hashes' in `snapshots.json` use LF-normalised content, so a Windows checkout with CRLF still matches.
+
+## Held-out set and query rewrites (2026-10-24)
+
+* `queries-heldout.json`: 30 labelled queries over the OSA code at commit `4e2c517` (repo name `osa-clean`, materialise with `git archive` into
+  `<snapshots>/osa-clean`). Written before any engine was run on them and **not to be tuned on**; use it to confirm a change made using `queries.json`.
+  The validator above does not read it (it wants fields this file does not have); its labels were checked mechanically (file exists, range in bounds).
+* `rewrites/plain.json`, `rewrites/paths.json`: query rewrites for all 70 questions (Claude Haiku; `paths` also saw the project's file list). Regenerate with
+  `node scripts/code-search-rewrites.ts --queries evals/code-search/queries.json,evals/code-search/queries-heldout.json --out <file> [--paths]`.
+* Run a comparison: `node scripts/code-search-eval.ts --tunings <rows.json> --rewrites plain=evals/code-search/rewrites/plain.json --queries <file> --out <dir>`; a row
+  that has `"rewrite": "plain"` searches the rewrite's terms in addition to the question. Result tables: `results/rewrite-*.md`, `results/baseline-heldout.md`.

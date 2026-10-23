@@ -5,7 +5,8 @@
 // the live file, and a hit whose file no longer matches the shadow manifest is dropped (and reported), never shown.
 
 import { readFile } from "node:fs/promises";
-import { loose, queryTerms } from "../query-terms.ts";
+import { loose, mergeRewrite, queryTerms } from "../query-terms.ts";
+import type { Rewriter } from "../rewrite.ts";
 import { probeTerms } from "../grep-probe.ts";
 import type { ProbeResult } from "../grep-probe.ts";
 import { DEFAULT_TUNING, assess, fuse, isSpecQuestion, mergeCandidates, signalsFor, wantsTests } from "../fusion.ts";
@@ -47,6 +48,8 @@ export interface CbmEngineOptions {
   readonly perChannel?: number;
   /** Fetch every channel once per question and re-use it (the tuning loop re-fuses the same raw results under many settings). */
   readonly cacheChannels?: boolean;
+  /** Translates a question into the identifiers and keywords the code likely contains; those are searched IN ADDITION to the question (src/code-index/rewrite.ts). */
+  readonly rewrite?: Rewriter | undefined;
 }
 
 interface TraceItem {
@@ -130,7 +133,7 @@ export class CbmEngine implements CodeSearchEngine {
   }
 
   /** Changes the engine's behaviour in place (the eval and the tuning loop try many configurations against one warm index). */
-  configure(patch: Partial<Pick<CbmEngineOptions, "tuning" | "guard" | "channels" | "perChannel" | "cacheChannels">>): void {
+  configure(patch: Partial<Pick<CbmEngineOptions, "tuning" | "guard" | "channels" | "perChannel" | "cacheChannels" | "rewrite">>): void {
     this.o = { ...this.o, ...patch };
   }
 
@@ -186,9 +189,13 @@ export class CbmEngine implements CodeSearchEngine {
     const tuning = this.o.tuning ?? DEFAULT_TUNING;
     const use = { bm25: true, semantic: true, code: true, lexical: true, trace: true, ...(this.o.channels ?? {}) };
     const per = this.o.perChannel ?? 15;
-    const terms = queryTerms(query);
+    const baseTerms = queryTerms(query);
+    const rw = this.o.rewrite === undefined ? null : await this.o.rewrite(query).catch(() => null);
+    const terms = rw === null ? baseTerms : mergeRewrite(baseTerms, rw);
+    // What the BM25 and lexical channels are asked: the question plus the rewrite's terms. Guard signals and the caller trace keep the question's own terms.
+    const searchText = rw === null ? query : `${query} ${[...rw.identifiers, ...rw.keywords].join(" ")}`;
     const semTerms = terms.words.slice(0, 8);
-    const probeTermsList = [...new Set([...terms.identifiers.map((i) => i.toLowerCase()), ...terms.words])].slice(0, 6);
+    const probeTermsList = [...new Set([...baseTerms.identifiers.map((i) => i.toLowerCase()), ...baseTerms.words])].slice(0, 6);
     const problems: string[] = [];
 
     const settle = async <T>(name: string, p: Promise<T>, empty: T): Promise<T> => {
@@ -201,20 +208,20 @@ export class CbmEngine implements CodeSearchEngine {
     };
     if (!this.session.alive) return this.fallback(query, k, t0, "codebase-memory-mcp is no longer running", []);
 
-    const codePatterns = [...terms.identifiers, ...terms.words.slice(0, 3)].slice(0, 4);
-    const callersOf = use.trace && isCallerQuery(query) ? terms.identifiers[0] ?? null : null;
+    const codePatterns = [...terms.identifiers, ...terms.words.slice(0, 3)].slice(0, rw === null ? 4 : 8);
+    const callersOf = use.trace && isCallerQuery(query) ? baseTerms.identifiers[0] ?? null : null;
     // With the channel cache on (tuning loops), every channel is fetched once per question and re-used; the channel flags then only decide which
     // lists reach the fusion. Without it, a disabled channel is not even queried.
-    const cacheKey = `${String(per)}|${query}`;
+    const cacheKey = `${String(per)}|${searchText}`;
     const cached = this.o.cacheChannels === true ? this.channelCache.get(cacheKey) : undefined;
     const all = this.o.cacheChannels === true;
     const gathered =
       cached ??
       (await Promise.all([
-        all || use.bm25 ? settle("bm25", this.client.bm25(this.project, query, per), [] as CbmRow[]) : Promise.resolve([] as CbmRow[]),
+        all || use.bm25 ? settle("bm25", this.client.bm25(this.project, searchText, per), [] as CbmRow[]) : Promise.resolve([] as CbmRow[]),
         (all || use.semantic) && semTerms.length > 0 ? settle("semantic", this.client.semantic(this.project, semTerms, per), [] as CbmRow[]) : Promise.resolve([] as CbmRow[]),
         all || use.code ? Promise.all(codePatterns.map((p) => settle(`code(${p})`, this.client.code(this.project, p, 8), [] as CbmRow[]))) : Promise.resolve([] as CbmRow[][]),
-        all || use.lexical ? settle("lexical", this.o.lexical.search(query, { k: per }), null) : Promise.resolve(null),
+        all || use.lexical ? settle("lexical", this.o.lexical.search(searchText, { k: per }), null) : Promise.resolve(null),
         this.o.guard === false && !all ? Promise.resolve(null) : probeTerms(this.shadowDir, probeTermsList),
         callersOf !== null && (all || use.trace) ? settle("trace", this.callers(callersOf, query), [] as TraceItem[]) : Promise.resolve([] as TraceItem[]),
       ] as const));
@@ -248,7 +255,7 @@ export class CbmEngine implements CodeSearchEngine {
       { channel: "lexical", items: (lexAnswer?.hits ?? []).map((h) => ({ file: h.path, startLine: h.startLine, endLine: h.endLine, symbol: h.symbol, label: "" })) },
       { channel: "trace", items: callerItems },
     ];
-    const sorted = fuse(mergeCandidates(lists), probe, tuning, { wantsTests: wantsTests(query), specQuestion: isSpecQuestion(query), fragments: terms.fragments });
+    const sorted = fuse(mergeCandidates(lists), probe, tuning, { wantsTests: wantsTests(query), specQuestion: isSpecQuestion(query), fragments: baseTerms.fragments });
 
     // Freshness: drop candidates whose file no longer matches what the index was built from.
     const files = [...new Set(sorted.slice(0, 40).map((c) => c.file))];
@@ -263,7 +270,7 @@ export class CbmEngine implements CodeSearchEngine {
       live = await readLiveSnippet(this.o.repoDir, top.file, top.startLine, top.endLine);
       consistent = live !== null && symbolPresent(top.symbol, await this.wholeRange(top));
     }
-    const signals = signalsFor(top, fresh, probe, terms, { consistent, why: live === null ? "file or range missing" : "" }, tuning);
+    const signals = signalsFor(top, fresh, probe, baseTerms, { consistent, why: live === null ? "file or range missing" : "" }, tuning);
 
     if (this.o.guard === false) {
       const hits = await this.toHits(fresh, k);

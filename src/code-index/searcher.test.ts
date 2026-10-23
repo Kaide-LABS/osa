@@ -45,7 +45,7 @@ const fakeEngine = (answer: EngineAnswer, calls: string[] = []): CodeSearchEngin
 test("the CBM engine is OFF by default and its config is validated", () => {
   const d = OsaConfig.parse({}).index;
   assert.equal(d.engine, "lexical");
-  assert.deepEqual(d.cbm, { binaryPath: "", workDir: "", indexMode: "full" });
+  assert.deepEqual(d.cbm, { binaryPath: "", workDir: "", indexMode: "full", abstain: false });
   assert.match(cbmConfigProblem(d) ?? "", /binaryPath and index\.cbm\.workDir/);
   assert.equal(cbmConfigProblem(index({ cbm: { binaryPath: "/x/cbm", workDir: "/x/work" } })), null);
   assert.throws(() => OsaConfig.parse({ index: { engine: "elastic" } }));
