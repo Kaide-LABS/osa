@@ -16,8 +16,10 @@ You need **Node.js 22 or newer**, **git**, and at least one AI coding tool alrea
 GitHub Copilot CLI). One is enough.
 
 ```
-# install (either way gives you the `osa` command)
-npm install -g https://github.com/Kaide-LABS/osa/releases/latest/download/osa.tgz     # the prebuilt package from the latest release
+# install (the package is @kaide-labs/osa; it gives you the `osa` command)
+npm install -g @kaide-labs/osa
+#   or the prebuilt package from the latest GitHub release:
+#   npm install -g https://github.com/Kaide-LABS/osa/releases/latest/download/osa.tgz
 #   or, from a clone:   git clone https://github.com/Kaide-LABS/osa && cd osa && npm ci && npm run build && npm link
 
 osa doctor                                 # shows which of your tools OSA can use

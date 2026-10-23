@@ -1,9 +1,32 @@
 {
-  "name": "osa",
+  "name": "@kaide-labs/osa",
   "version": "0.3.0",
   "description": "OSA -- One-Shot Anything: a local, headless harness that takes one prompt, locks a baby PRD, and runs a build with an independent reviewer across Claude Code, Codex CLI and Antigravity CLI, driven by CLI or as a local MCP server.",
   "type": "module",
   "license": "MIT",
+  "homepage": "https://github.com/Kaide-LABS/osa#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Kaide-LABS/osa.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Kaide-LABS/osa/issues"
+  },
+  "keywords": [
+    "ai",
+    "agents",
+    "cli",
+    "mcp",
+    "claude-code",
+    "codex",
+    "opencode",
+    "copilot",
+    "code-generation",
+    "one-shot"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "bin": {
     "osa": "dist/cli/main.js"
   },
