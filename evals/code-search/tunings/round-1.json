@@ -1,0 +1,16 @@
+[
+  { "name": "T0 defaults (guarded)" },
+  { "name": "T1 test files demoted x0.35", "tuning": { "testPenalty": 0.35 } },
+  { "name": "T2 semantic weight 0.3", "tuning": { "weights": { "semantic": 0.3 } } },
+  { "name": "T3 semantic off", "tuning": { "weights": { "semantic": 0 } } },
+  { "name": "T4 code weight 2.5", "tuning": { "weights": { "code": 2.5 } } },
+  { "name": "T5 definition boost x1.6", "tuning": { "definitionBoost": 1.6 } },
+  { "name": "T6 doc boost x1.8 for why/rule questions", "tuning": { "docBoost": 1.8 } },
+  { "name": "T7 prose demoted x0.6 for non-spec questions", "tuning": { "docPenalty": 0.6 } },
+  { "name": "T8 rrfK 60 (flatter)", "tuning": { "rrfK": 60 } },
+  { "name": "T9 rrfK 8 (steeper)", "tuning": { "rrfK": 8 } },
+  { "name": "T10 guard: need 3 channels for high", "tuning": { "minChannelsHigh": 3 } },
+  { "name": "T11 guard: min margin 0.25", "tuning": { "minMargin": 0.25 } },
+  { "name": "T12 guard: grep must agree within top 3 files", "tuning": { "grepTopFiles": 3 } },
+  { "name": "T13 guard: coverage floor 0.8", "tuning": { "minCoverage": 0.8 } }
+]

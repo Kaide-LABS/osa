@@ -1,0 +1,12 @@
+{
+  "run_id": "<GENERATE WITH crypto.randomUUID()>",
+  "repo_dir": "<ABSOLUTE PATH TO THE MATERIALIZED TOY REPO>",
+  "executor_providers": ["claude-code", "codex-cli"],
+  "reviewer_provider": null,
+  "turn_timeout_ms": 1800000,
+  "phase": 1,
+  "spec_path": "loopr/PHASE_1_SPEC.md",
+  "baby_prd_path": "loopr/baby_prd.md",
+  "context_path": "loopr/context.md",
+  "is_final_phase": true
+}

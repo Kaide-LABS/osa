@@ -1,0 +1,22 @@
+// Publish-only build config. The development loop is unchanged and still runs `.ts` directly via
+// Node's native type stripping (PHASE_1_SPEC.md §2.1 "no build step" invariant) -- `npm run
+// typecheck` still uses tsconfig.json with `noEmit: true`, and `npm run test` / `doctor` still run
+// against `src/**`.
+//
+// This config exists solely because Node refuses to execute TypeScript files under any
+// `node_modules` path (ERR_UNSUPPORTED_NODE_MODULES_TYPE_STRIPPING, documented and unconditional),
+// so the npm-distributed artifact must be compiled JS. `rewriteRelativeImportExtensions` rewrites
+// the `.ts` import specifiers that source uses for Node-native execution into the `.js` specifiers
+// a compiled-JS import graph needs.
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "rewriteRelativeImportExtensions": true,
+    "outDir": "dist",
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/**/*.test.ts"]
+}

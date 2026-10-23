@@ -1,0 +1,1430 @@
+{
+  "schema_version": 1,
+  "repos": {
+    "osa": {
+      "language": "TypeScript",
+      "snapshot": {
+        "type": "git",
+        "path": "C:\\Users\\hp\\OSA",
+        "commit": "2ac3f97f83b90c39e2715b98d17107951e1fa238",
+        "note": "tree of the commit (git archive), not the working tree"
+      },
+      "description": "OSA: a CLI/harness that turns one prompt into a locked PRD, researched spec and cross-provider build. src/{osa,research,trim,dispatch,verify,code-index,memory,agents,mcp}; docs/osa/*.md and README.md are the spec-like artifacts. evals/, node_modules and dist are never labelled."
+    },
+    "hostel": {
+      "language": "Python",
+      "snapshot": {
+        "type": "git",
+        "path": "C:\\Users\\hp\\hostel-c",
+        "commit": "0738437b96a122cd417f5de3ac22dfc6fede9c78",
+        "note": "hostel-c working tree was clean at this commit"
+      },
+      "description": "Hostel allocation engine (TIC Mini Hackathon challenge 03): engine/ (deterministic allocator, explanations, retention receipts), policy/ (LLM policy compiler), app/ (Streamlit UI), shared/ (models, store). CONTRACT.md and specs/ are the spec artifacts."
+    },
+    "hms": {
+      "language": "Python",
+      "snapshot": {
+        "type": "git",
+        "path": "C:\\Users\\hp\\HMS",
+        "commit": "fe60f062577c015632c614fd89714bf7751f3a86",
+        "note": "HMS working tree was clean at this commit"
+      },
+      "description": "Mizan: a halal-constrained market simulation and research sandbox (EDGAR/Tiingo ingest into DuckDB, AAOIFI-style screening, quarterly-rebalance backtest with a compliance-flip state machine, purification ledger, HTML report). MASTER_PRD.md, PHASE_N_SPEC.md and docs/modernization_log.md are the spec artifacts."
+    }
+  },
+  "queries": [
+    {
+      "id": "osa-01",
+      "repo": "osa",
+      "kind": "exact-name",
+      "query": "chooseResearchProviders",
+      "expect": [
+        {
+          "path": "src/research/routing.ts",
+          "startLine": 19,
+          "endLine": 46
+        }
+      ],
+      "answer": "chooseResearchProviders(pair, hasWebSearch) picks the researcher as the first provider of the pair that has built-in web search (else the second), makes the other provider the reviewer, sets routedAway when the researcher is not pair[0], and throws StageError if both providers are the same or neither has web search.",
+      "note": "Two sibling functions have near-identical names and shapes (chooseLateralProvider, chooseApplicationProvider) and an exact-token search on 'Provider' lands on them or on test files.",
+      "decoys": [
+        {
+          "path": "src/agents/lateral-architecture.ts",
+          "why": "chooseLateralProvider: similar name, picks the lateral-architecture agent's provider, not the researcher"
+        },
+        {
+          "path": "src/agents/application.ts",
+          "why": "chooseApplicationProvider: similar name, picks the application-check provider"
+        },
+        {
+          "path": "src/research/stage.test.ts",
+          "why": "tests that exercise routing, not the definition"
+        }
+      ]
+    },
+    {
+      "id": "osa-02",
+      "repo": "osa",
+      "kind": "exact-name",
+      "query": "assertNeutralCommits",
+      "expect": [
+        {
+          "path": "src/verify/commits.ts",
+          "startLine": 56,
+          "endLine": 66
+        }
+      ],
+      "answer": "assertNeutralCommits(repoDir, oids) runs checkCommitNeutrality and throws BoundaryViolationError (exit 7) listing the offending commit OIDs and matched text if any commit message carries an AI-attribution trailer (Co-Authored-By: Claude, Generated with Claude Code, etc.).",
+      "note": "The identifier also appears in src/dispatch/turn.ts (the caller) and in tests; the sibling checkCommitNeutrality is defined 20 lines above and is the one that does the matching.",
+      "decoys": [
+        {
+          "path": "src/dispatch/turn.ts",
+          "why": "calls assertNeutralCommits after reconciling a turn; a call site, not the definition"
+        },
+        {
+          "path": "src/verify/commits.test.ts",
+          "why": "unit tests for the same functions"
+        },
+        {
+          "path": "src/verify/boundary-rules.ts",
+          "why": "rule B8 matches the attribution wording textually in source; a different mechanism"
+        }
+      ]
+    },
+    {
+      "id": "osa-03",
+      "repo": "osa",
+      "kind": "exact-name",
+      "query": "parseCodexAuthResult",
+      "expect": [
+        {
+          "path": "src/verify/preflight.ts",
+          "startLine": 222,
+          "endLine": 261
+        }
+      ],
+      "answer": "parseCodexAuthResult(result, env) interprets `codex login status`: exit 0, or a non-empty CODEX_API_KEY/OPENAI_API_KEY, means authenticated; a timeout is indeterminate; exit 1 with no API key is unauthenticated; any other exit code is indeterminate (the probe itself may have failed).",
+      "note": "parseClaudeAuthResult sits right above it with the same shape (JSON loggedIn instead of exit codes) and is the likeliest wrong hit; the adapter and tests also mention Codex auth.",
+      "decoys": [
+        {
+          "path": "src/verify/preflight.ts",
+          "why": "parseClaudeAuthResult (lines 168-212): same file, sibling parser for a different provider"
+        },
+        {
+          "path": "src/adapters/codex-cli.ts",
+          "why": "adapter that delegates preflight; does not interpret the auth probe"
+        },
+        {
+          "path": "src/verify/preflight.test.ts",
+          "why": "tests that call the function"
+        }
+      ]
+    },
+    {
+      "id": "osa-04",
+      "repo": "osa",
+      "kind": "paraphrase",
+      "query": "where do we hash the PRD",
+      "expect": [
+        {
+          "path": "src/osa/lock.ts",
+          "startLine": 75,
+          "endLine": 87
+        },
+        {
+          "path": "src/osa/lock.ts",
+          "startLine": 158,
+          "endLine": 173
+        }
+      ],
+      "answer": "At lock time lockNow() in src/osa/lock.ts computes the SHA-256 of the baby PRD file (sha256File) and writes it into the prd.lock.json record and the prd_locked event; assertPrdUnchanged later recomputes the hash of the same file and compares it to the recorded sha256.",
+      "note": "The generic hash primitive (util/hash.ts) and other hashing sites (artifact attestation in dispatch/record.ts, the code indexer) are plausible but do not hash the PRD specifically.",
+      "decoys": [
+        {
+          "path": "src/util/hash.ts",
+          "why": "generic sha256File/sha256String primitive; knows nothing about the PRD"
+        },
+        {
+          "path": "src/dispatch/record.ts",
+          "why": "hashes artifacts_read/written for attestation, not the locked PRD"
+        },
+        {
+          "path": "src/code-index/indexer.ts",
+          "why": "hashes files for incremental indexing"
+        },
+        {
+          "path": "src/osa/lock.test.ts",
+          "why": "tests of the lock"
+        }
+      ]
+    },
+    {
+      "id": "osa-05",
+      "repo": "osa",
+      "kind": "paraphrase",
+      "query": "make sure the AI coding assistant is actually signed in before we start work",
+      "expect": [
+        {
+          "path": "src/verify/preflight.ts",
+          "startLine": 342,
+          "endLine": 373
+        },
+        {
+          "path": "src/verify/preflight.ts",
+          "startLine": 400,
+          "endLine": 443
+        }
+      ],
+      "answer": "checkProviderAuth(id) in src/verify/preflight.ts observes (never establishes) a provider CLI's credential state -- `claude auth status`, `codex login status`, or Antigravity settings/OAuth creds -- returning authenticated, unauthenticated or indeterminate; buildProviderPreflightReport turns that into the provider's problems list, and runPreflight requires at least two healthy providers.",
+      "note": "No word of 'auth', 'provider' or 'preflight' appears in the query. Remediation message strings and per-provider parsers in the same file are plausible wrong hits.",
+      "decoys": [
+        {
+          "path": "src/verify/preflight.ts",
+          "why": "AUTH_REMEDIATIONS / INDETERMINATE_AUTH_REMEDIATIONS (lines 375-398): user-facing text, not the check"
+        },
+        {
+          "path": "src/adapters/codex-cli.ts",
+          "why": "preflight() just delegates"
+        },
+        {
+          "path": "src/cli/doctor.ts",
+          "why": "prints the preflight summary to the operator"
+        }
+      ]
+    },
+    {
+      "id": "osa-06",
+      "repo": "osa",
+      "kind": "paraphrase",
+      "query": "make sure nothing sensitive like credentials ends up in the facts the tool remembers across runs",
+      "expect": [
+        {
+          "path": "src/memory/secrets.ts",
+          "startLine": 25,
+          "endLine": 42
+        },
+        {
+          "path": "src/memory/secrets.ts",
+          "startLine": 47,
+          "endLine": 53
+        },
+        {
+          "path": "src/memory/store.ts",
+          "startLine": 96,
+          "endLine": 104
+        }
+      ],
+      "answer": "Every memory fact passes rejectReason (src/memory/store.ts), which rejects empty, multi-line or over-300-character facts and anything findSecret (src/memory/secrets.ts) flags: private key blocks, sk-/pk-/rk- API keys, GitHub/Slack/AWS/Google tokens, JWTs, bearer tokens, password=/token= assignments, credentialed connection strings and long high-entropy strings. Rejected facts are returned and reported, never stored.",
+      "note": "The chat-log module also flags credential-looking text but only warns; trim/protected.ts is about preserving lines, not blocking secrets.",
+      "decoys": [
+        {
+          "path": "src/dispatch/chat-log.ts",
+          "why": "flags sk-/ghp_/xoxb- strings in verbatim chat logs as a warning only; different store"
+        },
+        {
+          "path": "src/trim/protected.ts",
+          "why": "keeps hashes/paths during trimming; unrelated to secret rejection"
+        },
+        {
+          "path": "src/memory/memory.test.ts",
+          "why": "tests"
+        }
+      ]
+    },
+    {
+      "id": "osa-07",
+      "repo": "osa",
+      "kind": "concept",
+      "query": "how does the local code search rank its results?",
+      "expect": [
+        {
+          "path": "src/code-index/search.ts",
+          "startLine": 71,
+          "endLine": 101
+        },
+        {
+          "path": "src/code-index/search.ts",
+          "startLine": 45,
+          "endLine": 47
+        },
+        {
+          "path": "src/code-index/tokenize.ts",
+          "startLine": 91,
+          "endLine": 122
+        }
+      ],
+      "answer": "searchIndex embeds the query as a hashed sparse TF-IDF vector (queryVector adds related concept words such as login/authenticate for 'sign in' at weight 0.4), scores each stored chunk by cosine similarity with IDF recomputed from stored document frequencies, adds small boosts for query words in the chunk's symbol name (+0.12 each, capped 0.36) and path (+0.05 each, capped 0.15), sorts and returns the top k (default 8).",
+      "note": "The design concept spans search.ts (scoring) and tokenize.ts (vectors, concept expansion); chunker.ts and store.ts are about indexing, and docs/README mention the feature only in prose.",
+      "decoys": [
+        {
+          "path": "src/code-index/chunker.ts",
+          "why": "how files are split into chunks, not how results are ranked"
+        },
+        {
+          "path": "src/code-index/store.ts",
+          "why": "on-disk index format"
+        },
+        {
+          "path": "src/mcp/tools/code-search.ts",
+          "why": "tool wrapper around searchIndex"
+        },
+        {
+          "path": "README.md",
+          "why": "one-paragraph description of the index; no scoring detail"
+        }
+      ]
+    },
+    {
+      "id": "osa-08",
+      "repo": "osa",
+      "kind": "concept",
+      "query": "how do we make sure the locked PRD, the spec and important lines like file paths and hashes survive when handoff text is shortened?",
+      "expect": [
+        {
+          "path": "src/trim/handoff.ts",
+          "startLine": 11,
+          "endLine": 12
+        },
+        {
+          "path": "src/trim/handoff.ts",
+          "startLine": 50,
+          "endLine": 59
+        },
+        {
+          "path": "src/trim/protected.ts",
+          "startLine": 7,
+          "endLine": 21
+        },
+        {
+          "path": "src/trim/trim1.ts",
+          "startLine": 38,
+          "endLine": 72
+        }
+      ],
+      "answer": "trimHandoff throws InternalError if a part labelled prd/baby-prd/locked-prd/spec/phase-spec/acceptance(-criteria)/context is marked trimmable and passes non-trimmable parts through byte-identical; for trimmable text, restoreProtectedLines re-inserts every line that isProtectedLine matches (hashes, URLs, markdown headings, [uncertain]-style markers, error words, file paths, test result lines) after the engine cuts.",
+      "note": "The guarantee is split across three files; NoopTrimmer and the docs describe trimming but not the protection mechanism.",
+      "decoys": [
+        {
+          "path": "src/trim/trimmer.ts",
+          "why": "ContextTrimmer interface and NoopTrimmer; no protection logic"
+        },
+        {
+          "path": "docs/osa/TRIM1_NOTES.md",
+          "why": "notes on the external trim-1 engine"
+        },
+        {
+          "path": "README.md",
+          "why": "prose summary of the same guarantee"
+        }
+      ]
+    },
+    {
+      "id": "osa-09",
+      "repo": "osa",
+      "kind": "call-path",
+      "query": "what calls buildProviderPreflightReport?",
+      "expect": [
+        {
+          "path": "src/adapters/claude-code.ts",
+          "startLine": 73,
+          "endLine": 75
+        },
+        {
+          "path": "src/adapters/codex-cli.ts",
+          "startLine": 72,
+          "endLine": 74
+        },
+        {
+          "path": "src/adapters/antigravity-cli.ts",
+          "startLine": 64,
+          "endLine": 66
+        },
+        {
+          "path": "src/verify/preflight.ts",
+          "startLine": 469,
+          "endLine": 474
+        }
+      ],
+      "answer": "The preflight() method of each provider adapter (ClaudeCodeAdapter, CodexCliAdapter, AntigravityCliAdapter) calls it with its own provider id, and runPreflight() in src/verify/preflight.ts calls it in a loop over every known provider.",
+      "note": "The definition (preflight.ts lines 400-443) is the obvious keyword hit but is not a caller; the label is the four call sites.",
+      "decoys": [
+        {
+          "path": "src/verify/preflight.ts",
+          "why": "definition of buildProviderPreflightReport (lines 400-443), not a caller"
+        },
+        {
+          "path": "src/adapters/registry.ts",
+          "why": "builds adapters but does not call the function"
+        }
+      ]
+    },
+    {
+      "id": "osa-10",
+      "repo": "osa",
+      "kind": "call-path",
+      "query": "where is searchIndex called from?",
+      "expect": [
+        {
+          "path": "src/cli/index-cmd.ts",
+          "startLine": 35,
+          "endLine": 40
+        },
+        {
+          "path": "src/mcp/tools/code-search.ts",
+          "startLine": 48,
+          "endLine": 56
+        },
+        {
+          "path": "src/osa/pipeline.ts",
+          "startLine": 413,
+          "endLine": 422
+        }
+      ],
+      "answer": "searchIndex is called by runSearchCommand (the `osa search` CLI), runCodeSearch (the code_search MCP tool) and the indexContextFor helper in the OSA pipeline, which hands build agents a ranked 'where to look first' list.",
+      "note": "The definition in src/code-index/search.ts and the test files (index.test.ts, surfaces.test.ts) match the identifier far more densely than the three real call sites.",
+      "decoys": [
+        {
+          "path": "src/code-index/search.ts",
+          "why": "definition of searchIndex, not a caller"
+        },
+        {
+          "path": "src/code-index/index.test.ts",
+          "why": "tests call searchIndex directly"
+        },
+        {
+          "path": "src/code-index/surfaces.test.ts",
+          "why": "tests of the CLI/MCP surfaces"
+        }
+      ]
+    },
+    {
+      "id": "osa-11",
+      "repo": "osa",
+      "kind": "cross-file",
+      "query": "how does a run guarantee the locked PRD is not edited after the lock -- where is it hashed and where is it re-verified?",
+      "expect": [
+        {
+          "path": "src/osa/lock.ts",
+          "startLine": 75,
+          "endLine": 87
+        },
+        {
+          "path": "src/osa/lock.ts",
+          "startLine": 147,
+          "endLine": 176
+        },
+        {
+          "path": "src/osa/pipeline.ts",
+          "startLine": 443,
+          "endLine": 454
+        }
+      ],
+      "answer": "lockNow records the PRD's SHA-256 in runs/<id>/prd.lock.json; assertPrdUnchanged recomputes it and throws PrdLockViolationError (exit 20) on any change or if the file vanished. The pipeline calls it before and after research, after the spec, before and after every build phase (the driver beforePhase/afterPhase hooks) and at the end of the run.",
+      "note": "Needs the hashing side (lock.ts), the verification function (lock.ts) and the call sites (pipeline.ts); the error class in domain/errors.ts and the README row are partial answers.",
+      "decoys": [
+        {
+          "path": "src/domain/errors.ts",
+          "why": "defines PrdLockViolationError and the exit code, not the mechanism"
+        },
+        {
+          "path": "README.md",
+          "why": "prose: 'any later change is a hard failure (exit 20)'"
+        },
+        {
+          "path": "src/util/hash.ts",
+          "why": "generic hash helper"
+        }
+      ]
+    },
+    {
+      "id": "osa-12",
+      "repo": "osa",
+      "kind": "cross-file",
+      "query": "how do the facts from a finished run get saved into project memory, from the end of the pipeline down to the file write?",
+      "expect": [
+        {
+          "path": "src/osa/pipeline.ts",
+          "startLine": 375,
+          "endLine": 400
+        },
+        {
+          "path": "src/memory/derive.ts",
+          "startLine": 62,
+          "endLine": 100
+        },
+        {
+          "path": "src/memory/derive.ts",
+          "startLine": 110,
+          "endLine": 138
+        },
+        {
+          "path": "src/memory/store.ts",
+          "startLine": 112,
+          "endLine": 156
+        }
+      ],
+      "answer": "At every run end the pipeline's recordMemory builds a RunRecord and calls writeRunMemory; deriveFacts turns the record into decision/convention/failure/preference facts (scrubbing run ids and absolute paths); appendFacts per category rejects over-long or secret-looking facts, de-duplicates, caps the file at maxFacts, and atomically rewrites .osa/memory/<category>.md; writeRunMemory then commits .osa/memory unless it is git-ignored and emits memory_written.",
+      "note": "The path crosses pipeline.ts, derive.ts and store.ts; the memory_append MCP tool and the CLI command are different entry points into the same store and are plausible wrong hits.",
+      "decoys": [
+        {
+          "path": "src/mcp/tools/memory.ts",
+          "why": "memory_read/memory_append MCP tools: manual entry points, not the end-of-run write"
+        },
+        {
+          "path": "src/cli/memory-cmd.ts",
+          "why": "operator CLI for memory"
+        },
+        {
+          "path": "src/memory/memory.test.ts",
+          "why": "tests"
+        }
+      ]
+    },
+    {
+      "id": "osa-13",
+      "repo": "osa",
+      "kind": "spec-artifact",
+      "query": "why did every Antigravity call get reported as failed after upgrading the agy CLI to 1.3.x?",
+      "expect": [
+        {
+          "path": "docs/osa/ANTIGRAVITY.md",
+          "startLine": 25,
+          "endLine": 38
+        },
+        {
+          "path": "docs/osa/ANTIGRAVITY.md",
+          "startLine": 40,
+          "endLine": 47
+        }
+      ],
+      "answer": "agy 1.3.x nests the terminal `result` event's fields (status, response, usage...) under a `result` key instead of putting them flat on the event; the adapter's interpretResult read event.status, got undefined and treated a successful call as a failure. The fix is resultPayload(), which merges either shape, used by interpretResult and interpretTextResult.",
+      "note": "The code (adapters/antigravity-cli.ts) contains the fix but not the explanation of why it was needed; the answer is in the markdown write-up.",
+      "decoys": [
+        {
+          "path": "src/adapters/antigravity-cli.ts",
+          "why": "the fixed code; has no root-cause narrative"
+        },
+        {
+          "path": "src/adapters/antigravity-cli.test.ts",
+          "why": "regression test with captured 1.3.3 stream"
+        },
+        {
+          "path": "docs/osa/CONFLICTS.md",
+          "why": "other judgement calls incl. Antigravity web search (C-08)"
+        }
+      ]
+    },
+    {
+      "id": "osa-14",
+      "repo": "osa",
+      "kind": "spec-artifact",
+      "query": "which exit codes does osa add for stopping at the lock, a changed PRD and a failed application check?",
+      "expect": [
+        {
+          "path": "README.md",
+          "startLine": 111,
+          "endLine": 112
+        }
+      ],
+      "answer": "README 'Logs, exit codes': 19 stopped at the lock (risky assumptions, unattended), 20 locked PRD changed, 21 intake failed, 22 cancelled at the lock, 23 a stage's own contract failed, 24 the application check failed.",
+      "note": "src/domain/errors.ts has the same numbers as code constants and ranks highly for 'exit code'; the README holds the plain-language meaning of the whole set in two lines.",
+      "decoys": [
+        {
+          "path": "src/domain/errors.ts",
+          "why": "ExitCode constants (PRD_LOCK_REFUSED: 19 ... APPLICATION_CHECK_FAILED: 24); code, not the explanatory doc"
+        },
+        {
+          "path": "docs/osa/RUN_REPORT.md",
+          "why": "mentions exit 24 once, in passing"
+        }
+      ]
+    },
+    {
+      "id": "hostel-01",
+      "repo": "hostel",
+      "kind": "exact-name",
+      "query": "confirm_retention",
+      "expect": [
+        {
+          "path": "engine/retention.py",
+          "startLine": 10,
+          "endLine": 25
+        }
+      ],
+      "answer": "engine/retention.py confirm_retention(student, now): raises ValueError unless the student is RETURNING, returns the student unchanged if already confirmed with a receipt (idempotent), otherwise returns a validated copy with retention_confirmed=True, retention_confirmed_at=now and a receipt id RET-<HOSTEL>-<first 6 hex of sha256('<id>|<now.isoformat()>')>.",
+      "note": "The name also appears in app/mock.py (a stub with a hard-coded receipt prefix), app/main.py (the call site), the CONTRACT signature and the tests.",
+      "decoys": [
+        {
+          "path": "app/mock.py",
+          "why": "mock confirm_retention stub used when USE_MOCK=1; different receipt format"
+        },
+        {
+          "path": "app/main.py",
+          "why": "UI call site via safe_call"
+        },
+        {
+          "path": "CONTRACT.md",
+          "why": "section 4 signature and docstring, not the implementation"
+        },
+        {
+          "path": "tests/test_engine.py",
+          "why": "tests"
+        }
+      ]
+    },
+    {
+      "id": "hostel-02",
+      "repo": "hostel",
+      "kind": "exact-name",
+      "query": "_snap_to_source",
+      "expect": [
+        {
+          "path": "policy/compile.py",
+          "startLine": 201,
+          "endLine": 215
+        }
+      ],
+      "answer": "_snap_to_source(clause, text) takes a clause the model returned that is not a verbatim substring of the policy, finds the policy sentence with the highest Jaccard word overlap and returns it if the score is at least 0.6, otherwise None (which makes _coerce_clause_list raise _InvalidOutput).",
+      "note": "_coerce_clause_list (its only caller) is just above and mentions the same words; the tests exercise it via compile_policy.",
+      "decoys": [
+        {
+          "path": "policy/compile.py",
+          "why": "_coerce_clause_list (lines 181-198): calls _snap_to_source but is not it"
+        },
+        {
+          "path": "tests/test_policy.py",
+          "why": "test_unmapped_clause_preserved_and_whitespace_snapped exercises it indirectly"
+        }
+      ]
+    },
+    {
+      "id": "hostel-03",
+      "repo": "hostel",
+      "kind": "exact-name",
+      "query": "check_reserved_within_limit",
+      "expect": [
+        {
+          "path": "app/audit.py",
+          "startLine": 37,
+          "endLine": 42
+        }
+      ],
+      "answer": "app/audit.py check_reserved_within_limit(result): computes the base (available beds for vacated_beds, else total beds), limit = min(floor(pct/100*base), available_beds), counts outcomes carrying FRESHER_RESERVED_SEAT, and passes iff used <= limit and summary.reserved_for_freshers == limit; returns (passed, 'N seats used, limit L').",
+      "note": "app/test_app.py references the name dozens of times and app/main.py calls it; the reserved-seat arithmetic is duplicated in engine/allocate.py and app/mock.py.",
+      "decoys": [
+        {
+          "path": "app/test_app.py",
+          "why": "many assertions calling it"
+        },
+        {
+          "path": "engine/allocate.py",
+          "why": "the original reserved computation (lines 38-41), not the audit check"
+        },
+        {
+          "path": "app/mock.py",
+          "why": "_base_and_reserved duplicates the arithmetic for the mock engine"
+        }
+      ]
+    },
+    {
+      "id": "hostel-04",
+      "repo": "hostel",
+      "kind": "paraphrase",
+      "query": "a returning student confirmed their room after the cutoff -- do they keep it?",
+      "expect": [
+        {
+          "path": "engine/allocate.py",
+          "startLine": 185,
+          "endLine": 196
+        },
+        {
+          "path": "engine/allocate.py",
+          "startLine": 199,
+          "endLine": 206
+        }
+      ],
+      "answer": "No. _retained returns True only if a confirmation is on file (or not required) and, when a deadline is set and confirmation is required, retention_confirmed_at <= retention_deadline. A late confirmation fails that test, the room is released, and _retention_loss_code gives them RETENTION_AFTER_DEADLINE (instead of RETENTION_NOT_CONFIRMED) as their first reason code.",
+      "note": "The same rule is re-implemented in app/audit.py (check_retention_honoured) and in app/mock.py, and described in CONTRACT.md section 5; the wording 'cutoff' never appears (the code says deadline).",
+      "decoys": [
+        {
+          "path": "app/audit.py",
+          "why": "check_retention_honoured re-implements the rule for the audit tab"
+        },
+        {
+          "path": "app/mock.py",
+          "why": "mock _retained"
+        },
+        {
+          "path": "CONTRACT.md",
+          "why": "section 5 step 1 states the rule in prose"
+        }
+      ]
+    },
+    {
+      "id": "hostel-05",
+      "repo": "hostel",
+      "kind": "paraphrase",
+      "query": "make sure the AI provider's secret key can never leak into an error message the user sees",
+      "expect": [
+        {
+          "path": "policy/compile.py",
+          "startLine": 282,
+          "endLine": 298
+        }
+      ],
+      "answer": "policy/compile.py _redact replaces the resolved API key with '***'; _safe_error (used by every _fallback) loads the key, redacts it and truncates the message to 500 characters; _api_error applies _redact to API exception text.",
+      "note": "_load_api_key and the .env handling mention the key but only read it; the tests that assert redaction are the wrong kind of hit.",
+      "decoys": [
+        {
+          "path": "policy/compile.py",
+          "why": "_load_api_key (lines 104-112): reads the key, does not protect it"
+        },
+        {
+          "path": "tests/test_policy.py",
+          "why": "test_key_in_exception_message_never_reaches_error and friends assert the behaviour"
+        },
+        {
+          "path": "CONTRACT.md",
+          "why": "section 1 'Never commit the key' is about source control, not error strings"
+        }
+      ]
+    },
+    {
+      "id": "hostel-06",
+      "repo": "hostel",
+      "kind": "paraphrase",
+      "query": "who gets the room first if two students applied at exactly the same time?",
+      "expect": [
+        {
+          "path": "engine/allocate.py",
+          "startLine": 209,
+          "endLine": 213
+        },
+        {
+          "path": "specs/session-a-prd.md",
+          "startLine": 29,
+          "endLine": 29
+        }
+      ],
+      "answer": "Ties are broken by student id: _sort_students sorts by (applied_at, id) ascending, so the earlier application wins and equal timestamps fall back to the lexicographically smaller id; the same order is used for reserved freshers, the general pool and waitlist positions (spec decision D2).",
+      "note": "CONTRACT.md and shared/models.py only say tiebreak = 'applied_at', which suggests a tie is undefined; the (applied_at, id) rule lives in the allocator and the session-A PRD.",
+      "decoys": [
+        {
+          "path": "shared/models.py",
+          "why": "Rules.tiebreak Literal['applied_at'] only"
+        },
+        {
+          "path": "CONTRACT.md",
+          "why": "section 3/5 mention tiebreak without the id secondary key"
+        },
+        {
+          "path": "app/mock.py",
+          "why": "mock allocator has its own ordering"
+        }
+      ]
+    },
+    {
+      "id": "hostel-07",
+      "repo": "hostel",
+      "kind": "concept",
+      "query": "how do we generate the human-readable reason a student sees for their outcome without calling the LLM?",
+      "expect": [
+        {
+          "path": "engine/explain.py",
+          "startLine": 19,
+          "endLine": 29
+        },
+        {
+          "path": "engine/explain.py",
+          "startLine": 40,
+          "endLine": 67
+        },
+        {
+          "path": "engine/allocate.py",
+          "startLine": 286,
+          "endLine": 311
+        }
+      ],
+      "answer": "engine/explain.py holds a fixed TEMPLATES dict keyed by reason code; explain_code fills placeholders from a context dict that allocate._outcome builds from the run (room, deadline, reserved, pct, base, general, pos, applied_at...), with special sentence variants for RETAINED_CONFIRMED, and build_explanation joins the sentences for all of an outcome's reason codes. An unknown code raises ValueError. No model is involved.",
+      "note": "policy/ and its prompts are the only LLM code but are about rules, not explanations; app/mock.py hand-writes explanation strings, and CONTRACT.md lists the template wording.",
+      "decoys": [
+        {
+          "path": "app/mock.py",
+          "why": "hard-coded explanation strings for mock data"
+        },
+        {
+          "path": "CONTRACT.md",
+          "why": "section 5 lists the template wording (spec), not the implementation"
+        },
+        {
+          "path": "policy/prompts.py",
+          "why": "LLM prompts for the policy compiler"
+        }
+      ]
+    },
+    {
+      "id": "hostel-08",
+      "repo": "hostel",
+      "kind": "concept",
+      "query": "how does the policy compiler stay safe when the AI call fails, the key is missing, or the input is garbage?",
+      "expect": [
+        {
+          "path": "policy/compile.py",
+          "startLine": 37,
+          "endLine": 52
+        },
+        {
+          "path": "policy/compile.py",
+          "startLine": 94,
+          "endLine": 101
+        },
+        {
+          "path": "policy/compile.py",
+          "startLine": 242,
+          "endLine": 267
+        }
+      ],
+      "answer": "compile_policy wraps _compile in a catch-all that returns _fallback; _input_guard rejects non-string, empty and over-20,000-character text; a missing ANTHROPIC_API_KEY falls back immediately; API/network errors fall back without retry; invalid model output gets exactly one retry and then falls back. _fallback returns the default rules with used_fallback=True and a redacted error, and has its own nested fallbacks if loading defaults fails.",
+      "note": "Spread across one module; the tests and CONTRACT section 6 describe the same behaviour and are plausible wrong hits.",
+      "decoys": [
+        {
+          "path": "tests/test_policy.py",
+          "why": "tests of never-raises behaviour"
+        },
+        {
+          "path": "CONTRACT.md",
+          "why": "section 6: the requirement, not the code"
+        },
+        {
+          "path": "app/main.py",
+          "why": "UI-level safe_call wrapper is a second, separate safety net"
+        }
+      ]
+    },
+    {
+      "id": "hostel-09",
+      "repo": "hostel",
+      "kind": "call-path",
+      "query": "outside of tests, what calls build_explanation?",
+      "expect": [
+        {
+          "path": "engine/allocate.py",
+          "startLine": 304,
+          "endLine": 311
+        }
+      ],
+      "answer": "Only engine/allocate.py's _outcome helper calls build_explanation(codes, ctx), once per student outcome (allocated, waitlisted and rejected).",
+      "note": "The definition in engine/explain.py and the many test calls rank above the single production call site; the label is the caller only.",
+      "decoys": [
+        {
+          "path": "engine/explain.py",
+          "why": "definition (lines 64-67), not a caller"
+        },
+        {
+          "path": "tests/test_engine.py",
+          "why": "tests call build_explanation directly"
+        },
+        {
+          "path": "app/mock.py",
+          "why": "mock builds explanation strings itself without calling it"
+        }
+      ]
+    },
+    {
+      "id": "hostel-10",
+      "repo": "hostel",
+      "kind": "call-path",
+      "query": "outside of tests, where is check_reserved_within_limit invoked?",
+      "expect": [
+        {
+          "path": "app/main.py",
+          "startLine": 321,
+          "endLine": 328
+        }
+      ],
+      "answer": "app/main.py render_audit_tab calls audit.check_reserved_within_limit(st.session_state.result) and shows the PASS/FAIL box on the Student Affairs audit tab.",
+      "note": "app/test_app.py has dozens of calls and app/audit.py holds the definition; only render_audit_tab is a production caller.",
+      "decoys": [
+        {
+          "path": "app/audit.py",
+          "why": "definition, not a caller"
+        },
+        {
+          "path": "app/test_app.py",
+          "why": "test calls"
+        }
+      ]
+    },
+    {
+      "id": "hostel-11",
+      "repo": "hostel",
+      "kind": "cross-file",
+      "query": "trace what happens from a student clicking 'Confirm I'm keeping my room' until the allocator decides whether they keep the room",
+      "expect": [
+        {
+          "path": "app/main.py",
+          "startLine": 206,
+          "endLine": 215
+        },
+        {
+          "path": "engine/retention.py",
+          "startLine": 10,
+          "endLine": 25
+        },
+        {
+          "path": "engine/allocate.py",
+          "startLine": 185,
+          "endLine": 196
+        }
+      ],
+      "answer": "The Student tab button in app/main.py calls confirm_retention (via safe_call, with a now_like(deadline) timestamp) and stores the updated student in session_state; engine/retention.py returns the student with retention_confirmed, retention_confirmed_at and a RET-... receipt; on the next 'Run allocation', engine/allocate.py _retained keeps the room only if the confirmation exists and was made on or before the deadline.",
+      "note": "Three layers (UI, retention module, allocator); app/mock.py has parallel mock versions of two of them.",
+      "decoys": [
+        {
+          "path": "app/mock.py",
+          "why": "mock confirm_retention and mock allocate used when USE_MOCK=1"
+        },
+        {
+          "path": "app/audit.py",
+          "why": "audits the result afterwards; does not decide retention"
+        },
+        {
+          "path": "shared/store.py",
+          "why": "persists students but is not on this path in the UI (session_state only)"
+        }
+      ]
+    },
+    {
+      "id": "hostel-12",
+      "repo": "hostel",
+      "kind": "cross-file",
+      "query": "how does editing the policy from 40% to 30% change how many beds are reserved for new students?",
+      "expect": [
+        {
+          "path": "app/main.py",
+          "startLine": 283,
+          "endLine": 295
+        },
+        {
+          "path": "policy/compile.py",
+          "startLine": 151,
+          "endLine": 166
+        },
+        {
+          "path": "shared/models.py",
+          "startLine": 43,
+          "endLine": 53
+        },
+        {
+          "path": "engine/allocate.py",
+          "startLine": 38,
+          "endLine": 41
+        }
+      ],
+      "answer": "On the Hostel manager tab, 'Compile policy' calls compile_policy; _validate_payload merges the model's emit_rules output over the default Rules (fresher_reservation_pct becomes 30) and the result is saved in session_state.rules; 'Run allocation' passes those rules to allocate, which computes reserved = min(pct * base // 100, available_beds), so reserved drops from 5 to 4 on the sample data.",
+      "note": "The percentage is a field in shared/models.py, parsed by the compiler, stored by the UI and consumed by the allocator; app/mock.py has a regex-based mock compiler that also parses the percentage.",
+      "decoys": [
+        {
+          "path": "app/mock.py",
+          "why": "mock compile_policy extracts the percent with a regex; only for USE_MOCK=1"
+        },
+        {
+          "path": "policy/prompts.py",
+          "why": "tells the model how to map 'up to X%'; not where the value is validated or applied"
+        },
+        {
+          "path": "data/default_rules.json",
+          "why": "default 40% fixture"
+        }
+      ]
+    },
+    {
+      "id": "hostel-13",
+      "repo": "hostel",
+      "kind": "spec-artifact",
+      "query": "if a returning student's room was released but they still win a general bed, do they get a retention-loss reason code, even though the contract only lists those for the waitlist?",
+      "expect": [
+        {
+          "path": "specs/session-a-prd.md",
+          "startLine": 39,
+          "endLine": 39
+        },
+        {
+          "path": "specs/session-a-prd.md",
+          "startLine": 135,
+          "endLine": 135
+        }
+      ],
+      "answer": "Yes. Session A's PRD decision D5 (and contract conflict C2) attach RETENTION_AFTER_DEADLINE (confirmed after the deadline) or RETENTION_NOT_CONFIRMED as the first reason code to every non-retained returning student with a room, whether they then win a general bed or are waitlisted. The owner approved this extension of CONTRACT step 6 at Gate 1.",
+      "note": "CONTRACT.md lists those two codes only as waitlist reasons (lines 181-185) and is the higher-ranking, but superseded, hit; the code (engine/allocate.py) implements D5 without explaining the deviation.",
+      "decoys": [
+        {
+          "path": "CONTRACT.md",
+          "why": "step 6 lists the codes as waitlist reasons only; the PRD amends this"
+        },
+        {
+          "path": "engine/allocate.py",
+          "why": "implements D5 in code, no rationale"
+        },
+        {
+          "path": "engine/phases/PHASE_2_SPEC.md",
+          "why": "acceptance numbers mention the codes on specific students"
+        }
+      ]
+    },
+    {
+      "id": "hms-01",
+      "repo": "hms",
+      "kind": "exact-name",
+      "query": "compute_divestment_attribution",
+      "expect": [
+        {
+          "path": "mizan/purification/attribution.py",
+          "startLine": 95,
+          "endLine": 160
+        }
+      ],
+      "answer": "compute_divestment_attribution(event, compliance_states, daily_snapshots, con) asserts the compliance record's flip/divest dates match the DivestmentEvent, reads the liquidated quantity from the flip-date DailySnapshot, fetches raw_close at the flip and divest dates, and returns a DivestmentPurificationEntry with purified_amount = max(0, quantity * (price_at_divest - price_at_flip)).",
+      "note": "The caller purify_backtest_result and the PHASE_6 spec/test files mention the name many times; the DivestmentPurificationEntry model above it is not the function.",
+      "decoys": [
+        {
+          "path": "mizan/purification/ledger.py",
+          "why": "purify_backtest_result calls it (lines 355-366); a caller"
+        },
+        {
+          "path": "PHASE_6_SPEC.md",
+          "why": "specification of the function, not the implementation"
+        },
+        {
+          "path": "tests/test_purification_attribution.py",
+          "why": "tests"
+        }
+      ]
+    },
+    {
+      "id": "hms-02",
+      "repo": "hms",
+      "kind": "exact-name",
+      "query": "generate_rebalance_dates",
+      "expect": [
+        {
+          "path": "mizan/backtest/clock.py",
+          "startLine": 115,
+          "endLine": 136
+        }
+      ],
+      "answer": "generate_rebalance_dates(start_date, end_date) returns start_date as the first rebalance followed by the first day of every month in _REBALANCE_MONTHS (January, April, July, October) strictly after start_date and not after end_date.",
+      "note": "run_backtest calls it and the test file test_backtest_clock.py references it heavily; rebalance() in the same file is a different, larger function.",
+      "decoys": [
+        {
+          "path": "mizan/backtest/clock.py",
+          "why": "rebalance() (line 195) and run_backtest() (line 317): same file, different functions"
+        },
+        {
+          "path": "tests/test_backtest_clock.py",
+          "why": "tests"
+        }
+      ]
+    },
+    {
+      "id": "hms-03",
+      "repo": "hms",
+      "kind": "paraphrase",
+      "query": "refuse to run at all if someone has loosened the no-shorting, no-leverage halal ground rules",
+      "expect": [
+        {
+          "path": "mizan/config/boot_check.py",
+          "startLine": 20,
+          "endLine": 54
+        },
+        {
+          "path": "mizan/cli/main.py",
+          "startLine": 53,
+          "endLine": 60
+        }
+      ],
+      "answer": "check_invariants() in mizan/config/boot_check.py raises InvariantViolationError if any Invariants field deviates from its required value (cash_yield 0.0, long_only, fully_funded, no derivatives, no margin, no riba modeling, no LLM in the compliance path); mizan/cli/main.py main() calls check_all() before dispatching any subcommand and exits 1 with 'BOOT FAILED'.",
+      "note": "The words short/leverage/halal point to PRD text and to strategy.py's contract checks; invariants.py defines the constants but enforces nothing.",
+      "decoys": [
+        {
+          "path": "mizan/config/invariants.py",
+          "why": "the constants themselves; enforces nothing"
+        },
+        {
+          "path": "mizan/backtest/strategy.py",
+          "why": "StrategyContractViolationError guards strategy output, not the boot gate"
+        },
+        {
+          "path": "MASTER_PRD.md",
+          "why": "states the invariants in prose"
+        }
+      ]
+    },
+    {
+      "id": "hms-04",
+      "repo": "hms",
+      "kind": "paraphrase",
+      "query": "how do we work out how much of a stock payout has to be given to charity?",
+      "expect": [
+        {
+          "path": "mizan/purification/ledger.py",
+          "startLine": 187,
+          "endLine": 282
+        }
+      ],
+      "answer": "purify_dividend(dividend_event, compliance_state, ...) finds the verdict in force at the ex-date: PURE gives no entry; MIXED re-runs screen() at that verdict's as-of date, reads non_permissible_income_ratio and sets purified_amount = ratio * cash received; NON_COMPLIANT (grace window) uses the ratio from the most recent earlier MIXED observation, or no entry if the prior one was PURE.",
+      "note": "attribution.py is also 'purification' but handles divestment price gains, not dividends; report.py renders the ledger.",
+      "decoys": [
+        {
+          "path": "mizan/purification/attribution.py",
+          "why": "divestment-gain purification, a different mechanic"
+        },
+        {
+          "path": "mizan/reporting/report.py",
+          "why": "render_purification_detail only displays the ledger"
+        },
+        {
+          "path": "mizan/purification/ledger.py",
+          "why": "purify_backtest_result (line 306) loops over dividends but does not compute the ratio"
+        }
+      ]
+    },
+    {
+      "id": "hms-05",
+      "repo": "hms",
+      "kind": "concept",
+      "query": "how does the screening avoid using financial filings that were published after the date being evaluated?",
+      "expect": [
+        {
+          "path": "mizan/screening/verdict.py",
+          "startLine": 162,
+          "endLine": 207
+        },
+        {
+          "path": "mizan/screening/verdict.py",
+          "startLine": 210,
+          "endLine": 266
+        },
+        {
+          "path": "mizan/screening/verdict.py",
+          "startLine": 287,
+          "endLine": 309
+        },
+        {
+          "path": "mizan/core/caveats.py",
+          "startLine": 14,
+          "endLine": 21
+        }
+      ],
+      "answer": "Every figure screen() uses is resolved with a 'filed <= as_of_date' filter (most-recently-filed row per concept): total assets (spot or trailing-12-month average), market cap = latest shares outstanding times raw_close, and per-tag sums for debt, investments, non-permissible income and revenue. It is a declared V1 simplification, not true point-in-time: it does not pin all figures to one filing, so it is stamped on every result as Caveat.LOOK_AHEAD_BIAS.",
+      "note": "financial_ratios.py and business_activity.py never reference 'filed' at all; the answer needs the private helpers in verdict.py plus the caveat that explains the limitation.",
+      "decoys": [
+        {
+          "path": "mizan/screening/financial_ratios.py",
+          "why": "pure arithmetic on already-resolved values; no dates"
+        },
+        {
+          "path": "mizan/data/normalize.py",
+          "why": "loads facts into tables; point-in-time filtering happens later"
+        },
+        {
+          "path": "MASTER_PRD.md",
+          "why": "section 7.1 describes the look-ahead decision in prose"
+        }
+      ]
+    },
+    {
+      "id": "hms-06",
+      "repo": "hms",
+      "kind": "concept",
+      "query": "how are the fiqh judgment calls kept configurable and visibly unratified instead of hard-coded?",
+      "expect": [
+        {
+          "path": "mizan/config/fiqh_params.py",
+          "startLine": 71,
+          "endLine": 108
+        },
+        {
+          "path": "mizan/config/boot_check.py",
+          "startLine": 57,
+          "endLine": 109
+        }
+      ],
+      "answer": "Each judgment call is a FiqhParam (register_id, value, source, primary_source_gap, status defaulting to PENDING_SCHOLARLY_VERIFICATION, configurable) in the FIQH_PARAMS register; check_fiqh_register fails the boot unless there are exactly 11 entries with ids 1..11, non-empty sources, pending status, configurable=True and a primary_source_gap for #1, #2 and #5.",
+      "note": "invariants.py is the opposite concept (hard constants with no knobs) and ranks for 'hard-coded'; MASTER_PRD section 10 is the prose register.",
+      "decoys": [
+        {
+          "path": "mizan/config/invariants.py",
+          "why": "non-configurable permissibility constants, the opposite of the register"
+        },
+        {
+          "path": "MASTER_PRD.md",
+          "why": "section 10 table of the same register in prose"
+        },
+        {
+          "path": "mizan/core/caveats.py",
+          "why": "PENDING_SCHOLARLY_VERIFICATION caveat definition"
+        }
+      ]
+    },
+    {
+      "id": "hms-07",
+      "repo": "hms",
+      "kind": "call-path",
+      "query": "what calls transition() in the compliance state machine?",
+      "expect": [
+        {
+          "path": "mizan/backtest/clock.py",
+          "startLine": 246,
+          "endLine": 265
+        },
+        {
+          "path": "mizan/backtest/clock.py",
+          "startLine": 301,
+          "endLine": 312
+        }
+      ],
+      "answer": "Only rebalance() in mizan/backtest/clock.py calls transition(): once per currently-held ticker with that rebalance's fresh verdict (which can return a DivestmentEvent that triggers liquidation), and once with record=None to seed a ComplianceStateRecord for each newly held ticker.",
+      "note": "The definition in compliance_state.py (lines 114-219) and its docstring/test file match the name; the callers are in a different module.",
+      "decoys": [
+        {
+          "path": "mizan/backtest/compliance_state.py",
+          "why": "definition of transition(), not a caller"
+        },
+        {
+          "path": "tests/test_backtest_compliance_state.py",
+          "why": "tests call it directly"
+        },
+        {
+          "path": "PHASE_5_SPEC.md",
+          "why": "spec text describing the call"
+        }
+      ]
+    },
+    {
+      "id": "hms-08",
+      "repo": "hms",
+      "kind": "call-path",
+      "query": "where is screen() invoked from, outside tests?",
+      "expect": [
+        {
+          "path": "mizan/backtest/clock.py",
+          "startLine": 227,
+          "endLine": 237
+        },
+        {
+          "path": "mizan/purification/ledger.py",
+          "startLine": 163,
+          "endLine": 170
+        },
+        {
+          "path": "mizan/cli/screen.py",
+          "startLine": 93,
+          "endLine": 99
+        }
+      ],
+      "answer": "screen() is called by the `mizan screen` CLI (cli/screen.py run), by rebalance() in backtest/clock.py to re-screen every ticker at each quarterly rebalance, and by _ratio_from_screen in purification/ledger.py to re-derive a non-permissible-income ratio at a pinned as-of date.",
+      "note": "The word 'screen' is everywhere (module names, docs, docstrings); the definition in screening/verdict.py is the loudest hit but not a caller.",
+      "decoys": [
+        {
+          "path": "mizan/screening/verdict.py",
+          "why": "definition of screen() (lines 312-440), not a caller"
+        },
+        {
+          "path": "tests/test_screening_verdict.py",
+          "why": "tests"
+        }
+      ]
+    },
+    {
+      "id": "hms-09",
+      "repo": "hms",
+      "kind": "call-path",
+      "query": "which code runs run_backtest?",
+      "expect": [
+        {
+          "path": "mizan/cli/backtest.py",
+          "startLine": 102,
+          "endLine": 111
+        },
+        {
+          "path": "mizan/cli/report.py",
+          "startLine": 105,
+          "endLine": 114
+        }
+      ],
+      "answer": "run_backtest is called by the `mizan backtest` CLI (cli/backtest.py run) and the `mizan report` CLI (cli/report.py run), each followed by purify_backtest_result; report additionally renders HTML.",
+      "note": "clock.py defines it and many docstrings (ledger.py, report.py, strategy.py) mention it by name without calling it.",
+      "decoys": [
+        {
+          "path": "mizan/backtest/clock.py",
+          "why": "definition of run_backtest (line 317), not a caller"
+        },
+        {
+          "path": "mizan/purification/ledger.py",
+          "why": "docstring mentions run_backtest; it consumes its result"
+        },
+        {
+          "path": "tests/test_cli_backtest.py",
+          "why": "tests"
+        }
+      ]
+    },
+    {
+      "id": "hms-10",
+      "repo": "hms",
+      "kind": "cross-file",
+      "query": "when a held stock flips to non-compliant, how does the system end up selling it and working out what to donate?",
+      "expect": [
+        {
+          "path": "mizan/backtest/clock.py",
+          "startLine": 246,
+          "endLine": 265
+        },
+        {
+          "path": "mizan/backtest/compliance_state.py",
+          "startLine": 174,
+          "endLine": 217
+        },
+        {
+          "path": "mizan/purification/ledger.py",
+          "startLine": 355,
+          "endLine": 366
+        },
+        {
+          "path": "mizan/purification/attribution.py",
+          "startLine": 139,
+          "endLine": 160
+        }
+      ],
+      "answer": "At each quarterly rebalance clock.rebalance re-screens every held ticker and feeds the verdict to compliance_state.transition: a NON_COMPLIANT verdict moves HELD_COMPLIANT to HELD_NONCOMPLIANT_GRACE (grace countdown from fiqh params, default 1 rebalance); when the countdown reaches 0 the record becomes DIVESTED, transition returns a DivestmentEvent and rebalance sells the position at that rebalance's price. Later purify_backtest_result calls compute_divestment_attribution for each divestment event only when purify_capital_gains is on: max(0, quantity * (price_at_divest - price_at_flip)).",
+      "note": "Four modules in two packages; the dividend purification path (purify_dividend) is the more prominent 'purification' code but is a different mechanic. purify_capital_gains defaults to OFF.",
+      "decoys": [
+        {
+          "path": "mizan/purification/ledger.py",
+          "why": "purify_dividend (lines 187-282) is the dividend path, not the divestment path"
+        },
+        {
+          "path": "mizan/backtest/portfolio.py",
+          "why": "apply_allocation/credit_dividend bookkeeping; no state machine"
+        },
+        {
+          "path": "MASTER_PRD.md",
+          "why": "sections 7.3 and 8 describe the mechanic in prose"
+        }
+      ]
+    },
+    {
+      "id": "hms-11",
+      "repo": "hms",
+      "kind": "cross-file",
+      "query": "walk me through how a ticker gets its Pure, Mixed or Non-compliant verdict",
+      "expect": [
+        {
+          "path": "mizan/screening/verdict.py",
+          "startLine": 372,
+          "endLine": 388
+        },
+        {
+          "path": "mizan/screening/business_activity.py",
+          "startLine": 273,
+          "endLine": 356
+        },
+        {
+          "path": "mizan/screening/financial_ratios.py",
+          "startLine": 164,
+          "endLine": 193
+        },
+        {
+          "path": "mizan/screening/verdict.py",
+          "startLine": 411,
+          "endLine": 440
+        }
+      ],
+      "answer": "screen() resolves CIK and SIC from the offline cache and runs classify_business_activity (an override map entry wins, otherwise SIC_TIER_MAP with the tier-0.5/tier-1 toggles); a Layer-1 failure returns NON_COMPLIANT immediately. Otherwise it resolves the denominator and numerators from DuckDB and compute_financial_ratio_screen checks debt/denominator <= 30%, interest investments/denominator <= 30% and non-permissible income/total revenue <= 5%. Any failure is NON_COMPLIANT; all three ratios exactly 0.0 is PURE; otherwise MIXED. Every screen adds a reason-trace entry.",
+      "note": "The verdict enum (core/verdict.py) is three lines and ranks for 'Pure Mixed Non-compliant' but contains no logic; the CLI and report modules display the verdict.",
+      "decoys": [
+        {
+          "path": "mizan/core/verdict.py",
+          "why": "the Verdict enum only"
+        },
+        {
+          "path": "mizan/cli/screen.py",
+          "why": "prints the verdict"
+        },
+        {
+          "path": "MASTER_PRD.md",
+          "why": "section 6.3 verdict taxonomy in prose"
+        }
+      ]
+    },
+    {
+      "id": "hms-12",
+      "repo": "hms",
+      "kind": "spec-artifact",
+      "query": "why does the sandbox give idle cash zero return instead of a risk-free rate?",
+      "expect": [
+        {
+          "path": "MASTER_PRD.md",
+          "startLine": 54,
+          "endLine": 56
+        },
+        {
+          "path": "MASTER_PRD.md",
+          "startLine": 208,
+          "endLine": 208
+        }
+      ],
+      "answer": "MASTER_PRD.md section 2 makes CASH_YIELD = 0.0 an invariant: idle cash earns nothing (no T-bill, money-market or risk-free sweep) because idle-cash yield is riba (interest); the resulting cash drag is considered correct and must be visible in results.",
+      "note": "invariants.py and portfolio.apply_cash_yield implement it but never say why; PHASE_5_SPEC.md mentions the zero yield only as bookkeeping.",
+      "decoys": [
+        {
+          "path": "mizan/config/invariants.py",
+          "why": "cash_yield: float = 0.0 with no rationale"
+        },
+        {
+          "path": "mizan/backtest/portfolio.py",
+          "why": "apply_cash_yield: structural no-op"
+        },
+        {
+          "path": "PHASE_5_SPEC.md",
+          "why": "line 775 notes cash sits idle earning nothing, as a consequence of the invariant, not the reason"
+        }
+      ]
+    },
+    {
+      "id": "hms-13",
+      "repo": "hms",
+      "kind": "spec-artifact",
+      "query": "why isn't there a gambling SIC code in the business-activity map, and where do casino companies get caught?",
+      "expect": [
+        {
+          "path": "docs/modernization_log.md",
+          "startLine": 330,
+          "endLine": 348
+        },
+        {
+          "path": "mizan/screening/business_activity.py",
+          "startLine": 201,
+          "endLine": 212
+        }
+      ],
+      "answer": "SIC 7993 (named as illustrative in PHASE_4_SPEC.md) is not an SEC-assigned code and has no filers, so SIC_TIER_MAP omits it; real casino issuers such as Wynn and Caesars file under SIC 7011 (Hotels & Motels), which is Tier 1, so they are only caught when business_activity_tier_1_enabled is on or via a hand-researched override.",
+      "note": "PHASE_4_SPEC.md still names 7993 (the wrong, superseded claim) and ranks highly for 'gambling SIC'; the correction lives in the modernization log and a code comment.",
+      "decoys": [
+        {
+          "path": "PHASE_4_SPEC.md",
+          "why": "contains the original, incorrect 7993 (gambling) example"
+        },
+        {
+          "path": "COMPREHENSION.md",
+          "why": "mentions the correction in one sentence without the 7011 detail"
+        },
+        {
+          "path": "MASTER_PRD.md",
+          "why": "section 6.1 tier definitions, no SIC codes"
+        }
+      ]
+    }
+  ]
+}

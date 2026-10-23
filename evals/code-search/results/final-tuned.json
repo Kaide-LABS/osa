@@ -1,0 +1,2407 @@
+{
+ "tag": "final-tuned",
+ "at": "2026-10-18T04:56:35.513Z",
+ "k": 5,
+ "runs": [
+  {
+   "label": "cbm-guarded",
+   "base": "cbm-guarded",
+   "tuning": {
+    "weights": {
+     "bm25": 1,
+     "semantic": 0.3,
+     "code": 2.5,
+     "lexical": 1,
+     "trace": 3
+    },
+    "rrfK": 60,
+    "grepWeight": 0.6,
+    "minChannelsHigh": 2,
+    "minChannelsMedium": 2,
+    "minMargin": 0.4,
+    "minCoverage": 0.5,
+    "agreeTopN": 3,
+    "grepTopFiles": 5,
+    "testPenalty": 0.35,
+    "definitionBoost": 1,
+    "docBoost": 1,
+    "docPenalty": 1
+   }
+  }
+ ],
+ "queries": 40,
+ "overall": [
+  {
+   "config": "cbm-guarded",
+   "agg": {
+    "n": 40,
+    "recallFile": 0.475,
+    "recallStrict": 0.4,
+    "mrrFile": 0.38416666666666666,
+    "mrrStrict": 0.3166666666666667,
+    "top1File": 0.325,
+    "wrongTopRate": 0.675,
+    "confidentWrongRate": 0.1,
+    "abstainRate": 0.65,
+    "recallWhenAnswered": 0.7857142857142857,
+    "answeredRate": 0.35,
+    "tokensMean": 642.725,
+    "msMedian": 963
+   }
+  }
+ ],
+ "byKind": {
+  "exact-name": [
+   {
+    "config": "cbm-guarded",
+    "agg": {
+     "n": 8,
+     "recallFile": 1,
+     "recallStrict": 1,
+     "mrrFile": 1,
+     "mrrStrict": 1,
+     "top1File": 1,
+     "wrongTopRate": 0,
+     "confidentWrongRate": 0,
+     "abstainRate": 0,
+     "recallWhenAnswered": 1,
+     "answeredRate": 1,
+     "tokensMean": 706.875,
+     "msMedian": 802.5
+    }
+   }
+  ],
+  "paraphrase": [
+   {
+    "config": "cbm-guarded",
+    "agg": {
+     "n": 8,
+     "recallFile": 0.25,
+     "recallStrict": 0.125,
+     "mrrFile": 0.10416666666666666,
+     "mrrStrict": 0.041666666666666664,
+     "top1File": 0,
+     "wrongTopRate": 1,
+     "confidentWrongRate": 0.125,
+     "abstainRate": 0.875,
+     "recallWhenAnswered": 1,
+     "answeredRate": 0.125,
+     "tokensMean": 561.75,
+     "msMedian": 963
+    }
+   }
+  ],
+  "concept": [
+   {
+    "config": "cbm-guarded",
+    "agg": {
+     "n": 6,
+     "recallFile": 0.16666666666666666,
+     "recallStrict": 0.16666666666666666,
+     "mrrFile": 0.05555555555555555,
+     "mrrStrict": 0.05555555555555555,
+     "top1File": 0,
+     "wrongTopRate": 1,
+     "confidentWrongRate": 0.3333333333333333,
+     "abstainRate": 0.6666666666666666,
+     "recallWhenAnswered": 0,
+     "answeredRate": 0.3333333333333333,
+     "tokensMean": 743.1666666666666,
+     "msMedian": 832
+    }
+   }
+  ],
+  "call-path": [
+   {
+    "config": "cbm-guarded",
+    "agg": {
+     "n": 7,
+     "recallFile": 0.2857142857142857,
+     "recallStrict": 0.2857142857142857,
+     "mrrFile": 0.2857142857142857,
+     "mrrStrict": 0.21428571428571427,
+     "top1File": 0.2857142857142857,
+     "wrongTopRate": 0.7142857142857143,
+     "confidentWrongRate": 0.14285714285714285,
+     "abstainRate": 0.5714285714285714,
+     "recallWhenAnswered": 0.6666666666666666,
+     "answeredRate": 0.42857142857142855,
+     "tokensMean": 623.1428571428571,
+     "msMedian": 859
+    }
+   }
+  ],
+  "cross-file": [
+   {
+    "config": "cbm-guarded",
+    "agg": {
+     "n": 6,
+     "recallFile": 0.3333333333333333,
+     "recallStrict": 0.16666666666666666,
+     "mrrFile": 0.3333333333333333,
+     "mrrStrict": 0.16666666666666666,
+     "top1File": 0.3333333333333333,
+     "wrongTopRate": 0.6666666666666666,
+     "confidentWrongRate": 0,
+     "abstainRate": 1,
+     "recallWhenAnswered": null,
+     "answeredRate": 0,
+     "tokensMean": 631.6666666666666,
+     "msMedian": 1096
+    }
+   }
+  ],
+  "spec-artifact": [
+   {
+    "config": "cbm-guarded",
+    "agg": {
+     "n": 5,
+     "recallFile": 0.8,
+     "recallStrict": 0.6,
+     "mrrFile": 0.44000000000000006,
+     "mrrStrict": 0.3,
+     "top1File": 0.2,
+     "wrongTopRate": 0.8,
+     "confidentWrongRate": 0,
+     "abstainRate": 1,
+     "recallWhenAnswered": null,
+     "answeredRate": 0,
+     "tokensMean": 589.8,
+     "msMedian": 1128
+    }
+   }
+  ]
+ },
+ "byRepo": {
+  "osa": [
+   {
+    "config": "cbm-guarded",
+    "agg": {
+     "n": 14,
+     "recallFile": 0.6428571428571429,
+     "recallStrict": 0.5714285714285714,
+     "mrrFile": 0.5714285714285714,
+     "mrrStrict": 0.4642857142857143,
+     "top1File": 0.5,
+     "wrongTopRate": 0.5,
+     "confidentWrongRate": 0.07142857142857142,
+     "abstainRate": 0.5714285714285714,
+     "recallWhenAnswered": 0.8333333333333334,
+     "answeredRate": 0.42857142857142855,
+     "tokensMean": 531.7142857142857,
+     "msMedian": 1002
+    }
+   }
+  ],
+  "hostel": [
+   {
+    "config": "cbm-guarded",
+    "agg": {
+     "n": 13,
+     "recallFile": 0.38461538461538464,
+     "recallStrict": 0.3076923076923077,
+     "mrrFile": 0.2948717948717949,
+     "mrrStrict": 0.25641025641025644,
+     "top1File": 0.23076923076923078,
+     "wrongTopRate": 0.7692307692307693,
+     "confidentWrongRate": 0.23076923076923078,
+     "abstainRate": 0.5384615384615384,
+     "recallWhenAnswered": 0.6666666666666666,
+     "answeredRate": 0.46153846153846156,
+     "tokensMean": 705.7692307692307,
+     "msMedian": 638
+    }
+   }
+  ],
+  "hms": [
+   {
+    "config": "cbm-guarded",
+    "agg": {
+     "n": 13,
+     "recallFile": 0.38461538461538464,
+     "recallStrict": 0.3076923076923077,
+     "mrrFile": 0.27179487179487183,
+     "mrrStrict": 0.21794871794871795,
+     "top1File": 0.23076923076923078,
+     "wrongTopRate": 0.7692307692307693,
+     "confidentWrongRate": 0,
+     "abstainRate": 0.8461538461538461,
+     "recallWhenAnswered": 1,
+     "answeredRate": 0.15384615384615385,
+     "tokensMean": 699.2307692307693,
+     "msMedian": 1634
+    }
+   }
+  ]
+ },
+ "scores": [
+  {
+   "id": "osa-01",
+   "repo": "osa",
+   "kind": "exact-name",
+   "config": "cbm-guarded",
+   "engine": "cbm",
+   "confidence": "high",
+   "abstained": false,
+   "fileRank": 1,
+   "strictRank": 1,
+   "topFileOk": true,
+   "topStrictOk": true,
+   "confidentWrong": false,
+   "wrongTop": false,
+   "tokens": 530,
+   "ms": 1883,
+   "returned": [
+    "src/research/routing.ts:24-25",
+    "src/research/stage.ts:85-89",
+    "src/agents/lateral-architecture.ts:50-53",
+    "src/dispatch/plan.ts:45-49",
+    "src/osa/pipeline.ts:168-570"
+   ]
+  },
+  {
+   "id": "osa-02",
+   "repo": "osa",
+   "kind": "exact-name",
+   "config": "cbm-guarded",
+   "engine": "cbm",
+   "confidence": "high",
+   "abstained": false,
+   "fileRank": 1,
+   "strictRank": 1,
+   "topFileOk": true,
+   "topStrictOk": true,
+   "confidentWrong": false,
+   "wrongTop": false,
+   "tokens": 365,
+   "ms": 784,
+   "returned": [
+    "src/verify/commits.ts:57-58",
+    "OSA-PRD.md:576-577",
+    "src/dispatch/turn.ts:267-273",
+    "src/dispatch/turn.ts:86-104",
+    "src/dispatch/artifacts.ts:89-94"
+   ]
+  },
+  {
+   "id": "osa-03",
+   "repo": "osa",
+   "kind": "exact-name",
+   "config": "cbm-guarded",
+   "engine": "cbm",
+   "confidence": "high",
+   "abstained": false,
+   "fileRank": 1,
+   "strictRank": 1,
+   "topFileOk": true,
+   "topStrictOk": true,
+   "confidentWrong": false,
+   "wrongTop": false,
+   "tokens": 514,
+   "ms": 821,
+   "returned": [
+    "src/verify/preflight.ts:234-237",
+    "src/verify/preflight.ts:346-346",
+    "PHASE_11_SPEC.md:383-401",
+    "docs/modernization_log.md:499-527",
+    "src/adapters/codex-cli.ts:211-212"
+   ]
+  },
+  {
+   "id": "osa-04",
+   "repo": "osa",
+   "kind": "paraphrase",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": false,
+   "wrongTop": true,
+   "tokens": 292,
+   "ms": 1037,
+   "returned": [
+    "src/code-index/index.test.ts:16-18",
+    "src/code-index/tokenize.ts:78-79",
+    "src/util/hash.ts:10-14",
+    ".claude/loopr/baby_prd.md:1-1",
+    "OSA-PRD.md:532-554"
+   ]
+  },
+  {
+   "id": "osa-05",
+   "repo": "osa",
+   "kind": "paraphrase",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": false,
+   "wrongTop": true,
+   "tokens": 419,
+   "ms": 985,
+   "returned": [
+    "src/dispatch/driver-state.ts:89-89",
+    "src/code-index/tokenize.ts:1-53",
+    "src/osa/terminal.ts:25-26",
+    "src/dispatch/driver-state.ts:40-47",
+    "docs/osa/CURRENT_STATE.md:123-127"
+   ]
+  },
+  {
+   "id": "osa-06",
+   "repo": "osa",
+   "kind": "paraphrase",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": false,
+   "wrongTop": true,
+   "tokens": 765,
+   "ms": 941,
+   "returned": [
+    "src/mcp/tools/run.ts:61-77",
+    "src/mcp/tools/run.ts:36-48",
+    "PHASE_11_SPEC.md:1015-1025",
+    "docs/osa/CONFLICTS.md:265-312",
+    "src/mcp/tools/run.ts:49-60"
+   ]
+  },
+  {
+   "id": "osa-07",
+   "repo": "osa",
+   "kind": "concept",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": false,
+   "wrongTop": true,
+   "tokens": 665,
+   "ms": 1019,
+   "returned": [
+    "src/mcp/tools/code-search.ts:40-47",
+    "src/mcp/tools/code-search.ts:59-62",
+    "src/mcp/tools/code-search.ts:24-39",
+    "src/mcp/tools/code-search.ts:48-58",
+    ".claude/agents/loopr-step14.md:72-94"
+   ]
+  },
+  {
+   "id": "osa-08",
+   "repo": "osa",
+   "kind": "concept",
+   "config": "cbm-guarded",
+   "engine": "cbm",
+   "confidence": "high",
+   "abstained": false,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 909,
+   "ms": 645,
+   "returned": [
+    "src/util/paths.ts:78-88",
+    "OSA-PRD.md:2450-2461",
+    "src/osa/lock.ts:151-176",
+    "src/osa/pipeline.ts:168-570",
+    "src/osa/pipeline.ts:615-654"
+   ]
+  },
+  {
+   "id": "osa-09",
+   "repo": "osa",
+   "kind": "call-path",
+   "config": "cbm-guarded",
+   "engine": "cbm",
+   "confidence": "high",
+   "abstained": false,
+   "fileRank": 1,
+   "strictRank": 2,
+   "topFileOk": true,
+   "topStrictOk": false,
+   "confidentWrong": false,
+   "wrongTop": false,
+   "tokens": 351,
+   "ms": 859,
+   "returned": [
+    "src/verify/preflight.ts:449-453",
+    "src/adapters/claude-code.ts:73-75",
+    "src/adapters/codex-cli.ts:72-74",
+    "src/adapters/antigravity-cli.ts:64-66",
+    "src/verify/preflight.ts:409-420"
+   ]
+  },
+  {
+   "id": "osa-10",
+   "repo": "osa",
+   "kind": "call-path",
+   "config": "cbm-guarded",
+   "engine": "cbm",
+   "confidence": "high",
+   "abstained": false,
+   "fileRank": 1,
+   "strictRank": 1,
+   "topFileOk": true,
+   "topStrictOk": true,
+   "confidentWrong": false,
+   "wrongTop": false,
+   "tokens": 674,
+   "ms": 815,
+   "returned": [
+    "src/osa/pipeline.ts:413-422",
+    "src/cli/index-cmd.ts:35-40",
+    "src/mcp/tools/code-search.ts:48-56",
+    "src/code-index/search.ts:71-78",
+    "src/code-index/search.ts:109-122"
+   ]
+  },
+  {
+   "id": "osa-11",
+   "repo": "osa",
+   "kind": "cross-file",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "fileRank": 1,
+   "strictRank": null,
+   "topFileOk": true,
+   "topStrictOk": false,
+   "confidentWrong": false,
+   "wrongTop": false,
+   "tokens": 328,
+   "ms": 1159,
+   "returned": [
+    "src/osa/lock.ts:36-38",
+    "src/osa/lock.ts:39-43",
+    "src/osa/lock.ts:98-99",
+    "OSA-PRD.md:532-554",
+    "src/util/lock.ts:225-227"
+   ]
+  },
+  {
+   "id": "osa-12",
+   "repo": "osa",
+   "kind": "cross-file",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "fileRank": 1,
+   "strictRank": 1,
+   "topFileOk": true,
+   "topStrictOk": true,
+   "confidentWrong": false,
+   "wrongTop": false,
+   "tokens": 574,
+   "ms": 1033,
+   "returned": [
+    "src/memory/derive.ts:115-117",
+    "src/cli/memory-cmd.ts:13-17",
+    "src/mcp/tools/memory.ts:56-59",
+    "src/memory/derive.ts:103-114",
+    "docs/osa/CURRENT_STATE.md:42-75"
+   ]
+  },
+  {
+   "id": "osa-13",
+   "repo": "osa",
+   "kind": "spec-artifact",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "fileRank": 2,
+   "strictRank": 2,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": false,
+   "wrongTop": true,
+   "tokens": 722,
+   "ms": 1037,
+   "returned": [
+    "src/adapters/antigravity-cli.ts:59-62",
+    "docs/osa/ANTIGRAVITY.md:40-47",
+    "OSA-PRD.md:3102-3124",
+    "PHASE_11_SPEC.md:403-425",
+    "PHASE_11_SPEC.md:520-592"
+   ]
+  },
+  {
+   "id": "osa-14",
+   "repo": "osa",
+   "kind": "spec-artifact",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "fileRank": 2,
+   "strictRank": 2,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": false,
+   "wrongTop": true,
+   "tokens": 336,
+   "ms": 1128,
+   "returned": [
+    "src/osa/lock.ts:64-67",
+    "README.md:106-112",
+    "src/osa/lock.ts:36-38",
+    "src/osa/lock.ts:39-43",
+    "src/osa/lock.ts:98-99"
+   ]
+  },
+  {
+   "id": "hostel-01",
+   "repo": "hostel",
+   "kind": "exact-name",
+   "config": "cbm-guarded",
+   "engine": "cbm",
+   "confidence": "high",
+   "abstained": false,
+   "fileRank": 1,
+   "strictRank": 1,
+   "topFileOk": true,
+   "topStrictOk": true,
+   "confidentWrong": false,
+   "wrongTop": false,
+   "tokens": 780,
+   "ms": 464,
+   "returned": [
+    "engine/retention.py:10-25",
+    "app/mock.py:233-237",
+    "app/audit.py:9-34",
+    "app/mock.py:124-208",
+    "engine/explain.py:40-61"
+   ]
+  },
+  {
+   "id": "hostel-02",
+   "repo": "hostel",
+   "kind": "exact-name",
+   "config": "cbm-guarded",
+   "engine": "cbm",
+   "confidence": "high",
+   "abstained": false,
+   "fileRank": 1,
+   "strictRank": 1,
+   "topFileOk": true,
+   "topStrictOk": true,
+   "confidentWrong": false,
+   "wrongTop": false,
+   "tokens": 972,
+   "ms": 481,
+   "returned": [
+    "policy/compile.py:201-215",
+    "policy/compile.py:181-198",
+    "policy/compile.py:242-267",
+    "policy/AUDIT.md:5-21",
+    "policy/compile.py:151-166"
+   ]
+  },
+  {
+   "id": "hostel-03",
+   "repo": "hostel",
+   "kind": "exact-name",
+   "config": "cbm-guarded",
+   "engine": "cbm",
+   "confidence": "high",
+   "abstained": false,
+   "fileRank": 1,
+   "strictRank": 1,
+   "topFileOk": true,
+   "topStrictOk": true,
+   "confidentWrong": false,
+   "wrongTop": false,
+   "tokens": 716,
+   "ms": 404,
+   "returned": [
+    "app/audit.py:37-42",
+    "app/main.py:321-328",
+    "app/audit.py:9-34",
+    "app/view.py:78-83",
+    "engine/allocate.py:18-163"
+   ]
+  },
+  {
+   "id": "hostel-04",
+   "repo": "hostel",
+   "kind": "paraphrase",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": false,
+   "wrongTop": true,
+   "tokens": 694,
+   "ms": 705,
+   "returned": [
+    "app/test_app.py:126-136",
+    "app/test_app.py:139-157",
+    "tests/test_engine.py:152-159",
+    "tests/test_engine.py:506-530",
+    "app/test_app.py:588-596"
+   ]
+  },
+  {
+   "id": "hostel-05",
+   "repo": "hostel",
+   "kind": "paraphrase",
+   "config": "cbm-guarded",
+   "engine": "cbm",
+   "confidence": "high",
+   "abstained": false,
+   "fileRank": 3,
+   "strictRank": 3,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 325,
+   "ms": 449,
+   "returned": [
+    "policy/prompts.py:50-51",
+    "policy/prompts.py:54-61",
+    "policy/compile.py:288-294",
+    "policy/compile.py:270-279",
+    "policy/compile.py:87-91"
+   ]
+  },
+  {
+   "id": "hostel-06",
+   "repo": "hostel",
+   "kind": "paraphrase",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "fileRank": 2,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": false,
+   "wrongTop": true,
+   "tokens": 692,
+   "ms": 749,
+   "returned": [
+    "tests/test_engine.py:463-487",
+    "engine/allocate.py:264-270",
+    "specs/session-c-prd.md:139-146",
+    "tests/test_engine.py:601-621",
+    "shared/models.py:17-27"
+   ]
+  },
+  {
+   "id": "hostel-07",
+   "repo": "hostel",
+   "kind": "concept",
+   "config": "cbm-guarded",
+   "engine": "cbm",
+   "confidence": "high",
+   "abstained": false,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 1081,
+   "ms": 382,
+   "returned": [
+    "CONTRACT.md:5-6",
+    "shared/models.py:70-76",
+    "engine/phases/PHASE_2_SPEC.md:1-61",
+    "app/view.py:116-118",
+    "app/.loopr/PHASE_2_SPEC.md:1-57"
+   ]
+  },
+  {
+   "id": "hostel-08",
+   "repo": "hostel",
+   "kind": "concept",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": false,
+   "wrongTop": true,
+   "tokens": 378,
+   "ms": 638,
+   "returned": [
+    "tests/test_policy.py:229-232",
+    "tests/test_policy.py:221-228",
+    "app/test_app.py:126-136",
+    "app/main.py:87-93",
+    "app/test_app.py:337-339"
+   ]
+  },
+  {
+   "id": "hostel-09",
+   "repo": "hostel",
+   "kind": "call-path",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": false,
+   "wrongTop": true,
+   "tokens": 471,
+   "ms": 741,
+   "returned": [
+    "CONTRACT.md:5-7",
+    "engine/explain.py:64-67",
+    "tests/test_policy.py:229-232",
+    "tests/test_policy.py:122-140",
+    "app/test_app.py:337-339"
+   ]
+  },
+  {
+   "id": "hostel-10",
+   "repo": "hostel",
+   "kind": "call-path",
+   "config": "cbm-guarded",
+   "engine": "cbm",
+   "confidence": "high",
+   "abstained": false,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 835,
+   "ms": 493,
+   "returned": [
+    "app/audit.py:37-42",
+    "app/test_app.py:407-413",
+    "app/test_app.py:46-58",
+    "app/test_app.py:78-84",
+    "app/test_app.py:556-566"
+   ]
+  },
+  {
+   "id": "hostel-11",
+   "repo": "hostel",
+   "kind": "cross-file",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": false,
+   "wrongTop": true,
+   "tokens": 713,
+   "ms": 733,
+   "returned": [
+    "app/test_app.py:126-136",
+    "tests/test_engine.py:152-159",
+    "tests/test_engine.py:162-177",
+    "specs/session-c-prd.md:11-23",
+    "specs/session-c-prd.md:110-119"
+   ]
+  },
+  {
+   "id": "hostel-12",
+   "repo": "hostel",
+   "kind": "cross-file",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": false,
+   "wrongTop": true,
+   "tokens": 769,
+   "ms": 711,
+   "returned": [
+    "app/test_app.py:556-566",
+    "app/test_app.py:322-334",
+    "app/test_app.py:78-84",
+    "tests/test_engine.py:306-318",
+    "specs/session-a-prd.md:85-93"
+   ]
+  },
+  {
+   "id": "hostel-13",
+   "repo": "hostel",
+   "kind": "spec-artifact",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": false,
+   "wrongTop": true,
+   "tokens": 749,
+   "ms": 772,
+   "returned": [
+    "engine/allocate.py:199-206",
+    "tests/test_engine.py:506-530",
+    "tests/test_engine.py:19-52",
+    "tests/test_engine.py:463-487",
+    "app/test_app.py:139-157"
+   ]
+  },
+  {
+   "id": "hms-01",
+   "repo": "hms",
+   "kind": "exact-name",
+   "config": "cbm-guarded",
+   "engine": "cbm",
+   "confidence": "high",
+   "abstained": false,
+   "fileRank": 1,
+   "strictRank": 1,
+   "topFileOk": true,
+   "topStrictOk": true,
+   "confidentWrong": false,
+   "wrongTop": false,
+   "tokens": 977,
+   "ms": 1139,
+   "returned": [
+    "mizan/purification/attribution.py:95-160",
+    "mizan/purification/ledger.py:306-382",
+    "mizan/purification/ledger.py:285-303",
+    "mizan/screening/financial_ratios.py:149-161",
+    "mizan/purification/ledger.py:69-114"
+   ]
+  },
+  {
+   "id": "hms-02",
+   "repo": "hms",
+   "kind": "exact-name",
+   "config": "cbm-guarded",
+   "engine": "cbm",
+   "confidence": "high",
+   "abstained": false,
+   "fileRank": 1,
+   "strictRank": 1,
+   "topFileOk": true,
+   "topStrictOk": true,
+   "confidentWrong": false,
+   "wrongTop": false,
+   "tokens": 801,
+   "ms": 897,
+   "returned": [
+    "mizan/backtest/clock.py:115-136",
+    "mizan/backtest/clock.py:317-376",
+    "mizan/backtest/compliance_state.py:114-219",
+    "mizan/purification/ledger.py:117-130",
+    "mizan/purification/ledger.py:133-147"
+   ]
+  },
+  {
+   "id": "hms-03",
+   "repo": "hms",
+   "kind": "paraphrase",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": false,
+   "wrongTop": true,
+   "tokens": 694,
+   "ms": 1750,
+   "returned": [
+    "tests/test_backtest_portfolio.py:157-160",
+    "tests/test_cli_ingest.py:301-315",
+    "tests/test_screening_verdict.py:435-449",
+    "BUILD_COMPLETE.md:78-131",
+    "tests/test_cli_report.py:514-547"
+   ]
+  },
+  {
+   "id": "hms-04",
+   "repo": "hms",
+   "kind": "paraphrase",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": false,
+   "wrongTop": true,
+   "tokens": 613,
+   "ms": 1933,
+   "returned": [
+    "tests/test_screening_business_activity.py:380-384",
+    ".claude/agents/loopr-step12.md:147-150",
+    "PHASE_6_SPEC.md:612-654",
+    ".claude/agents/loopr-step12.md:82-86",
+    "COMPREHENSION.md:62-121"
+   ]
+  },
+  {
+   "id": "hms-05",
+   "repo": "hms",
+   "kind": "concept",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": false,
+   "wrongTop": true,
+   "tokens": 754,
+   "ms": 1685,
+   "returned": [
+    "mizan/screening/financial_ratios.py:75-83",
+    "tests/test_screening_financial_ratios.py:137-154",
+    "tests/test_screening_financial_ratios.py:108-119",
+    "tests/test_screening_financial_ratios.py:122-134",
+    "mizan/screening/financial_ratios.py:164-193"
+   ]
+  },
+  {
+   "id": "hms-06",
+   "repo": "hms",
+   "kind": "concept",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "fileRank": 3,
+   "strictRank": 3,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": false,
+   "wrongTop": true,
+   "tokens": 672,
+   "ms": 1639,
+   "returned": [
+    "MASTER_PRD.md:342-364",
+    "tests/test_fiqh_params.py:178-189",
+    "mizan/config/fiqh_params.py:71-114",
+    "mizan/config/fiqh_params.py:117-176",
+    "tests/test_fiqh_params.py:22-25"
+   ]
+  },
+  {
+   "id": "hms-07",
+   "repo": "hms",
+   "kind": "call-path",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": false,
+   "wrongTop": true,
+   "tokens": 717,
+   "ms": 1634,
+   "returned": [
+    "tests/test_backtest_compliance_state.py:235-245",
+    "mizan/backtest/compliance_state.py:58-83",
+    "PHASE_5_SPEC.md:312-371",
+    "mizan/backtest/compliance_state.py:38-46",
+    "MASTER_PRD.md:226-249"
+   ]
+  },
+  {
+   "id": "hms-08",
+   "repo": "hms",
+   "kind": "call-path",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": false,
+   "wrongTop": true,
+   "tokens": 692,
+   "ms": 1680,
+   "returned": [
+    "tests/test_cli_screen.py:139-142",
+    "tests/test_screening_financial_ratios.py:122-134",
+    "tests/test_screening_verdict.py:594-610",
+    "tests/test_screening_verdict.py:613-622",
+    "tests/test_screening_verdict.py:625-636"
+   ]
+  },
+  {
+   "id": "hms-09",
+   "repo": "hms",
+   "kind": "call-path",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": false,
+   "wrongTop": true,
+   "tokens": 622,
+   "ms": 1645,
+   "returned": [
+    "tests/test_cli_backtest.py:486-496",
+    "tests/test_cli_backtest.py:425-434",
+    "tests/test_cli_backtest.py:444-453",
+    "tests/test_cli_report.py:335-346",
+    "tests/test_cli_backtest.py:399-415"
+   ]
+  },
+  {
+   "id": "hms-10",
+   "repo": "hms",
+   "kind": "cross-file",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": false,
+   "wrongTop": true,
+   "tokens": 771,
+   "ms": 1610,
+   "returned": [
+    "tests/test_backtest_compliance_state.py:85-98",
+    "PHASE_5_SPEC.md:866-886",
+    "tests/test_backtest_compliance_state.py:59-69",
+    "PHASE_5_SPEC.md:1023-1070",
+    "tests/test_backtest_compliance_state.py:72-82"
+   ]
+  },
+  {
+   "id": "hms-11",
+   "repo": "hms",
+   "kind": "cross-file",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": false,
+   "wrongTop": true,
+   "tokens": 635,
+   "ms": 1609,
+   "returned": [
+    "tests/test_backtest_compliance_state.py:72-82",
+    "tests/test_backtest_compliance_state.py:59-69",
+    "tests/test_screening_verdict.py:168-174",
+    "tests/test_screening_verdict.py:144-152",
+    "tests/test_screening_verdict.py:155-165"
+   ]
+  },
+  {
+   "id": "hms-12",
+   "repo": "hms",
+   "kind": "spec-artifact",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "fileRank": 5,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": false,
+   "wrongTop": true,
+   "tokens": 491,
+   "ms": 1580,
+   "returned": [
+    "tests/test_backtest_portfolio.py:84-91",
+    "tests/test_backtest_portfolio.py:49-50",
+    "tests/test_backtest_portfolio.py:72-75",
+    "tests/test_backtest_portfolio.py:217-222",
+    "MASTER_PRD.md:114-127"
+   ]
+  },
+  {
+   "id": "hms-13",
+   "repo": "hms",
+   "kind": "spec-artifact",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "fileRank": 1,
+   "strictRank": 2,
+   "topFileOk": true,
+   "topStrictOk": false,
+   "confidentWrong": false,
+   "wrongTop": false,
+   "tokens": 651,
+   "ms": 1629,
+   "returned": [
+    "mizan/screening/business_activity.py:127-136",
+    "docs/modernization_log.md:330-350",
+    "mizan/screening/business_activity.py:139-146",
+    "PHASE_4_SPEC.md:271-346",
+    "tests/test_screening_business_activity.py:54-58"
+   ]
+  }
+ ],
+ "details": [
+  {
+   "id": "osa-01",
+   "config": "cbm-guarded",
+   "engine": "cbm",
+   "confidence": "high",
+   "abstained": false,
+   "reason": "High confidence: bm25 + code + lexical agree and the query's words point at the same place.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": true,
+    "symbolAgrees": true,
+    "pathAgrees": true,
+    "channels": 3,
+    "channelNames": [
+     "bm25",
+     "code",
+     "lexical"
+    ],
+    "margin": 0.2216562613318649,
+    "consistent": true
+   },
+   "returned": [
+    "src/research/routing.ts:24-25",
+    "src/research/stage.ts:85-89",
+    "src/agents/lateral-architecture.ts:50-53",
+    "src/dispatch/plan.ts:45-49",
+    "src/osa/pipeline.ts:168-570"
+   ],
+   "fileRank": 1,
+   "strictRank": 1,
+   "ms": 1883
+  },
+  {
+   "id": "osa-02",
+   "config": "cbm-guarded",
+   "engine": "cbm",
+   "confidence": "high",
+   "abstained": false,
+   "reason": "High confidence: bm25 + semantic + code + lexical agree and the query's words point at the same place.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": false,
+    "symbolAgrees": true,
+    "pathAgrees": true,
+    "channels": 4,
+    "channelNames": [
+     "bm25",
+     "semantic",
+     "code",
+     "lexical"
+    ],
+    "margin": 0.1457535048798407,
+    "consistent": true
+   },
+   "returned": [
+    "src/verify/commits.ts:57-58",
+    "OSA-PRD.md:576-577",
+    "src/dispatch/turn.ts:267-273",
+    "src/dispatch/turn.ts:86-104",
+    "src/dispatch/artifacts.ts:89-94"
+   ],
+   "fileRank": 1,
+   "strictRank": 1,
+   "ms": 784
+  },
+  {
+   "id": "osa-03",
+   "config": "cbm-guarded",
+   "engine": "cbm",
+   "confidence": "high",
+   "abstained": false,
+   "reason": "High confidence: bm25 + lexical agree and the query's words point at the same place.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": true,
+    "symbolAgrees": true,
+    "pathAgrees": false,
+    "channels": 2,
+    "channelNames": [
+     "bm25",
+     "lexical"
+    ],
+    "margin": 0.15693493464747366,
+    "consistent": true
+   },
+   "returned": [
+    "src/verify/preflight.ts:234-237",
+    "src/verify/preflight.ts:346-346",
+    "PHASE_11_SPEC.md:383-401",
+    "docs/modernization_log.md:499-527",
+    "src/adapters/codex-cli.ts:211-212"
+   ],
+   "fileRank": 1,
+   "strictRank": 1,
+   "ms": 821
+  },
+  {
+   "id": "osa-04",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "reason": "Low confidence: only 1 independent channel(s) agree and the lead over the runner-up is thin. -- answered by OSA's local index instead; verify with grep.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": false,
+    "symbolAgrees": true,
+    "pathAgrees": true,
+    "channels": 1,
+    "channelNames": [
+     "code"
+    ],
+    "margin": 0.02188310843416272,
+    "consistent": true
+   },
+   "returned": [
+    "src/code-index/index.test.ts:16-18",
+    "src/code-index/tokenize.ts:78-79",
+    "src/util/hash.ts:10-14",
+    ".claude/loopr/baby_prd.md:1-1",
+    "OSA-PRD.md:532-554"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 1037
+  },
+  {
+   "id": "osa-05",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "reason": "Low confidence: only 0 independent channel(s) agree and the lead over the runner-up is thin. -- answered by OSA's local index instead; verify with grep.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": true,
+    "symbolAgrees": false,
+    "pathAgrees": false,
+    "channels": 0,
+    "channelNames": [],
+    "margin": 0.03769243841336074,
+    "consistent": true
+   },
+   "returned": [
+    "src/dispatch/driver-state.ts:89-89",
+    "src/code-index/tokenize.ts:1-53",
+    "src/osa/terminal.ts:25-26",
+    "src/dispatch/driver-state.ts:40-47",
+    "docs/osa/CURRENT_STATE.md:123-127"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 985
+  },
+  {
+   "id": "osa-06",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "reason": "Low confidence: only 1 independent channel(s) agree and the lead over the runner-up is thin. -- answered by OSA's local index instead; verify with grep.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": true,
+    "symbolAgrees": true,
+    "pathAgrees": false,
+    "channels": 1,
+    "channelNames": [
+     "lexical"
+    ],
+    "margin": 0.03307524695841452,
+    "consistent": true
+   },
+   "returned": [
+    "src/mcp/tools/run.ts:61-77",
+    "src/mcp/tools/run.ts:36-48",
+    "PHASE_11_SPEC.md:1015-1025",
+    "docs/osa/CONFLICTS.md:265-312",
+    "src/mcp/tools/run.ts:49-60"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 941
+  },
+  {
+   "id": "osa-07",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "reason": "Low confidence: only 1 independent channel(s) agree and the lead over the runner-up is thin. -- answered by OSA's local index instead; verify with grep.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": false,
+    "symbolAgrees": true,
+    "pathAgrees": true,
+    "channels": 1,
+    "channelNames": [
+     "code"
+    ],
+    "margin": 0.07491265273892443,
+    "consistent": true
+   },
+   "returned": [
+    "src/mcp/tools/code-search.ts:40-47",
+    "src/mcp/tools/code-search.ts:59-62",
+    "src/mcp/tools/code-search.ts:24-39",
+    "src/mcp/tools/code-search.ts:48-58",
+    ".claude/agents/loopr-step14.md:72-94"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 1019
+  },
+  {
+   "id": "osa-08",
+   "config": "cbm-guarded",
+   "engine": "cbm",
+   "confidence": "high",
+   "abstained": false,
+   "reason": "High confidence: bm25 + code agree and the query's words point at the same place.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": false,
+    "symbolAgrees": true,
+    "pathAgrees": true,
+    "channels": 2,
+    "channelNames": [
+     "bm25",
+     "code"
+    ],
+    "margin": 0.18507480198596216,
+    "consistent": true
+   },
+   "returned": [
+    "src/util/paths.ts:78-88",
+    "OSA-PRD.md:2450-2461",
+    "src/osa/lock.ts:151-176",
+    "src/osa/pipeline.ts:168-570",
+    "src/osa/pipeline.ts:615-654"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 645
+  },
+  {
+   "id": "osa-09",
+   "config": "cbm-guarded",
+   "engine": "cbm",
+   "confidence": "high",
+   "abstained": false,
+   "reason": "High confidence: semantic + code + trace agree and the query's words point at the same place.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": true,
+    "symbolAgrees": true,
+    "pathAgrees": true,
+    "channels": 3,
+    "channelNames": [
+     "semantic",
+     "code",
+     "trace"
+    ],
+    "margin": 0.04377196606017961,
+    "consistent": true
+   },
+   "returned": [
+    "src/verify/preflight.ts:449-453",
+    "src/adapters/claude-code.ts:73-75",
+    "src/adapters/codex-cli.ts:72-74",
+    "src/adapters/antigravity-cli.ts:64-66",
+    "src/verify/preflight.ts:409-420"
+   ],
+   "fileRank": 1,
+   "strictRank": 2,
+   "ms": 859
+  },
+  {
+   "id": "osa-10",
+   "config": "cbm-guarded",
+   "engine": "cbm",
+   "confidence": "high",
+   "abstained": false,
+   "reason": "High confidence: code + trace agree and the query's words point at the same place.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": true,
+    "symbolAgrees": true,
+    "pathAgrees": false,
+    "channels": 2,
+    "channelNames": [
+     "code",
+     "trace"
+    ],
+    "margin": 0.03937103197735633,
+    "consistent": true
+   },
+   "returned": [
+    "src/osa/pipeline.ts:413-422",
+    "src/cli/index-cmd.ts:35-40",
+    "src/mcp/tools/code-search.ts:48-56",
+    "src/code-index/search.ts:71-78",
+    "src/code-index/search.ts:109-122"
+   ],
+   "fileRank": 1,
+   "strictRank": 1,
+   "ms": 815
+  },
+  {
+   "id": "osa-11",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "reason": "Low confidence: only 0 independent channel(s) agree and the lead over the runner-up is thin. -- answered by OSA's local index instead; verify with grep.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": true,
+    "symbolAgrees": true,
+    "pathAgrees": true,
+    "channels": 0,
+    "channelNames": [],
+    "margin": 0.04522699919011427,
+    "consistent": true
+   },
+   "returned": [
+    "src/osa/lock.ts:36-38",
+    "src/osa/lock.ts:39-43",
+    "src/osa/lock.ts:98-99",
+    "OSA-PRD.md:532-554",
+    "src/util/lock.ts:225-227"
+   ],
+   "fileRank": 1,
+   "strictRank": null,
+   "ms": 1159
+  },
+  {
+   "id": "osa-12",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "reason": "Low confidence: only 1 independent channel(s) agree and the lead over the runner-up is thin. -- answered by OSA's local index instead; verify with grep.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": true,
+    "symbolAgrees": true,
+    "pathAgrees": true,
+    "channels": 1,
+    "channelNames": [
+     "code"
+    ],
+    "margin": 0.12548892192951935,
+    "consistent": true
+   },
+   "returned": [
+    "src/memory/derive.ts:115-117",
+    "src/cli/memory-cmd.ts:13-17",
+    "src/mcp/tools/memory.ts:56-59",
+    "src/memory/derive.ts:103-114",
+    "docs/osa/CURRENT_STATE.md:42-75"
+   ],
+   "fileRank": 1,
+   "strictRank": 1,
+   "ms": 1033
+  },
+  {
+   "id": "osa-13",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "reason": "Low confidence: only 0 independent channel(s) agree and the lead over the runner-up is thin. -- answered by OSA's local index instead; verify with grep.",
+   "signals": {
+    "coverage": 0.8333333333333334,
+    "grepAgrees": true,
+    "symbolAgrees": false,
+    "pathAgrees": true,
+    "channels": 0,
+    "channelNames": [],
+    "margin": 0.018861178741136332,
+    "consistent": true
+   },
+   "returned": [
+    "src/adapters/antigravity-cli.ts:59-62",
+    "docs/osa/ANTIGRAVITY.md:40-47",
+    "OSA-PRD.md:3102-3124",
+    "PHASE_11_SPEC.md:403-425",
+    "PHASE_11_SPEC.md:520-592"
+   ],
+   "fileRank": 2,
+   "strictRank": 2,
+   "ms": 1037
+  },
+  {
+   "id": "osa-14",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "reason": "Low confidence: only 1 independent channel(s) agree and the lead over the runner-up is thin. -- answered by OSA's local index instead; verify with grep.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": true,
+    "symbolAgrees": true,
+    "pathAgrees": true,
+    "channels": 1,
+    "channelNames": [
+     "code"
+    ],
+    "margin": 0.044673912426733804,
+    "consistent": true
+   },
+   "returned": [
+    "src/osa/lock.ts:64-67",
+    "README.md:106-112",
+    "src/osa/lock.ts:36-38",
+    "src/osa/lock.ts:39-43",
+    "src/osa/lock.ts:98-99"
+   ],
+   "fileRank": 2,
+   "strictRank": 2,
+   "ms": 1128
+  },
+  {
+   "id": "hostel-01",
+   "config": "cbm-guarded",
+   "engine": "cbm",
+   "confidence": "high",
+   "abstained": false,
+   "reason": "High confidence: bm25 + semantic + code + lexical agree and the query's words point at the same place.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": false,
+    "symbolAgrees": true,
+    "pathAgrees": true,
+    "channels": 4,
+    "channelNames": [
+     "bm25",
+     "semantic",
+     "code",
+     "lexical"
+    ],
+    "margin": 0.1373042910466347,
+    "consistent": true
+   },
+   "returned": [
+    "engine/retention.py:10-25",
+    "app/mock.py:233-237",
+    "app/audit.py:9-34",
+    "app/mock.py:124-208",
+    "engine/explain.py:40-61"
+   ],
+   "fileRank": 1,
+   "strictRank": 1,
+   "ms": 464
+  },
+  {
+   "id": "hostel-02",
+   "config": "cbm-guarded",
+   "engine": "cbm",
+   "confidence": "high",
+   "abstained": false,
+   "reason": "High confidence: bm25 + code + lexical agree and the query's words point at the same place.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": true,
+    "symbolAgrees": true,
+    "pathAgrees": false,
+    "channels": 3,
+    "channelNames": [
+     "bm25",
+     "code",
+     "lexical"
+    ],
+    "margin": 0.18029935802102398,
+    "consistent": true
+   },
+   "returned": [
+    "policy/compile.py:201-215",
+    "policy/compile.py:181-198",
+    "policy/compile.py:242-267",
+    "policy/AUDIT.md:5-21",
+    "policy/compile.py:151-166"
+   ],
+   "fileRank": 1,
+   "strictRank": 1,
+   "ms": 481
+  },
+  {
+   "id": "hostel-03",
+   "config": "cbm-guarded",
+   "engine": "cbm",
+   "confidence": "high",
+   "abstained": false,
+   "reason": "High confidence: bm25 + code + lexical agree and the query's words point at the same place.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": false,
+    "symbolAgrees": true,
+    "pathAgrees": false,
+    "channels": 3,
+    "channelNames": [
+     "bm25",
+     "code",
+     "lexical"
+    ],
+    "margin": 0.21563004726192259,
+    "consistent": true
+   },
+   "returned": [
+    "app/audit.py:37-42",
+    "app/main.py:321-328",
+    "app/audit.py:9-34",
+    "app/view.py:78-83",
+    "engine/allocate.py:18-163"
+   ],
+   "fileRank": 1,
+   "strictRank": 1,
+   "ms": 404
+  },
+  {
+   "id": "hostel-04",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "reason": "Low confidence: only 1 independent channel(s) agree and the lead over the runner-up is thin. -- answered by OSA's local index instead; verify with grep.",
+   "signals": {
+    "coverage": 0.8333333333333334,
+    "grepAgrees": false,
+    "symbolAgrees": true,
+    "pathAgrees": false,
+    "channels": 1,
+    "channelNames": [
+     "code"
+    ],
+    "margin": 0.1523470371669004,
+    "consistent": true
+   },
+   "returned": [
+    "app/test_app.py:126-136",
+    "app/test_app.py:139-157",
+    "tests/test_engine.py:152-159",
+    "tests/test_engine.py:506-530",
+    "app/test_app.py:588-596"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 705
+  },
+  {
+   "id": "hostel-05",
+   "config": "cbm-guarded",
+   "engine": "cbm",
+   "confidence": "high",
+   "abstained": false,
+   "reason": "High confidence: bm25 + code + lexical agree and the query's words point at the same place.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": false,
+    "symbolAgrees": true,
+    "pathAgrees": false,
+    "channels": 3,
+    "channelNames": [
+     "bm25",
+     "code",
+     "lexical"
+    ],
+    "margin": 0.09237973232222915,
+    "consistent": true
+   },
+   "returned": [
+    "policy/prompts.py:50-51",
+    "policy/prompts.py:54-61",
+    "policy/compile.py:288-294",
+    "policy/compile.py:270-279",
+    "policy/compile.py:87-91"
+   ],
+   "fileRank": 3,
+   "strictRank": 3,
+   "ms": 449
+  },
+  {
+   "id": "hostel-06",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "reason": "Low confidence: only 0 independent channel(s) agree and the lead over the runner-up is thin. -- answered by OSA's local index instead; verify with grep.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": false,
+    "symbolAgrees": true,
+    "pathAgrees": false,
+    "channels": 0,
+    "channelNames": [],
+    "margin": 0.0869135904614826,
+    "consistent": true
+   },
+   "returned": [
+    "tests/test_engine.py:463-487",
+    "engine/allocate.py:264-270",
+    "specs/session-c-prd.md:139-146",
+    "tests/test_engine.py:601-621",
+    "shared/models.py:17-27"
+   ],
+   "fileRank": 2,
+   "strictRank": null,
+   "ms": 749
+  },
+  {
+   "id": "hostel-07",
+   "config": "cbm-guarded",
+   "engine": "cbm",
+   "confidence": "high",
+   "abstained": false,
+   "reason": "High confidence: code + lexical agree and the query's words point at the same place.",
+   "signals": {
+    "coverage": 0.8333333333333334,
+    "grepAgrees": true,
+    "symbolAgrees": true,
+    "pathAgrees": false,
+    "channels": 2,
+    "channelNames": [
+     "code",
+     "lexical"
+    ],
+    "margin": 0.21967655776704276,
+    "consistent": true
+   },
+   "returned": [
+    "CONTRACT.md:5-6",
+    "shared/models.py:70-76",
+    "engine/phases/PHASE_2_SPEC.md:1-61",
+    "app/view.py:116-118",
+    "app/.loopr/PHASE_2_SPEC.md:1-57"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 382
+  },
+  {
+   "id": "hostel-08",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "reason": "Low confidence: only 0 independent channel(s) agree and the lead over the runner-up is thin. -- answered by OSA's local index instead; verify with grep.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": true,
+    "symbolAgrees": true,
+    "pathAgrees": false,
+    "channels": 0,
+    "channelNames": [],
+    "margin": 0.005693425463465097,
+    "consistent": true
+   },
+   "returned": [
+    "tests/test_policy.py:229-232",
+    "tests/test_policy.py:221-228",
+    "app/test_app.py:126-136",
+    "app/main.py:87-93",
+    "app/test_app.py:337-339"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 638
+  },
+  {
+   "id": "hostel-09",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "reason": "Low confidence: no query word appears in the hit's symbol, path or (by plain text search) its file. -- answered by OSA's local index instead; verify with grep.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": false,
+    "symbolAgrees": false,
+    "pathAgrees": false,
+    "channels": 2,
+    "channelNames": [
+     "code",
+     "trace"
+    ],
+    "margin": 0.16619626563329176,
+    "consistent": true
+   },
+   "returned": [
+    "CONTRACT.md:5-7",
+    "engine/explain.py:64-67",
+    "tests/test_policy.py:229-232",
+    "tests/test_policy.py:122-140",
+    "app/test_app.py:337-339"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 741
+  },
+  {
+   "id": "hostel-10",
+   "config": "cbm-guarded",
+   "engine": "cbm",
+   "confidence": "high",
+   "abstained": false,
+   "reason": "High confidence: bm25 + code + lexical agree and the query's words point at the same place.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": false,
+    "symbolAgrees": true,
+    "pathAgrees": false,
+    "channels": 3,
+    "channelNames": [
+     "bm25",
+     "code",
+     "lexical"
+    ],
+    "margin": 0.23362228606778201,
+    "consistent": true
+   },
+   "returned": [
+    "app/audit.py:37-42",
+    "app/test_app.py:407-413",
+    "app/test_app.py:46-58",
+    "app/test_app.py:78-84",
+    "app/test_app.py:556-566"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 493
+  },
+  {
+   "id": "hostel-11",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "reason": "Low confidence: only 0 independent channel(s) agree and the lead over the runner-up is thin. -- answered by OSA's local index instead; verify with grep.",
+   "signals": {
+    "coverage": 0.8333333333333334,
+    "grepAgrees": true,
+    "symbolAgrees": true,
+    "pathAgrees": false,
+    "channels": 0,
+    "channelNames": [],
+    "margin": 0.16248955743736004,
+    "consistent": true
+   },
+   "returned": [
+    "app/test_app.py:126-136",
+    "tests/test_engine.py:152-159",
+    "tests/test_engine.py:162-177",
+    "specs/session-c-prd.md:11-23",
+    "specs/session-c-prd.md:110-119"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 733
+  },
+  {
+   "id": "hostel-12",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "reason": "Low confidence: only 1 independent channel(s) agree and the lead over the runner-up is thin. -- answered by OSA's local index instead; verify with grep.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": false,
+    "symbolAgrees": true,
+    "pathAgrees": false,
+    "channels": 1,
+    "channelNames": [
+     "code"
+    ],
+    "margin": 0.06008086604930204,
+    "consistent": true
+   },
+   "returned": [
+    "app/test_app.py:556-566",
+    "app/test_app.py:322-334",
+    "app/test_app.py:78-84",
+    "tests/test_engine.py:306-318",
+    "specs/session-a-prd.md:85-93"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 711
+  },
+  {
+   "id": "hostel-13",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "reason": "Low confidence: only 1 independent channel(s) agree and the lead over the runner-up is thin. -- answered by OSA's local index instead; verify with grep.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": false,
+    "symbolAgrees": true,
+    "pathAgrees": true,
+    "channels": 1,
+    "channelNames": [
+     "code"
+    ],
+    "margin": 0.06438927028128305,
+    "consistent": true
+   },
+   "returned": [
+    "engine/allocate.py:199-206",
+    "tests/test_engine.py:506-530",
+    "tests/test_engine.py:19-52",
+    "tests/test_engine.py:463-487",
+    "app/test_app.py:139-157"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 772
+  },
+  {
+   "id": "hms-01",
+   "config": "cbm-guarded",
+   "engine": "cbm",
+   "confidence": "high",
+   "abstained": false,
+   "reason": "High confidence: bm25 + code + lexical agree and the query's words point at the same place.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": true,
+    "symbolAgrees": true,
+    "pathAgrees": true,
+    "channels": 3,
+    "channelNames": [
+     "bm25",
+     "code",
+     "lexical"
+    ],
+    "margin": 0.18561240478914307,
+    "consistent": true
+   },
+   "returned": [
+    "mizan/purification/attribution.py:95-160",
+    "mizan/purification/ledger.py:306-382",
+    "mizan/purification/ledger.py:285-303",
+    "mizan/screening/financial_ratios.py:149-161",
+    "mizan/purification/ledger.py:69-114"
+   ],
+   "fileRank": 1,
+   "strictRank": 1,
+   "ms": 1139
+  },
+  {
+   "id": "hms-02",
+   "config": "cbm-guarded",
+   "engine": "cbm",
+   "confidence": "high",
+   "abstained": false,
+   "reason": "High confidence: bm25 + code agree and the query's words point at the same place.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": true,
+    "symbolAgrees": true,
+    "pathAgrees": false,
+    "channels": 2,
+    "channelNames": [
+     "bm25",
+     "code"
+    ],
+    "margin": 0.03750792938109495,
+    "consistent": true
+   },
+   "returned": [
+    "mizan/backtest/clock.py:115-136",
+    "mizan/backtest/clock.py:317-376",
+    "mizan/backtest/compliance_state.py:114-219",
+    "mizan/purification/ledger.py:117-130",
+    "mizan/purification/ledger.py:133-147"
+   ],
+   "fileRank": 1,
+   "strictRank": 1,
+   "ms": 897
+  },
+  {
+   "id": "hms-03",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "reason": "Low confidence: only 1 independent channel(s) agree and the lead over the runner-up is thin. -- answered by OSA's local index instead; verify with grep.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": true,
+    "symbolAgrees": true,
+    "pathAgrees": false,
+    "channels": 1,
+    "channelNames": [
+     "code"
+    ],
+    "margin": 0.1126904016197269,
+    "consistent": true
+   },
+   "returned": [
+    "tests/test_backtest_portfolio.py:157-160",
+    "tests/test_cli_ingest.py:301-315",
+    "tests/test_screening_verdict.py:435-449",
+    "BUILD_COMPLETE.md:78-131",
+    "tests/test_cli_report.py:514-547"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 1750
+  },
+  {
+   "id": "hms-04",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "reason": "Low confidence: the top hit does not match the live file; only 0 independent channel(s) agree and the lead over the runner-up is thin. -- answered by OSA's local index instead; verify with grep.",
+   "signals": {
+    "coverage": 0.8333333333333334,
+    "grepAgrees": true,
+    "symbolAgrees": false,
+    "pathAgrees": false,
+    "channels": 0,
+    "channelNames": [],
+    "margin": 0.014864428738944424,
+    "consistent": false
+   },
+   "returned": [
+    "tests/test_screening_business_activity.py:380-384",
+    ".claude/agents/loopr-step12.md:147-150",
+    "PHASE_6_SPEC.md:612-654",
+    ".claude/agents/loopr-step12.md:82-86",
+    "COMPREHENSION.md:62-121"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 1933
+  },
+  {
+   "id": "hms-05",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "reason": "Low confidence: only 1 independent channel(s) agree and the lead over the runner-up is thin. -- answered by OSA's local index instead; verify with grep.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": false,
+    "symbolAgrees": true,
+    "pathAgrees": true,
+    "channels": 1,
+    "channelNames": [
+     "code"
+    ],
+    "margin": 0.21607234919038748,
+    "consistent": true
+   },
+   "returned": [
+    "mizan/screening/financial_ratios.py:75-83",
+    "tests/test_screening_financial_ratios.py:137-154",
+    "tests/test_screening_financial_ratios.py:108-119",
+    "tests/test_screening_financial_ratios.py:122-134",
+    "mizan/screening/financial_ratios.py:164-193"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 1685
+  },
+  {
+   "id": "hms-06",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "reason": "Low confidence: only 1 independent channel(s) agree and the lead over the runner-up is thin. -- answered by OSA's local index instead; verify with grep.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": false,
+    "symbolAgrees": true,
+    "pathAgrees": false,
+    "channels": 1,
+    "channelNames": [
+     "code"
+    ],
+    "margin": 0.14411908936280096,
+    "consistent": true
+   },
+   "returned": [
+    "MASTER_PRD.md:342-364",
+    "tests/test_fiqh_params.py:178-189",
+    "mizan/config/fiqh_params.py:71-114",
+    "mizan/config/fiqh_params.py:117-176",
+    "tests/test_fiqh_params.py:22-25"
+   ],
+   "fileRank": 3,
+   "strictRank": 3,
+   "ms": 1639
+  },
+  {
+   "id": "hms-07",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "reason": "Low confidence: only 1 independent channel(s) agree and the lead over the runner-up is thin. -- answered by OSA's local index instead; verify with grep.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": false,
+    "symbolAgrees": true,
+    "pathAgrees": true,
+    "channels": 1,
+    "channelNames": [
+     "code"
+    ],
+    "margin": 0.024267981415989286,
+    "consistent": true
+   },
+   "returned": [
+    "tests/test_backtest_compliance_state.py:235-245",
+    "mizan/backtest/compliance_state.py:58-83",
+    "PHASE_5_SPEC.md:312-371",
+    "mizan/backtest/compliance_state.py:38-46",
+    "MASTER_PRD.md:226-249"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 1634
+  },
+  {
+   "id": "hms-08",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "reason": "Low confidence: only 0 independent channel(s) agree and the lead over the runner-up is thin. -- answered by OSA's local index instead; verify with grep.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": true,
+    "symbolAgrees": true,
+    "pathAgrees": true,
+    "channels": 0,
+    "channelNames": [],
+    "margin": 0.378458843558375,
+    "consistent": true
+   },
+   "returned": [
+    "tests/test_cli_screen.py:139-142",
+    "tests/test_screening_financial_ratios.py:122-134",
+    "tests/test_screening_verdict.py:594-610",
+    "tests/test_screening_verdict.py:613-622",
+    "tests/test_screening_verdict.py:625-636"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 1680
+  },
+  {
+   "id": "hms-09",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "reason": "Low confidence: the top hit does not match the live file; only 1 independent channel(s) agree and the lead over the runner-up is thin. -- answered by OSA's local index instead; verify with grep.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": false,
+    "symbolAgrees": true,
+    "pathAgrees": true,
+    "channels": 1,
+    "channelNames": [
+     "code"
+    ],
+    "margin": 0.25826764254413903,
+    "consistent": false
+   },
+   "returned": [
+    "tests/test_cli_backtest.py:486-496",
+    "tests/test_cli_backtest.py:425-434",
+    "tests/test_cli_backtest.py:444-453",
+    "tests/test_cli_report.py:335-346",
+    "tests/test_cli_backtest.py:399-415"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 1645
+  },
+  {
+   "id": "hms-10",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "reason": "Low confidence: no query word appears in the hit's symbol, path or (by plain text search) its file; only 1 independent channel(s) agree and the lead over the runner-up is thin. -- answered by OSA's local index instead; verify with grep.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": false,
+    "symbolAgrees": false,
+    "pathAgrees": false,
+    "channels": 1,
+    "channelNames": [
+     "code"
+    ],
+    "margin": 0.0168583200487779,
+    "consistent": true
+   },
+   "returned": [
+    "tests/test_backtest_compliance_state.py:85-98",
+    "PHASE_5_SPEC.md:866-886",
+    "tests/test_backtest_compliance_state.py:59-69",
+    "PHASE_5_SPEC.md:1023-1070",
+    "tests/test_backtest_compliance_state.py:72-82"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 1610
+  },
+  {
+   "id": "hms-11",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "reason": "Low confidence: only 0 independent channel(s) agree and the lead over the runner-up is thin. -- answered by OSA's local index instead; verify with grep.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": false,
+    "symbolAgrees": true,
+    "pathAgrees": false,
+    "channels": 0,
+    "channelNames": [],
+    "margin": 0.12097451700391512,
+    "consistent": true
+   },
+   "returned": [
+    "tests/test_backtest_compliance_state.py:72-82",
+    "tests/test_backtest_compliance_state.py:59-69",
+    "tests/test_screening_verdict.py:168-174",
+    "tests/test_screening_verdict.py:144-152",
+    "tests/test_screening_verdict.py:155-165"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 1609
+  },
+  {
+   "id": "hms-12",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "reason": "Low confidence: only 0 independent channel(s) agree and the lead over the runner-up is thin. -- answered by OSA's local index instead; verify with grep.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": true,
+    "symbolAgrees": true,
+    "pathAgrees": false,
+    "channels": 0,
+    "channelNames": [],
+    "margin": 0.09380422878048933,
+    "consistent": true
+   },
+   "returned": [
+    "tests/test_backtest_portfolio.py:84-91",
+    "tests/test_backtest_portfolio.py:49-50",
+    "tests/test_backtest_portfolio.py:72-75",
+    "tests/test_backtest_portfolio.py:217-222",
+    "MASTER_PRD.md:114-127"
+   ],
+   "fileRank": 5,
+   "strictRank": null,
+   "ms": 1580
+  },
+  {
+   "id": "hms-13",
+   "config": "cbm-guarded",
+   "engine": "lexical-fallback",
+   "confidence": "low",
+   "abstained": true,
+   "reason": "Low confidence: the top hit does not match the live file; only 1 independent channel(s) agree and the lead over the runner-up is thin. -- answered by OSA's local index instead; verify with grep.",
+   "signals": {
+    "coverage": 1,
+    "grepAgrees": true,
+    "symbolAgrees": true,
+    "pathAgrees": true,
+    "channels": 1,
+    "channelNames": [
+     "code"
+    ],
+    "margin": 0.12068887820197051,
+    "consistent": false
+   },
+   "returned": [
+    "mizan/screening/business_activity.py:127-136",
+    "docs/modernization_log.md:330-350",
+    "mizan/screening/business_activity.py:139-146",
+    "PHASE_4_SPEC.md:271-346",
+    "tests/test_screening_business_activity.py:54-58"
+   ],
+   "fileRank": 1,
+   "strictRank": 2,
+   "ms": 1629
+  }
+ ]
+}

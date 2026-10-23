@@ -1,0 +1,11 @@
+[
+  { "name": "V0 = U6 (per-channel cap 15, the default)", "tuning": {"testPenalty":0.35,"weights":{"code":2.5,"semantic":0.3},"rrfK":60,"minMargin":0.4} },
+  { "name": "V1 = U6 + per-channel cap 10", "per": 10, "tuning": {"testPenalty":0.35,"weights":{"code":2.5,"semantic":0.3},"rrfK":60,"minMargin":0.4} },
+  { "name": "V2 = U6 + per-channel cap 25", "per": 25, "tuning": {"testPenalty":0.35,"weights":{"code":2.5,"semantic":0.3},"rrfK":60,"minMargin":0.4} },
+  { "name": "V3 = U6 + per-channel cap 40", "per": 40, "tuning": {"testPenalty":0.35,"weights":{"code":2.5,"semantic":0.3},"rrfK":60,"minMargin":0.4} },
+  { "name": "V4 = U6 with margin 0.30", "tuning": { "testPenalty": 0.35, "weights": { "code": 2.5, "semantic": 0.3 }, "rrfK": 60, "minMargin": 0.3 } },
+  { "name": "V5 = U6 with margin 0.35", "tuning": { "testPenalty": 0.35, "weights": { "code": 2.5, "semantic": 0.3 }, "rrfK": 60, "minMargin": 0.35 } },
+  { "name": "V6 = U6 with the grep probe off the vote (grepWeight 0)", "tuning": { "testPenalty": 0.35, "weights": { "code": 2.5, "semantic": 0.3 }, "rrfK": 60, "minMargin": 0.4, "grepWeight": 0 } },
+  { "name": "V7 = U6 with definition boost 1.4 (re-ranking)", "tuning": { "testPenalty": 0.35, "weights": { "code": 2.5, "semantic": 0.3 }, "rrfK": 60, "minMargin": 0.4, "definitionBoost": 1.4 } },
+  { "name": "V8 = U6 with test penalty 0.6 (softer)", "tuning": { "testPenalty": 0.6, "weights": { "code": 2.5, "semantic": 0.3 }, "rrfK": 60, "minMargin": 0.4 } }
+]

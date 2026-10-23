@@ -1,0 +1,1954 @@
+{
+ "tag": "grep-fixed",
+ "at": "2026-10-17T23:08:08.226Z",
+ "k": 5,
+ "configs": [
+  "grep"
+ ],
+ "queries": 40,
+ "tuning": {
+  "weights": {
+   "bm25": 1,
+   "semantic": 1,
+   "code": 1.2,
+   "lexical": 1,
+   "trace": 3
+  },
+  "rrfK": 20,
+  "grepWeight": 0.6,
+  "minChannelsHigh": 2,
+  "minChannelsMedium": 2,
+  "minMargin": 0.12,
+  "minCoverage": 0.5,
+  "agreeTopN": 3,
+  "grepTopFiles": 5
+ },
+ "overall": [
+  {
+   "config": "grep",
+   "agg": {
+    "n": 40,
+    "recallFile": 0.425,
+    "recallStrict": 0.125,
+    "mrrFile": 0.14708333333333337,
+    "mrrStrict": 0.04375,
+    "top1File": 0,
+    "wrongTopRate": 1,
+    "confidentWrongRate": 1,
+    "abstainRate": 0,
+    "recallWhenAnswered": 0.425,
+    "answeredRate": 1,
+    "tokensMean": 1411.525,
+    "msMedian": 1836
+   }
+  }
+ ],
+ "byKind": {
+  "exact-name": [
+   {
+    "config": "grep",
+    "agg": {
+     "n": 8,
+     "recallFile": 0.625,
+     "recallStrict": 0.25,
+     "mrrFile": 0.19166666666666665,
+     "mrrStrict": 0.08333333333333333,
+     "top1File": 0,
+     "wrongTopRate": 1,
+     "confidentWrongRate": 1,
+     "abstainRate": 0,
+     "recallWhenAnswered": 0.625,
+     "answeredRate": 1,
+     "tokensMean": 1320.5,
+     "msMedian": 1419
+    }
+   }
+  ],
+  "paraphrase": [
+   {
+    "config": "grep",
+    "agg": {
+     "n": 8,
+     "recallFile": 0.375,
+     "recallStrict": 0,
+     "mrrFile": 0.10833333333333334,
+     "mrrStrict": 0,
+     "top1File": 0,
+     "wrongTopRate": 1,
+     "confidentWrongRate": 1,
+     "abstainRate": 0,
+     "recallWhenAnswered": 0.375,
+     "answeredRate": 1,
+     "tokensMean": 1469.125,
+     "msMedian": 1777.5
+    }
+   }
+  ],
+  "concept": [
+   {
+    "config": "grep",
+    "agg": {
+     "n": 6,
+     "recallFile": 0,
+     "recallStrict": 0,
+     "mrrFile": 0,
+     "mrrStrict": 0,
+     "top1File": 0,
+     "wrongTopRate": 1,
+     "confidentWrongRate": 1,
+     "abstainRate": 0,
+     "recallWhenAnswered": 0,
+     "answeredRate": 1,
+     "tokensMean": 1125.8333333333333,
+     "msMedian": 2358.5
+    }
+   }
+  ],
+  "call-path": [
+   {
+    "config": "grep",
+    "agg": {
+     "n": 7,
+     "recallFile": 0.42857142857142855,
+     "recallStrict": 0,
+     "mrrFile": 0.17142857142857143,
+     "mrrStrict": 0,
+     "top1File": 0,
+     "wrongTopRate": 1,
+     "confidentWrongRate": 1,
+     "abstainRate": 0,
+     "recallWhenAnswered": 0.42857142857142855,
+     "answeredRate": 1,
+     "tokensMean": 1616.857142857143,
+     "msMedian": 1404
+    }
+   }
+  ],
+  "cross-file": [
+   {
+    "config": "grep",
+    "agg": {
+     "n": 6,
+     "recallFile": 0.16666666666666666,
+     "recallStrict": 0.16666666666666666,
+     "mrrFile": 0.05555555555555555,
+     "mrrStrict": 0.05555555555555555,
+     "top1File": 0,
+     "wrongTopRate": 1,
+     "confidentWrongRate": 1,
+     "abstainRate": 0,
+     "recallWhenAnswered": 0.16666666666666666,
+     "answeredRate": 1,
+     "tokensMean": 1649.1666666666667,
+     "msMedian": 2388.5
+    }
+   }
+  ],
+  "spec-artifact": [
+   {
+    "config": "grep",
+    "agg": {
+     "n": 5,
+     "recallFile": 1,
+     "recallStrict": 0.4,
+     "mrrFile": 0.39,
+     "mrrStrict": 0.15,
+     "top1File": 0,
+     "wrongTopRate": 1,
+     "confidentWrongRate": 1,
+     "abstainRate": 0,
+     "recallWhenAnswered": 1,
+     "answeredRate": 1,
+     "tokensMean": 1235.2,
+     "msMedian": 2429
+    }
+   }
+  ]
+ },
+ "byRepo": {
+  "osa": [
+   {
+    "config": "grep",
+    "agg": {
+     "n": 14,
+     "recallFile": 0.6428571428571429,
+     "recallStrict": 0.21428571428571427,
+     "mrrFile": 0.23452380952380955,
+     "mrrStrict": 0.06547619047619048,
+     "top1File": 0,
+     "wrongTopRate": 1,
+     "confidentWrongRate": 1,
+     "abstainRate": 0,
+     "recallWhenAnswered": 0.6428571428571429,
+     "answeredRate": 1,
+     "tokensMean": 1088.7142857142858,
+     "msMedian": 1787.5
+    }
+   }
+  ],
+  "hostel": [
+   {
+    "config": "grep",
+    "agg": {
+     "n": 13,
+     "recallFile": 0.23076923076923078,
+     "recallStrict": 0,
+     "mrrFile": 0.08974358974358973,
+     "mrrStrict": 0,
+     "top1File": 0,
+     "wrongTopRate": 1,
+     "confidentWrongRate": 1,
+     "abstainRate": 0,
+     "recallWhenAnswered": 0.23076923076923078,
+     "answeredRate": 1,
+     "tokensMean": 1903.3076923076924,
+     "msMedian": 1862
+    }
+   }
+  ],
+  "hms": [
+   {
+    "config": "grep",
+    "agg": {
+     "n": 13,
+     "recallFile": 0.38461538461538464,
+     "recallStrict": 0.15384615384615385,
+     "mrrFile": 0.11025641025641025,
+     "mrrStrict": 0.0641025641025641,
+     "top1File": 0,
+     "wrongTopRate": 1,
+     "confidentWrongRate": 1,
+     "abstainRate": 0,
+     "recallWhenAnswered": 0.38461538461538464,
+     "answeredRate": 1,
+     "tokensMean": 1267.3846153846155,
+     "msMedian": 2203
+    }
+   }
+  ]
+ },
+ "scores": [
+  {
+   "id": "osa-01",
+   "repo": "osa",
+   "kind": "exact-name",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": 3,
+   "strictRank": 3,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 893,
+   "ms": 1414,
+   "returned": [
+    "src/research/stage.test.ts:10-21",
+    "src/research/stage.ts:29-40",
+    "src/research/routing.ts:10-21",
+    "OSA-PRD.md:246-257",
+    "src/osa/pipeline.ts:283-294"
+   ]
+  },
+  {
+   "id": "osa-02",
+   "repo": "osa",
+   "kind": "exact-name",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 846,
+   "ms": 1441,
+   "returned": [
+    "src/dispatch/run-loop.test.ts:848-859",
+    "src/dispatch/turn.test.ts:575-586",
+    "OSA-PRD.md:543-554",
+    "src/verify/commits.test.ts:1-12",
+    "src/dispatch/turn.ts:2-13"
+   ]
+  },
+  {
+   "id": "osa-03",
+   "repo": "osa",
+   "kind": "exact-name",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": 3,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 899,
+   "ms": 1810,
+   "returned": [
+    "src/verify/preflight.test.ts:8-19",
+    "OSA-PRD.md:1234-1245",
+    "src/verify/preflight.ts:204-215",
+    "PHASE_11_SPEC.md:623-634",
+    "docs/modernization_log.md:250-261"
+   ]
+  },
+  {
+   "id": "osa-04",
+   "repo": "osa",
+   "kind": "paraphrase",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": 3,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 876,
+   "ms": 801,
+   "returned": [
+    "OSA-PRD.md:39-50",
+    "src/osa/pipeline.ts:230-241",
+    "src/osa/lock.ts:1-12",
+    "src/dispatch/run-loop.test.ts:18-29",
+    "PHASE_11_SPEC.md:4-15"
+   ]
+  },
+  {
+   "id": "osa-05",
+   "repo": "osa",
+   "kind": "paraphrase",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": 5,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 1305,
+   "ms": 730,
+   "returned": [
+    "OSA-PRD.md:1586-1597",
+    "docs/modernization_log.md:272-283",
+    "README.md:9-20",
+    "src/util/exec.test.ts:21-32",
+    "src/verify/preflight.ts:148-159"
+   ]
+  },
+  {
+   "id": "osa-06",
+   "repo": "osa",
+   "kind": "paraphrase",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 1541,
+   "ms": 2212,
+   "returned": [
+    "OSA-PRD.md:194-205",
+    "docs/modernization_log.md:289-300",
+    "PHASE_11_SPEC.md:158-169",
+    "src/dispatch/prompt.test.ts:262-273",
+    "docs/osa/CONFLICTS.md:239-250"
+   ]
+  },
+  {
+   "id": "osa-07",
+   "repo": "osa",
+   "kind": "concept",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 902,
+   "ms": 1398,
+   "returned": [
+    "OSA-PRD.md:3178-3189",
+    "docs/osa/CONFLICTS.md:211-222",
+    "examples/loopr-role-dispatch/fixture/tally-PRD.md:284-295",
+    ".claude/agents/loopr-step10.md:147-158",
+    "prompts/Template_prompts/STEP_10:131-142"
+   ]
+  },
+  {
+   "id": "osa-08",
+   "repo": "osa",
+   "kind": "concept",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 1048,
+   "ms": 2346,
+   "returned": [
+    "OSA-PRD.md:1351-1362",
+    "README.md:89-100",
+    "src/dispatch/run-loop.test.ts:152-163",
+    "docs/osa/CONFLICTS.md:32-43",
+    "src/trim/trimmer.ts:1-12"
+   ]
+  },
+  {
+   "id": "osa-09",
+   "repo": "osa",
+   "kind": "call-path",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": 2,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 934,
+   "ms": 1765,
+   "returned": [
+    "PHASE_11_SPEC.md:588-599",
+    "src/verify/preflight.ts:399-410",
+    "src/adapters/codex-cli.test.ts:10-21",
+    "src/adapters/claude-code.test.ts:10-21",
+    "src/adapters/codex-cli.ts:11-22"
+   ]
+  },
+  {
+   "id": "osa-10",
+   "repo": "osa",
+   "kind": "call-path",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": 2,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 838,
+   "ms": 1123,
+   "returned": [
+    "src/code-index/index.test.ts:6-17",
+    "src/osa/pipeline.ts:40-51",
+    "src/mcp/tools/code-search.ts:1-12",
+    "src/cli/index-cmd.ts:1-12",
+    "src/code-index/search.ts:62-73"
+   ]
+  },
+  {
+   "id": "osa-11",
+   "repo": "osa",
+   "kind": "cross-file",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 1565,
+   "ms": 2485,
+   "returned": [
+    "docs/osa/CONFLICTS.md:87-98",
+    "OSA-PRD.md:2195-2206",
+    "README.md:22-33",
+    "docs/osa/RUN_REPORT.md:30-41",
+    "PHASE_11_SPEC.md:23-34"
+   ]
+  },
+  {
+   "id": "osa-12",
+   "repo": "osa",
+   "kind": "cross-file",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": 3,
+   "strictRank": 3,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 1143,
+   "ms": 2385,
+   "returned": [
+    "OSA-PRD.md:1492-1503",
+    "src/memory/memory.test.ts:286-297",
+    "src/osa/pipeline.ts:371-382",
+    "docs/osa/CONFLICTS.md:259-270",
+    "src/memory/store.ts:1-12"
+   ]
+  },
+  {
+   "id": "osa-13",
+   "repo": "osa",
+   "kind": "spec-artifact",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": 2,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 1308,
+   "ms": 2299,
+   "returned": [
+    "src/adapters/antigravity-cli.ts:34-45",
+    "docs/osa/ANTIGRAVITY.md:9-20",
+    "OSA-PRD.md:1586-1597",
+    "PHASE_11_SPEC.md:417-428",
+    "docs/modernization_log.md:529-540"
+   ]
+  },
+  {
+   "id": "osa-14",
+   "repo": "osa",
+   "kind": "spec-artifact",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": 4,
+   "strictRank": 4,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 1144,
+   "ms": 2663,
+   "returned": [
+    "docs/osa/CONFLICTS.md:193-204",
+    "OSA-PRD.md:1947-1958",
+    "src/domain/errors.ts:37-48",
+    "README.md:104-115",
+    ".claude/agents/loopr-step12.md:27-38"
+   ]
+  },
+  {
+   "id": "hostel-01",
+   "repo": "hostel",
+   "kind": "exact-name",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 999,
+   "ms": 1090,
+   "returned": [
+    "app/test_app.py:151-162",
+    "tests/test_engine.py:12-23",
+    "specs/session-c-prd.md:1-12",
+    "specs/session-a-prd.md:15-26",
+    "app/mock.py:231-242"
+   ]
+  },
+  {
+   "id": "hostel-02",
+   "repo": "hostel",
+   "kind": "exact-name",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": 3,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 1794,
+   "ms": 953,
+   "returned": [
+    "policy/AUDIT.md:15-26",
+    "specs/session-b-prd.md:45-56",
+    "policy/compile.py:188-199",
+    "tests/test_policy.py:106-117",
+    "specs/session-c-prd.md:78-89"
+   ]
+  },
+  {
+   "id": "hostel-03",
+   "repo": "hostel",
+   "kind": "exact-name",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 3110,
+   "ms": 1751,
+   "returned": [
+    "app/test_app.py:45-56",
+    "app/.loopr/PHASE_3_SPEC.md:37-48",
+    "app/.loopr/PHASE_1_SPEC.md:10-21",
+    "app/.loopr/PHASE_2_SPEC.md:20-31",
+    "app/main.py:323-334"
+   ]
+  },
+  {
+   "id": "hostel-04",
+   "repo": "hostel",
+   "kind": "paraphrase",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 968,
+   "ms": 1799,
+   "returned": [
+    "app/test_app.py:113-124",
+    "app/mock.py:15-26",
+    "app/main.py:188-199",
+    "specs/session-c-prd.md:1-12",
+    "CONTRACT.md:162-173"
+   ]
+  },
+  {
+   "id": "hostel-05",
+   "repo": "hostel",
+   "kind": "paraphrase",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 1400,
+   "ms": 1756,
+   "returned": [
+    "tests/test_policy.py:429-440",
+    "specs/session-b-prd.md:7-18",
+    "policy/AUDIT.md:1-12",
+    "specs/session-c-prd.md:7-18",
+    "CONTRACT.md:5-16"
+   ]
+  },
+  {
+   "id": "hostel-06",
+   "repo": "hostel",
+   "kind": "paraphrase",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": 3,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 2425,
+   "ms": 2378,
+   "returned": [
+    "specs/session-c-prd.md:175-186",
+    "CONTRACT.md:217-228",
+    "specs/session-a-prd.md:89-100",
+    "specs/session-b-prd.md:59-70",
+    "engine/phases/PHASE_2_SPEC.md:26-37"
+   ]
+  },
+  {
+   "id": "hostel-07",
+   "repo": "hostel",
+   "kind": "concept",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 1085,
+   "ms": 2189,
+   "returned": [
+    "specs/session-c-prd.md:13-24",
+    "CONTRACT.md:121-132",
+    "tests/test_engine.py:10-21",
+    "app/test_app.py:27-38",
+    "specs/session-a-prd.md:1-12"
+   ]
+  },
+  {
+   "id": "hostel-08",
+   "repo": "hostel",
+   "kind": "concept",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 1390,
+   "ms": 2385,
+   "returned": [
+    "specs/session-b-prd.md:88-99",
+    "specs/session-c-prd.md:92-103",
+    "app/test_app.py:169-180",
+    "CONTRACT.md:198-209",
+    "tests/test_policy.py:219-230"
+   ]
+  },
+  {
+   "id": "hostel-09",
+   "repo": "hostel",
+   "kind": "call-path",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 1791,
+   "ms": 1374,
+   "returned": [
+    "app/.loopr/PHASE_3_SPEC.md:12-23",
+    "engine/phases/PHASE_2_SPEC.md:1-12",
+    "specs/session-a-prd.md:7-18",
+    "specs/session-c-prd.md:190-201",
+    "tests/test_engine.py:10-21"
+   ]
+  },
+  {
+   "id": "hostel-10",
+   "repo": "hostel",
+   "kind": "call-path",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 3569,
+   "ms": 2305,
+   "returned": [
+    "app/.loopr/PHASE_3_SPEC.md:35-46",
+    "app/.loopr/PHASE_1_SPEC.md:10-21",
+    "app/.loopr/PHASE_2_SPEC.md:20-31",
+    "app/test_app.py:45-56",
+    "specs/session-c-prd.md:180-191"
+   ]
+  },
+  {
+   "id": "hostel-11",
+   "repo": "hostel",
+   "kind": "cross-file",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 2568,
+   "ms": 1862,
+   "returned": [
+    "specs/session-c-prd.md:1-12",
+    "CONTRACT.md:202-213",
+    "policy/loopr/baby_prd.md:5-16",
+    "app/.loopr/PHASE_3_SPEC.md:61-72",
+    "app/.loopr/PHASE_2_SPEC.md:9-20"
+   ]
+  },
+  {
+   "id": "hostel-12",
+   "repo": "hostel",
+   "kind": "cross-file",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 2285,
+   "ms": 2101,
+   "returned": [
+    "specs/session-c-prd.md:123-134",
+    "app/test_app.py:64-75",
+    "CONTRACT.md:191-202",
+    "specs/session-b-prd.md:59-70",
+    "app/.loopr/PHASE_3_SPEC.md:5-16"
+   ]
+  },
+  {
+   "id": "hostel-13",
+   "repo": "hostel",
+   "kind": "spec-artifact",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": 2,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 1359,
+   "ms": 2772,
+   "returned": [
+    "app/test_app.py:113-124",
+    "specs/session-a-prd.md:99-110",
+    "CONTRACT.md:174-185",
+    "app/.loopr/PHASE_1_SPEC.md:1-12",
+    "shared/models.py:64-75"
+   ]
+  },
+  {
+   "id": "hms-01",
+   "repo": "hms",
+   "kind": "exact-name",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": 5,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 948,
+   "ms": 1424,
+   "returned": [
+    "PHASE_6_SPEC.md:98-109",
+    "COMPREHENSION.md:163-174",
+    "mizan/purification/ledger.py:21-32",
+    "tests/test_purification_attribution.py:18-29",
+    "mizan/purification/attribution.py:1-12"
+   ]
+  },
+  {
+   "id": "hms-02",
+   "repo": "hms",
+   "kind": "exact-name",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": 3,
+   "strictRank": 3,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 1075,
+   "ms": 1374,
+   "returned": [
+    "PHASE_5_SPEC.md:562-573",
+    "tests/test_backtest_clock.py:21-32",
+    "mizan/backtest/clock.py:113-124",
+    "COMPREHENSION.md:165-176",
+    "tests/fixtures/synthetic_universe.py:362-373"
+   ]
+  },
+  {
+   "id": "hms-03",
+   "repo": "hms",
+   "kind": "paraphrase",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 1996,
+   "ms": 2203,
+   "returned": [
+    "ULTIMATE_PRD.md:67-78",
+    "COMPREHENSION.md:3-14",
+    ".claude/loopr/baby_prd.md:2-13",
+    "prompts/Template_prompts/STEP_10:217-228",
+    ".claude/loopr/.emitted_from.json:1-1"
+   ]
+  },
+  {
+   "id": "hms-04",
+   "repo": "hms",
+   "kind": "paraphrase",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 1242,
+   "ms": 1651,
+   "returned": [
+    "COMPREHENSION.md:65-76",
+    "ULTIMATE_PRD.md:847-858",
+    "PHASE_6_SPEC.md:603-614",
+    "PHASE_4_SPEC.md:174-185",
+    "PHASE_5_SPEC.md:519-530"
+   ]
+  },
+  {
+   "id": "hms-05",
+   "repo": "hms",
+   "kind": "concept",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 1297,
+   "ms": 2384,
+   "returned": [
+    "PHASE_4_SPEC.md:630-641",
+    "ULTIMATE_PRD.md:175-186",
+    "COMPREHENSION.md:892-903",
+    "PHASE_3_SPEC.md:38-49",
+    "PHASE_7_SPEC.md:6-17"
+   ]
+  },
+  {
+   "id": "hms-06",
+   "repo": "hms",
+   "kind": "concept",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 1033,
+   "ms": 2371,
+   "returned": [
+    "PHASE_1_SPEC.md:494-505",
+    "PHASE_5_SPEC.md:791-802",
+    ".claude/agents/loopr-step11.md:111-122",
+    ".claude/agents/loopr-step10.md:240-251",
+    "PHASE_4_SPEC.md:625-636"
+   ]
+  },
+  {
+   "id": "hms-07",
+   "repo": "hms",
+   "kind": "call-path",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": 5,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 1531,
+   "ms": 1496,
+   "returned": [
+    "PHASE_5_SPEC.md:34-45",
+    "ULTIMATE_PRD.md:595-606",
+    "tests/test_backtest_compliance_state.py:1-12",
+    "COMPREHENSION.md:82-93",
+    "mizan/backtest/clock.py:4-15"
+   ]
+  },
+  {
+   "id": "hms-08",
+   "repo": "hms",
+   "kind": "call-path",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 1586,
+   "ms": 1259,
+   "returned": [
+    "PHASE_6_SPEC.md:29-40",
+    "PHASE_4_SPEC.md:766-777",
+    "COMPREHENSION.md:815-826",
+    "tests/test_screening_verdict.py:1-12",
+    "PHASE_5_SPEC.md:7-18"
+   ]
+  },
+  {
+   "id": "hms-09",
+   "repo": "hms",
+   "kind": "call-path",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 1069,
+   "ms": 1404,
+   "returned": [
+    "PHASE_6_SPEC.md:563-574",
+    "PHASE_5_SPEC.md:891-902",
+    "PHASE_7_SPEC.md:126-137",
+    "COMPREHENSION.md:60-71",
+    "tests/test_cli_backtest.py:1-12"
+   ]
+  },
+  {
+   "id": "hms-10",
+   "repo": "hms",
+   "kind": "cross-file",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 1128,
+   "ms": 2392,
+   "returned": [
+    "COMPREHENSION.md:12-23",
+    "MASTER_PRD.md:50-61",
+    "PHASE_5_SPEC.md:343-354",
+    "ULTIMATE_PRD.md:844-855",
+    "PHASE_6_SPEC.md:765-776"
+   ]
+  },
+  {
+   "id": "hms-11",
+   "repo": "hms",
+   "kind": "cross-file",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": null,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 1206,
+   "ms": 2735,
+   "returned": [
+    "PHASE_5_SPEC.md:542-553",
+    "PHASE_6_SPEC.md:387-398",
+    "COMPREHENSION.md:52-63",
+    "PHASE_7_SPEC.md:599-610",
+    "PHASE_4_SPEC.md:739-750"
+   ]
+  },
+  {
+   "id": "hms-12",
+   "repo": "hms",
+   "kind": "spec-artifact",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": 5,
+   "strictRank": null,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 1238,
+   "ms": 2429,
+   "returned": [
+    "PHASE_5_SPEC.md:508-519",
+    "ULTIMATE_PRD.md:410-421",
+    "PHASE_6_SPEC.md:286-297",
+    "PHASE_7_SPEC.md:191-202",
+    "MASTER_PRD.md:112-123"
+   ]
+  },
+  {
+   "id": "hms-13",
+   "repo": "hms",
+   "kind": "spec-artifact",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "fileRank": 2,
+   "strictRank": 2,
+   "topFileOk": false,
+   "topStrictOk": false,
+   "confidentWrong": true,
+   "wrongTop": true,
+   "tokens": 1127,
+   "ms": 2345,
+   "returned": [
+    "COMPREHENSION.md:904-915",
+    "docs/modernization_log.md:334-345",
+    "mizan/screening/business_activity.py:194-205",
+    "PHASE_4_SPEC.md:284-295",
+    "ULTIMATE_PRD.md:184-195"
+   ]
+  }
+ ],
+ "details": [
+  {
+   "id": "osa-01",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "src/research/stage.test.ts:10-21",
+    "src/research/stage.ts:29-40",
+    "src/research/routing.ts:10-21",
+    "OSA-PRD.md:246-257",
+    "src/osa/pipeline.ts:283-294"
+   ],
+   "fileRank": 3,
+   "strictRank": 3,
+   "ms": 1414
+  },
+  {
+   "id": "osa-02",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "src/dispatch/run-loop.test.ts:848-859",
+    "src/dispatch/turn.test.ts:575-586",
+    "OSA-PRD.md:543-554",
+    "src/verify/commits.test.ts:1-12",
+    "src/dispatch/turn.ts:2-13"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 1441
+  },
+  {
+   "id": "osa-03",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "src/verify/preflight.test.ts:8-19",
+    "OSA-PRD.md:1234-1245",
+    "src/verify/preflight.ts:204-215",
+    "PHASE_11_SPEC.md:623-634",
+    "docs/modernization_log.md:250-261"
+   ],
+   "fileRank": 3,
+   "strictRank": null,
+   "ms": 1810
+  },
+  {
+   "id": "osa-04",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "OSA-PRD.md:39-50",
+    "src/osa/pipeline.ts:230-241",
+    "src/osa/lock.ts:1-12",
+    "src/dispatch/run-loop.test.ts:18-29",
+    "PHASE_11_SPEC.md:4-15"
+   ],
+   "fileRank": 3,
+   "strictRank": null,
+   "ms": 801
+  },
+  {
+   "id": "osa-05",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "OSA-PRD.md:1586-1597",
+    "docs/modernization_log.md:272-283",
+    "README.md:9-20",
+    "src/util/exec.test.ts:21-32",
+    "src/verify/preflight.ts:148-159"
+   ],
+   "fileRank": 5,
+   "strictRank": null,
+   "ms": 730
+  },
+  {
+   "id": "osa-06",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "OSA-PRD.md:194-205",
+    "docs/modernization_log.md:289-300",
+    "PHASE_11_SPEC.md:158-169",
+    "src/dispatch/prompt.test.ts:262-273",
+    "docs/osa/CONFLICTS.md:239-250"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 2212
+  },
+  {
+   "id": "osa-07",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "OSA-PRD.md:3178-3189",
+    "docs/osa/CONFLICTS.md:211-222",
+    "examples/loopr-role-dispatch/fixture/tally-PRD.md:284-295",
+    ".claude/agents/loopr-step10.md:147-158",
+    "prompts/Template_prompts/STEP_10:131-142"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 1398
+  },
+  {
+   "id": "osa-08",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "OSA-PRD.md:1351-1362",
+    "README.md:89-100",
+    "src/dispatch/run-loop.test.ts:152-163",
+    "docs/osa/CONFLICTS.md:32-43",
+    "src/trim/trimmer.ts:1-12"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 2346
+  },
+  {
+   "id": "osa-09",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "PHASE_11_SPEC.md:588-599",
+    "src/verify/preflight.ts:399-410",
+    "src/adapters/codex-cli.test.ts:10-21",
+    "src/adapters/claude-code.test.ts:10-21",
+    "src/adapters/codex-cli.ts:11-22"
+   ],
+   "fileRank": 2,
+   "strictRank": null,
+   "ms": 1765
+  },
+  {
+   "id": "osa-10",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "src/code-index/index.test.ts:6-17",
+    "src/osa/pipeline.ts:40-51",
+    "src/mcp/tools/code-search.ts:1-12",
+    "src/cli/index-cmd.ts:1-12",
+    "src/code-index/search.ts:62-73"
+   ],
+   "fileRank": 2,
+   "strictRank": null,
+   "ms": 1123
+  },
+  {
+   "id": "osa-11",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "docs/osa/CONFLICTS.md:87-98",
+    "OSA-PRD.md:2195-2206",
+    "README.md:22-33",
+    "docs/osa/RUN_REPORT.md:30-41",
+    "PHASE_11_SPEC.md:23-34"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 2485
+  },
+  {
+   "id": "osa-12",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "OSA-PRD.md:1492-1503",
+    "src/memory/memory.test.ts:286-297",
+    "src/osa/pipeline.ts:371-382",
+    "docs/osa/CONFLICTS.md:259-270",
+    "src/memory/store.ts:1-12"
+   ],
+   "fileRank": 3,
+   "strictRank": 3,
+   "ms": 2385
+  },
+  {
+   "id": "osa-13",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "src/adapters/antigravity-cli.ts:34-45",
+    "docs/osa/ANTIGRAVITY.md:9-20",
+    "OSA-PRD.md:1586-1597",
+    "PHASE_11_SPEC.md:417-428",
+    "docs/modernization_log.md:529-540"
+   ],
+   "fileRank": 2,
+   "strictRank": null,
+   "ms": 2299
+  },
+  {
+   "id": "osa-14",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "docs/osa/CONFLICTS.md:193-204",
+    "OSA-PRD.md:1947-1958",
+    "src/domain/errors.ts:37-48",
+    "README.md:104-115",
+    ".claude/agents/loopr-step12.md:27-38"
+   ],
+   "fileRank": 4,
+   "strictRank": 4,
+   "ms": 2663
+  },
+  {
+   "id": "hostel-01",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "app/test_app.py:151-162",
+    "tests/test_engine.py:12-23",
+    "specs/session-c-prd.md:1-12",
+    "specs/session-a-prd.md:15-26",
+    "app/mock.py:231-242"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 1090
+  },
+  {
+   "id": "hostel-02",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "policy/AUDIT.md:15-26",
+    "specs/session-b-prd.md:45-56",
+    "policy/compile.py:188-199",
+    "tests/test_policy.py:106-117",
+    "specs/session-c-prd.md:78-89"
+   ],
+   "fileRank": 3,
+   "strictRank": null,
+   "ms": 953
+  },
+  {
+   "id": "hostel-03",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "app/test_app.py:45-56",
+    "app/.loopr/PHASE_3_SPEC.md:37-48",
+    "app/.loopr/PHASE_1_SPEC.md:10-21",
+    "app/.loopr/PHASE_2_SPEC.md:20-31",
+    "app/main.py:323-334"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 1751
+  },
+  {
+   "id": "hostel-04",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "app/test_app.py:113-124",
+    "app/mock.py:15-26",
+    "app/main.py:188-199",
+    "specs/session-c-prd.md:1-12",
+    "CONTRACT.md:162-173"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 1799
+  },
+  {
+   "id": "hostel-05",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "tests/test_policy.py:429-440",
+    "specs/session-b-prd.md:7-18",
+    "policy/AUDIT.md:1-12",
+    "specs/session-c-prd.md:7-18",
+    "CONTRACT.md:5-16"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 1756
+  },
+  {
+   "id": "hostel-06",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "specs/session-c-prd.md:175-186",
+    "CONTRACT.md:217-228",
+    "specs/session-a-prd.md:89-100",
+    "specs/session-b-prd.md:59-70",
+    "engine/phases/PHASE_2_SPEC.md:26-37"
+   ],
+   "fileRank": 3,
+   "strictRank": null,
+   "ms": 2378
+  },
+  {
+   "id": "hostel-07",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "specs/session-c-prd.md:13-24",
+    "CONTRACT.md:121-132",
+    "tests/test_engine.py:10-21",
+    "app/test_app.py:27-38",
+    "specs/session-a-prd.md:1-12"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 2189
+  },
+  {
+   "id": "hostel-08",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "specs/session-b-prd.md:88-99",
+    "specs/session-c-prd.md:92-103",
+    "app/test_app.py:169-180",
+    "CONTRACT.md:198-209",
+    "tests/test_policy.py:219-230"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 2385
+  },
+  {
+   "id": "hostel-09",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "app/.loopr/PHASE_3_SPEC.md:12-23",
+    "engine/phases/PHASE_2_SPEC.md:1-12",
+    "specs/session-a-prd.md:7-18",
+    "specs/session-c-prd.md:190-201",
+    "tests/test_engine.py:10-21"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 1374
+  },
+  {
+   "id": "hostel-10",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "app/.loopr/PHASE_3_SPEC.md:35-46",
+    "app/.loopr/PHASE_1_SPEC.md:10-21",
+    "app/.loopr/PHASE_2_SPEC.md:20-31",
+    "app/test_app.py:45-56",
+    "specs/session-c-prd.md:180-191"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 2305
+  },
+  {
+   "id": "hostel-11",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "specs/session-c-prd.md:1-12",
+    "CONTRACT.md:202-213",
+    "policy/loopr/baby_prd.md:5-16",
+    "app/.loopr/PHASE_3_SPEC.md:61-72",
+    "app/.loopr/PHASE_2_SPEC.md:9-20"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 1862
+  },
+  {
+   "id": "hostel-12",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "specs/session-c-prd.md:123-134",
+    "app/test_app.py:64-75",
+    "CONTRACT.md:191-202",
+    "specs/session-b-prd.md:59-70",
+    "app/.loopr/PHASE_3_SPEC.md:5-16"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 2101
+  },
+  {
+   "id": "hostel-13",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "app/test_app.py:113-124",
+    "specs/session-a-prd.md:99-110",
+    "CONTRACT.md:174-185",
+    "app/.loopr/PHASE_1_SPEC.md:1-12",
+    "shared/models.py:64-75"
+   ],
+   "fileRank": 2,
+   "strictRank": null,
+   "ms": 2772
+  },
+  {
+   "id": "hms-01",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "PHASE_6_SPEC.md:98-109",
+    "COMPREHENSION.md:163-174",
+    "mizan/purification/ledger.py:21-32",
+    "tests/test_purification_attribution.py:18-29",
+    "mizan/purification/attribution.py:1-12"
+   ],
+   "fileRank": 5,
+   "strictRank": null,
+   "ms": 1424
+  },
+  {
+   "id": "hms-02",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "PHASE_5_SPEC.md:562-573",
+    "tests/test_backtest_clock.py:21-32",
+    "mizan/backtest/clock.py:113-124",
+    "COMPREHENSION.md:165-176",
+    "tests/fixtures/synthetic_universe.py:362-373"
+   ],
+   "fileRank": 3,
+   "strictRank": 3,
+   "ms": 1374
+  },
+  {
+   "id": "hms-03",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "ULTIMATE_PRD.md:67-78",
+    "COMPREHENSION.md:3-14",
+    ".claude/loopr/baby_prd.md:2-13",
+    "prompts/Template_prompts/STEP_10:217-228",
+    ".claude/loopr/.emitted_from.json:1-1"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 2203
+  },
+  {
+   "id": "hms-04",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "COMPREHENSION.md:65-76",
+    "ULTIMATE_PRD.md:847-858",
+    "PHASE_6_SPEC.md:603-614",
+    "PHASE_4_SPEC.md:174-185",
+    "PHASE_5_SPEC.md:519-530"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 1651
+  },
+  {
+   "id": "hms-05",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "PHASE_4_SPEC.md:630-641",
+    "ULTIMATE_PRD.md:175-186",
+    "COMPREHENSION.md:892-903",
+    "PHASE_3_SPEC.md:38-49",
+    "PHASE_7_SPEC.md:6-17"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 2384
+  },
+  {
+   "id": "hms-06",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "PHASE_1_SPEC.md:494-505",
+    "PHASE_5_SPEC.md:791-802",
+    ".claude/agents/loopr-step11.md:111-122",
+    ".claude/agents/loopr-step10.md:240-251",
+    "PHASE_4_SPEC.md:625-636"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 2371
+  },
+  {
+   "id": "hms-07",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "PHASE_5_SPEC.md:34-45",
+    "ULTIMATE_PRD.md:595-606",
+    "tests/test_backtest_compliance_state.py:1-12",
+    "COMPREHENSION.md:82-93",
+    "mizan/backtest/clock.py:4-15"
+   ],
+   "fileRank": 5,
+   "strictRank": null,
+   "ms": 1496
+  },
+  {
+   "id": "hms-08",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "PHASE_6_SPEC.md:29-40",
+    "PHASE_4_SPEC.md:766-777",
+    "COMPREHENSION.md:815-826",
+    "tests/test_screening_verdict.py:1-12",
+    "PHASE_5_SPEC.md:7-18"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 1259
+  },
+  {
+   "id": "hms-09",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "PHASE_6_SPEC.md:563-574",
+    "PHASE_5_SPEC.md:891-902",
+    "PHASE_7_SPEC.md:126-137",
+    "COMPREHENSION.md:60-71",
+    "tests/test_cli_backtest.py:1-12"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 1404
+  },
+  {
+   "id": "hms-10",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "COMPREHENSION.md:12-23",
+    "MASTER_PRD.md:50-61",
+    "PHASE_5_SPEC.md:343-354",
+    "ULTIMATE_PRD.md:844-855",
+    "PHASE_6_SPEC.md:765-776"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 2392
+  },
+  {
+   "id": "hms-11",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "PHASE_5_SPEC.md:542-553",
+    "PHASE_6_SPEC.md:387-398",
+    "COMPREHENSION.md:52-63",
+    "PHASE_7_SPEC.md:599-610",
+    "PHASE_4_SPEC.md:739-750"
+   ],
+   "fileRank": null,
+   "strictRank": null,
+   "ms": 2735
+  },
+  {
+   "id": "hms-12",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "PHASE_5_SPEC.md:508-519",
+    "ULTIMATE_PRD.md:410-421",
+    "PHASE_6_SPEC.md:286-297",
+    "PHASE_7_SPEC.md:191-202",
+    "MASTER_PRD.md:112-123"
+   ],
+   "fileRank": 5,
+   "strictRank": null,
+   "ms": 2429
+  },
+  {
+   "id": "hms-13",
+   "config": "grep",
+   "engine": "grep",
+   "confidence": "unassessed",
+   "abstained": false,
+   "reason": "plain text search; files ranked by how many query words they contain",
+   "signals": null,
+   "returned": [
+    "COMPREHENSION.md:904-915",
+    "docs/modernization_log.md:334-345",
+    "mizan/screening/business_activity.py:194-205",
+    "PHASE_4_SPEC.md:284-295",
+    "ULTIMATE_PRD.md:184-195"
+   ],
+   "fileRank": 2,
+   "strictRank": 2,
+   "ms": 2345
+  }
+ ]
+}

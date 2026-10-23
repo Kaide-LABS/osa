@@ -1,0 +1,12 @@
+[
+  { "name": "U1 = T1", "tuning": { "testPenalty": 0.35 } },
+  { "name": "U2 = U1 + code weight 2.5", "tuning": { "testPenalty": 0.35, "weights": { "code": 2.5 } } },
+  { "name": "U3 = U2 + rrfK 60", "tuning": { "testPenalty": 0.35, "weights": { "code": 2.5 }, "rrfK": 60 } },
+  { "name": "U4 = U3 + semantic 0.3", "tuning": { "testPenalty": 0.35, "weights": { "code": 2.5, "semantic": 0.3 }, "rrfK": 60 } },
+  { "name": "U5 = U4 + margin 0.25", "tuning": { "testPenalty": 0.35, "weights": { "code": 2.5, "semantic": 0.3 }, "rrfK": 60, "minMargin": 0.25 } },
+  { "name": "U6 = U4 + margin 0.40", "tuning": { "testPenalty": 0.35, "weights": { "code": 2.5, "semantic": 0.3 }, "rrfK": 60, "minMargin": 0.4 } },
+  { "name": "U7 = U4 + margin 0.55", "tuning": { "testPenalty": 0.35, "weights": { "code": 2.5, "semantic": 0.3 }, "rrfK": 60, "minMargin": 0.55 } },
+  { "name": "U8 = U4 + testPenalty 0.15", "tuning": { "testPenalty": 0.15, "weights": { "code": 2.5, "semantic": 0.3 }, "rrfK": 60 } },
+  { "name": "U9 = U4 + grepWeight 1.2", "tuning": { "testPenalty": 0.35, "weights": { "code": 2.5, "semantic": 0.3 }, "rrfK": 60, "grepWeight": 1.2 } },
+  { "name": "U10 = U4 + minChannels 3 (high+medium)", "tuning": { "testPenalty": 0.35, "weights": { "code": 2.5, "semantic": 0.3 }, "rrfK": 60, "minChannelsHigh": 3, "minChannelsMedium": 3 } }
+]

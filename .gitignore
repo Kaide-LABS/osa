@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.osa/
+*.log
+
+
+# Local environment files (OSA reads optional keys from the environment; never commit real values)
+.env
+
+# code-search eval snapshots (copies of third-party / private trees; labels + manifests are committed, trees are not)
+evals/code-search/snapshots/

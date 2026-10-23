@@ -1,0 +1,6 @@
+{
+  "weights": { "code": 2.5, "semantic": 0.3 },
+  "rrfK": 60,
+  "testPenalty": 0.35,
+  "minMargin": 0.4
+}
