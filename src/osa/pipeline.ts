@@ -362,7 +362,7 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
         specPath: spec.specPath,
         contextPath: spec.contextPath,
       });
-      architecture = { chosen: decision.chosen, why: decision.why, provider: choice.provider };
+      architecture = { chosen: decision.chosen, why: decision.why, provider: seatKey({ provider: choice.provider, model: choice.model }) };
     } else {
       warnings.push(`The independent architecture review (${choice.provider}) could not be completed (${lateral.failure ?? "unknown reason"}); ${planner}'s plan was not challenged.`);
     }

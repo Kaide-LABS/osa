@@ -1,7 +1,7 @@
 // The optional features that are plug-ins (WS10). Each has exactly ONE switch; when it is off, none of that feature's code runs (nothing is imported,
 // spawned, indexed, probed or written -- the modules are loaded lazily, only when the switch is on).
 //
-//   index.engine            "lexical" (default) | "cbm"   the codebase-memory-mcp code index (docs/osa/CBM_NOTES.md)
+//   index.engine            "lexical" (default) | "cbm" | "hybrid"   the codebase-memory-mcp index (docs/osa/CBM_NOTES.md), or lexical + embeddings (docs/osa/SEMANTIC.md)
 //   trim.enabled            false (default) | true        the trim-1 context trimmer (docs/osa/TRIM1_NOTES.md)
 //   intake.quoteStatedRules false (default) | true        quote the person's stated rules into the acceptance criteria
 //
@@ -18,7 +18,7 @@ export type FeatureSource = "flag" | "config" | "default";
 
 /** Per-command overrides (`--index-engine`, `--trim` / `--no-trim`, `--quote-stated-rules` / `--no-quote-stated-rules`). Absent = not given. */
 export interface FeatureFlags {
-  readonly indexEngine?: "lexical" | "cbm";
+  readonly indexEngine?: "lexical" | "cbm" | "hybrid";
   readonly trim?: boolean;
   readonly quoteStatedRules?: boolean;
 }
@@ -36,7 +36,7 @@ export const NO_EXPLICIT_KEYS: ExplicitFeatureKeys = { indexEngine: false, trim:
 export interface FeatureState {
   readonly id: FeatureId;
   readonly name: string;
-  /** The effective value: "lexical" | "cbm", or "on" | "off". */
+  /** The effective value: "lexical" | "cbm" | "hybrid", or "on" | "off". */
   readonly value: string;
   readonly enabled: boolean;
   readonly source: FeatureSource;
@@ -60,19 +60,23 @@ export function applyFeatureFlags(config: OsaConfig, flags: FeatureFlags): OsaCo
 /** The state of every switch of the EFFECTIVE `config` (flags already applied), with where each was set. Pure. */
 export function describeFeatures(config: OsaConfig, explicit: ExplicitFeatureKeys = NO_EXPLICIT_KEYS, flags: FeatureFlags = {}): FeatureState[] {
   const src = (flag: boolean, inFile: boolean): FeatureSource => (flag ? "flag" : inFile ? "config" : "default");
-  const cbm = config.index.engine === "cbm";
+  const engine = config.index.engine;
+  const optIn = engine !== "lexical";
   return [
     {
       id: "index.engine",
-      name: "code index engine (codebase-memory-mcp)",
-      value: config.index.engine,
-      enabled: cbm,
+      name: "code index engine",
+      value: engine,
+      enabled: optIn,
       source: src(flags.indexEngine !== undefined, explicit.indexEngine),
-      setting: 'index.engine: "lexical" | "cbm"',
-      flags: "--index-engine lexical|cbm",
-      note: cbm
-        ? "CBM answers code searches behind OSA's confidence guard and falls back to the lexical index when unsure or unavailable"
-        : "OSA's own lexical index answers; no CBM process, index, session or files (CBM missed its pass bar, docs/osa/TEST_REPORT.md Suite 7)",
+      setting: 'index.engine: "lexical" | "cbm" | "hybrid"',
+      flags: "--index-engine lexical|cbm|hybrid",
+      note:
+        engine === "cbm"
+          ? "codebase-memory-mcp answers code searches behind OSA's confidence guard and falls back to the lexical index when unsure or unavailable"
+          : engine === "hybrid"
+            ? "lexical candidates are re-ranked by an embeddings model you configure (index.semantic); falls back to the lexical index when the endpoint is not set or fails"
+            : "OSA's own lexical index answers; no CBM process, no embeddings call, no extra files (CBM missed its pass bar, docs/osa/archive/TEST_REPORT.md Suite 7)",
     },
     {
       id: "trim.enabled",
@@ -109,7 +113,7 @@ export function parseFeatureFlag(args: readonly string[], i: number): { readonly
   const a = args[i];
   if (a === "--index-engine") {
     const v = args[i + 1];
-    if (v !== "lexical" && v !== "cbm") throw new UsageError('--index-engine must be "lexical" or "cbm".', { flag: a, value: v ?? null });
+    if (v !== "lexical" && v !== "cbm" && v !== "hybrid") throw new UsageError('--index-engine must be "lexical", "cbm" or "hybrid".', { flag: a, value: v ?? null });
     return { patch: { indexEngine: v }, last: i + 1 };
   }
   if (a === "--trim") return { patch: { trim: true }, last: i };

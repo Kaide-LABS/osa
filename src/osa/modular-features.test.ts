@@ -326,3 +326,21 @@ test("`osa features` lists each switch with its state and source, honours flags,
   assert.equal(json.config_file, "osa.config.json");
   assert.deepEqual(json.features.map((f) => [f.id, f.value, f.source]), [["index.engine", "cbm", "flag"], ["trim.enabled", "off", "flag"], ["intake.quoteStatedRules", "off", "default"]]);
 });
+
+test("the hybrid (embeddings) engine is a third value of the one index switch: flag, description, and a doctor warning while it is not configured", async () => {
+  const { parseFeatureFlag, describeFeatures: describe, applyFeatureFlags: apply } = await import("../features/features.ts");
+  assert.deepEqual(parseFeatureFlag(["--index-engine", "hybrid"], 0), { patch: { indexEngine: "hybrid" }, last: 1 });
+  assert.throws(() => parseFeatureFlag(["--index-engine", "semantic"], 0), /"lexical", "cbm" or "hybrid"/);
+  const cfg = apply(OsaConfig.parse({}), { indexEngine: "hybrid" });
+  const f = describe(cfg).find((x) => x.id === "index.engine");
+  assert.equal(f?.value, "hybrid");
+  assert.equal(f?.enabled, true);
+  assert.match(f?.note ?? "", /re-ranked by an embeddings model/);
+  assert.equal(describe(OsaConfig.parse({})).find((x) => x.id === "index.engine")?.enabled, false, "lexical stays the default");
+  const dir = await mkdtemp(`${tmpdir()}/osa-hybrid-doctor-`);
+  await writeFile(`${dir}/osa.config.json`, JSON.stringify({ index: { engine: "hybrid" } }));
+  const unconfigured = await featureReport(dir, {});
+  assert.match(unconfigured.warnings.join(" "), /index\.semantic\.baseUrl and index\.semantic\.model/);
+  await writeFile(`${dir}/osa.config.json`, JSON.stringify({ index: { engine: "hybrid", semantic: { baseUrl: "https://embed.example.org/v1", model: "m" } } }));
+  assert.deepEqual((await featureReport(dir, {})).warnings, []);
+});

@@ -53,7 +53,7 @@ Project memory:
 Optional plug-ins (each has one switch; OFF means none of its code runs):
   osa features [--repo-dir <path>] [--json] List the switches -- CBM code index, trim-1, quoted stated rules --
                                             with their state and where each was set (flag, config or default).
-  Flags for one command (they win over osa.config.json): --index-engine lexical|cbm, --trim / --no-trim,
+  Flags for one command (they win over osa.config.json): --index-engine lexical|cbm|hybrid, --trim / --no-trim,
   --quote-stated-rules / --no-quote-stated-rules. Accepted by: osa "<prompt>", search, doctor, features.
 
 Commands:
@@ -560,7 +560,7 @@ function renderEvidenceHumanReport(report: EvidenceReport): string {
       `${String(report.turns_found)} turn(s) found, generated ${report.generated_at})`,
   );
   lines.push("");
-  lines.push(`AC1 (cross-provider continuity): ${report.ac1.satisfied ? "satisfied" : "not satisfied"} -- ${report.ac1.detail}`);
+  lines.push(`AC1 (continuity between turns): ${report.ac1.satisfied ? "satisfied" : "not satisfied"} -- ${report.ac1.detail}`);
   lines.push(`AC2 (clean, non-interactive completion): ${report.ac2.satisfied ? "satisfied" : "not satisfied"} -- ${report.ac2.detail}`);
   lines.push(`AC3 (artifact reference and production): ${report.ac3.satisfied ? "satisfied" : "not satisfied"} -- ${report.ac3.detail}`);
   if (report.problems.length > 0) {

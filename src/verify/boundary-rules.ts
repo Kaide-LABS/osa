@@ -44,7 +44,8 @@ export const BOUNDARY_RULES: readonly BoundaryRule[] = [
       "Any import of node:http/https/net/tls, undici, axios, got, or node-fetch, or a call to " +
       "global fetch()/XMLHttpRequest, in src/**. osa makes zero network calls -- with exactly ONE exemption " +
       "(OSA WS3, docs/osa/CONFLICTS.md C-01): src/research/net/**, the free public research APIs (arXiv, " +
-      "OpenAlex, GitHub), which is held to B9 instead.",
+      "OpenAlex, GitHub) and the optional embeddings client (src/research/net/embeddings.ts, which talks only to the one host the " +
+      "operator configured under index.semantic and only when index.engine is \"hybrid\"), held to B9 instead.",
     kind: "source-pattern",
     pattern:
       /\bfrom\s+["']node:(http|https|net|tls)["']|\brequire\(["']node:(http|https|net|tls)["']|\bfrom\s+["'](undici|axios|got|node-fetch)["']|(?<![.\w])fetch\s*\(|XMLHttpRequest/,

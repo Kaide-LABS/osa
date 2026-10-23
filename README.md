@@ -51,7 +51,8 @@ Every key is optional; these are the defaults. A typo'd key is an error, not sil
   "trim":     { "enabled": false, "engine": "trim1", "binaryPath": "", "point": "balanced", "budgetTokens": 6000 },
   "agents":   { "implication": true, "lateralArchitecture": true, "application": true },
   // optional: "lateralArchitectureProvider" + "lateralArchitectureModel" (default: OSA picks the most independent model)
-  "index":    { "enabled": true, "embedder": "local", "topK": 8, "engine": "lexical",
+  "index":    { "enabled": true, "embedder": "local", "topK": 8, "engine": "lexical",   // "lexical" | "hybrid" (semantic) | "cbm"
+                "semantic": { "baseUrl": "", "model": "", "apiKeyEnv": "OSA_EMBEDDINGS_API_KEY", "candidateLimit": 300 },
                 "cbm": { "binaryPath": "", "workDir": "", "indexMode": "full" } },
   "memory":   { "enabled": true, "maxFactsPerFile": 200, "readBudgetChars": 3000 },
   "providers": { "independence": "auto", "turnTimeoutMs": 1800000, "textTimeoutMs": 900000 }
@@ -63,9 +64,14 @@ Every key is optional; these are the defaults. A typo'd key is an error, not sil
 Provider names accept `claude`/`codex`/`antigravity`/`opencode`/`copilot` as short aliases. **`providers.modelOverrides`** matters if a
 provider CLI's own default model has gone stale (e.g. `{"codex-cli": "gpt-6-luna"}`): it applies to every OSA call and build turn.
 
+**Semantic code search** is available as `"index": { "engine": "hybrid" }` with an embeddings endpoint you name (a hosted API with a key, or a
+local server such as Ollama with none): the lexical index proposes candidates and an embeddings model re-ranks them by meaning. It is off by default,
+falls back to the lexical index whenever the endpoint is unset or fails, and was tested against a fake embeddings server only; run
+`node scripts/embeddings-smoke.ts` against your endpoint first. See `docs/osa/SEMANTIC.md`.
+
 Optional environment variables (see `.env.example`; none is required, each feature degrades gracefully):
 `GITHUB_TOKEN` (raises GitHub limits, enables code search), `OPENALEX_API_KEY` (OpenAlex now gives unauthenticated
-callers only a small shared daily budget; `mailto` no longer raises it), `S2_API_KEY` (only with `research.semanticScholar`).
+callers only a small shared daily budget; `mailto` no longer raises it), `S2_API_KEY` (only with `research.semanticScholar`), `OSA_EMBEDDINGS_API_KEY` (only with `index.engine: "hybrid"` and a hosted embeddings API).
 
 ## Providers, models and review independence
 
@@ -182,7 +188,7 @@ credential-shaped content (`sk-`, `ghp_`, `xoxb-`) as a warning only. Read a log
 ## Documentation
 
 `docs/osa/` -- `CURRENT_STATE.md` (the code as found), `CONFLICTS.md` (every place the directive and the code
-disagreed, and every judgement call), `ATTRIBUTION.md`, `TRIM1_NOTES.md`, `ANTIGRAVITY.md`, `OPENCODE.md`, `COPILOT.md`, `INDEPENDENCE.md`, `archive/RUN_REPORT.md` (what
+disagreed, and every judgement call), `ATTRIBUTION.md`, `TRIM1_NOTES.md`, `ANTIGRAVITY.md`, `OPENCODE.md`, `COPILOT.md`, `INDEPENDENCE.md`, `SEMANTIC.md`, `archive/RUN_REPORT.md` (what
 was done per workstream, what was deferred and why, open risks).
 
 ## Requirements and scripts

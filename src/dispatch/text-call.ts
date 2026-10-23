@@ -94,6 +94,7 @@ export function makeTextCall(deps: TextCallDeps = {}): TextCall {
     const durationMs = Date.now() - started;
     await deps.events?.emit("text_call", {
       provider,
+      model: effective.modelOverride,
       purpose,
       ok: outcome.ok,
       webSearch: req.webSearch,

@@ -171,7 +171,7 @@ test("unsupported claims from the cross-check are flagged in the report and surf
   const { result } = await run(model);
   assert.equal(result.crosscheck?.flagged.length, 1);
   assert.match(result.reportMd, /\[unsupported\] Node 99 exists/);
-  assert.ok(result.warnings.some((w) => /not confirmed by the cross-provider check/.test(w)));
+  assert.ok(result.warnings.some((w) => /not confirmed by the independent check/.test(w)));
 });
 
 test("research.crossProviderCheck=false is logged and stamped into the report, never silent", async () => {

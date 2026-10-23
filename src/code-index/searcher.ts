@@ -7,6 +7,7 @@ import type { CbmEngine } from "./cbm/engine.ts";
 import { LexicalEngine } from "./engine.ts";
 import type { CodeSearchEngine, EngineAnswer } from "./engine.ts";
 import type { OsaConfig } from "../domain/osa-config.ts";
+import type { EmbeddingsDeps } from "../research/net/embeddings.ts";
 import type { EventSink } from "../osa/events.ts";
 
 /** What a caller needs to know about where a search came from; carried by the event and shown to agents when it is not high. */
@@ -39,6 +40,8 @@ export interface CodeSearcherOptions {
   readonly events?: EventSink;
   /** Test seam: replaces the CBM opener. */
   readonly openCbm?: () => Promise<CodeSearchEngine>;
+  /** Test seam: the fetch and environment the hybrid engine's embeddings client uses. */
+  readonly embeddings?: EmbeddingsDeps;
 }
 
 /** Why CBM is not configured, or null when it is. Pure. */
@@ -53,7 +56,14 @@ export function cbmConfigProblem(index: OsaConfig["index"]): string | null {
 export function createCodeSearcher(o: CodeSearcherOptions): CodeSearcher {
   const lexical = new LexicalEngine(o.repoDir, o.events !== undefined ? { events: o.events } : {});
   let cbm: Promise<CodeSearchEngine | null> | null = null;
+  let hybrid: Promise<CodeSearchEngine> | null = null;
   let unavailable: string | null = null;
+
+  // Loaded here and only here: with the default `index.engine: "lexical"` the embeddings client and the hybrid engine are never imported.
+  const openHybrid = (): Promise<CodeSearchEngine> => {
+    hybrid ??= import("./hybrid.ts").then(({ HybridEngine }) => new HybridEngine(o.repoDir, lexical, o.index.semantic, { ...(o.embeddings ?? {}), ...(o.events !== undefined ? { events: o.events } : {}) }));
+    return hybrid;
+  };
 
   const openCbm = (): Promise<CodeSearchEngine | null> => {
     cbm ??= (async () => {
@@ -98,6 +108,8 @@ export function createCodeSearcher(o: CodeSearcherOptions): CodeSearcher {
         } else {
           answer = { ...(await lexical.search(query, { k })), engine: "lexical-fallback", confidence: "low", reason: `codebase-memory-mcp is not available (${unavailable ?? "unknown"}); answered by the local index` };
         }
+      } else if (requested === "hybrid") {
+        answer = await (await openHybrid()).search(query, { k });
       } else {
         answer = await lexical.search(query, { k });
       }

@@ -174,5 +174,5 @@ export async function crossCheckReport(input: CrosscheckInput): Promise<Crossche
       note = lastError;
     }
   }
-  throw new StageError(`The cross-provider research check by ${input.reviewer} could not be completed: ${lastError}`, { reviewer: input.reviewer });
+  throw new StageError(`The independent research check by ${input.reviewer} could not be completed: ${lastError}`, { reviewer: input.reviewer });
 }

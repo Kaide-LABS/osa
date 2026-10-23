@@ -156,7 +156,7 @@ export async function runResearchStage(input: ResearchStageInput): Promise<Resea
       events,
       ...(input.env !== undefined ? { env: input.env } : {}),
       ...(input.http !== undefined ? { http: input.http } : {}),
-      summariser: { textCall: input.textCall, provider: routing.researcher, cwd: repoDir, timeoutMs: config.providers.textTimeoutMs, prdBrief: briefOf(prd) },
+      summariser: { textCall: input.textCall, provider: routing.researcher, model: modelOverride, cwd: repoDir, timeoutMs: config.providers.textTimeoutMs, prdBrief: briefOf(prd) },
     });
     await writeFile(`${resultsDir}/prior-art.json`, JSON.stringify(priorArt, null, 2) + "\n", "utf8");
   }
@@ -214,11 +214,11 @@ export async function runResearchStage(input: ResearchStageInput): Promise<Resea
     if (independence === "same-model" || independence === "unverified") warnings.push(describeIndependence(independence, researcherSeat, reviewerSeat));
     reportMd = appendCrosscheck(reportMd, crosscheck.sectionMd);
     if (crosscheck.degraded) warnings.push(`The research check by ${routing.reviewer} was consistency-only: it has no web access to open the cited sources.`);
-    if (crosscheck.flagged.length > 0) warnings.push(`${String(crosscheck.flagged.length)} research claim(s) were not confirmed by the cross-provider check.`);
+    if (crosscheck.flagged.length > 0) warnings.push(`${String(crosscheck.flagged.length)} research claim(s) were not confirmed by the independent check.`);
   } else {
     await events.emit("research_crosscheck", { skipped: true, reason: "research.crossProviderCheck is false" });
     reportMd = appendCrosscheck(reportMd, "## Independent check\n\n_Skipped: research.crossProviderCheck is false in the configuration. This report was NOT independently checked._");
-    warnings.push("The cross-provider research check was disabled by configuration; the research report was not independently checked.");
+    warnings.push("The independent research check was disabled by configuration (research.crossProviderCheck); the research report was not independently checked.");
   }
   await writeFile(`${researchDir}/report.md`, reportMd, "utf8");
 

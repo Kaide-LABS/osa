@@ -115,6 +115,9 @@ export async function featureReport(repoRoot: string, flags: FeatureFlags): Prom
     if (config.index.engine === "cbm" && (config.index.cbm.binaryPath === "" || !existsSync(config.index.cbm.binaryPath))) {
       warnings.push(`index.engine is "cbm" but the codebase-memory-mcp binary is not at index.cbm.binaryPath (${config.index.cbm.binaryPath === "" ? "not set" : config.index.cbm.binaryPath}); searches fall back to the lexical index`);
     }
+    if (config.index.engine === "hybrid" && (config.index.semantic.baseUrl === "" || config.index.semantic.model === "")) {
+      warnings.push('index.engine is "hybrid" but index.semantic.baseUrl and index.semantic.model are not both set; searches fall back to the lexical index (docs/osa/SEMANTIC.md)');
+    }
     if (config.trim.enabled && config.trim.engine === "trim1" && config.trim.binaryPath !== "" && !existsSync(config.trim.binaryPath)) {
       warnings.push(`trim.enabled is true but the trim-1 binary is not at trim.binaryPath (${config.trim.binaryPath}); handoffs use the no-op trimmer`);
     }

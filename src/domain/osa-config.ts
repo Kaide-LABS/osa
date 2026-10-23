@@ -102,11 +102,26 @@ const IndexConfig = z.strictObject({
   /** Hits injected into each phase's handoff context ("where to look first"). */
   topK: z.number().int().min(1).max(30).default(8),
   /**
-   * Which engine ranks the results. "lexical" (default) is OSA's own offline index. "cbm" is codebase-memory-mcp behind OSA's confidence
-   * guard, with the lexical index as the fallback; it is OFF by default because on the 40-query eval it did not meet the confident-wrong
-   * bar (docs/osa/TEST_REPORT.md, suite 7).
+   * Which engine ranks the results. "lexical" (default) is OSA's own offline index. "hybrid" re-ranks the lexical candidates by MEANING with an
+   * embeddings model you configure under `index.semantic` (docs/osa/SEMANTIC.md); it needs an endpoint and is off until you set one. "cbm" is
+   * codebase-memory-mcp behind OSA's confidence guard, with the lexical index as the fallback; it is OFF by default because on the 40-query eval
+   * it did not meet the confident-wrong bar (docs/osa/archive/TEST_REPORT.md, suite 7).
    */
-  engine: z.enum(["lexical", "cbm"]).default("lexical"),
+  engine: z.enum(["lexical", "cbm", "hybrid"]).default("lexical"),
+  /** The embeddings endpoint for engine "hybrid": any OpenAI-compatible `/embeddings` API (hosted with a key, or a local server without one). */
+  semantic: z
+    .strictObject({
+      /** The base URL of the API (a hosted one, or a local server on localhost such as an Ollama or LM Studio endpoint). https is required except for localhost. */
+      baseUrl: z.string().default(""),
+      model: z.string().default(""),
+      /** The NAME of the environment variable holding the key (the key itself is never written in a file). Empty = send no key. */
+      apiKeyEnv: z.string().default("OSA_EMBEDDINGS_API_KEY"),
+      /** How many chunks are considered per query (lexical top hits, then the rest of the index up to this many). */
+      candidateLimit: z.number().int().min(10).max(2000).default(300),
+      batchSize: z.number().int().min(1).max(256).default(64),
+      timeoutMs: z.number().int().min(1000).max(300_000).default(30_000),
+    })
+    .prefault({}),
   /** Where the codebase-memory-mcp binary and its private work directory live (both required for engine "cbm"; docs/osa/CBM_NOTES.md). */
   cbm: z
     .strictObject({

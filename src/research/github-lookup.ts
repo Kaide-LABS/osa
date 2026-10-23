@@ -38,7 +38,7 @@ export interface GithubLookupOptions {
   readonly env?: Readonly<Record<string, string | undefined>>;
   readonly events: EventSink;
   /** For the summary call; summarising is skipped (with a note) when absent. */
-  readonly summariser?: { readonly textCall: TextCall; readonly provider: ProviderId; readonly cwd: string; readonly timeoutMs: number; readonly prdBrief: string };
+  readonly summariser?: { readonly textCall: TextCall; readonly provider: ProviderId; readonly model?: string | null; readonly cwd: string; readonly timeoutMs: number; readonly prdBrief: string };
   readonly http?: HttpDeps;
 }
 
@@ -138,7 +138,7 @@ export async function runGithubLookup(opts: GithubLookupOptions): Promise<PriorA
     const s = opts.summariser;
     const call = await s.textCall(
       s.provider,
-      { prompt: buildPriorArtPrompt(s.prdBrief, repos), cwd: s.cwd, timeoutMs: s.timeoutMs, tier: "research-grade", webSearch: false, modelOverride: null },
+      { prompt: buildPriorArtPrompt(s.prdBrief, repos), cwd: s.cwd, timeoutMs: s.timeoutMs, tier: "research-grade", webSearch: false, modelOverride: s.model ?? null },
       "github-lookup-summary",
     );
     if (call.outcome.ok && call.outcome.text !== null) summary = await screenUntrusted({ text: call.outcome.text.trim(), kind: "prior-art summary (model output derived from repository text)", source: "github-lookup", events: opts.events, grow: false });

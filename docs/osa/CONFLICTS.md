@@ -387,3 +387,12 @@ and it cost about 4x the wall time of the single spec author for a better URL-va
 **S-07 -- Naming.** Every mention of the previous product name, its run directory (`.osa/` is now the single data directory), its alias
 binary, its config-file fallback and its legacy MCP server name was removed; the build-process documents of the original project were dropped.
 The licence line "the OSA contributors" replaces the previous contributors line (the copyright holder is the owner's to set).
+
+**S-08 -- Semantic code search is a third value of the one index switch, not a default.** `index.engine: "hybrid"` re-ranks the lexical index's
+candidates with an embeddings model reached through an operator-configured OpenAI-compatible endpoint (`index.semantic`), cached on disk, with a
+fallback to the lexical index on any failure (`SEMANTIC.md`). Requested as "I want it semantic"; implemented as an option because (a) no provider CLI
+or Anthropic API gives embeddings, so an endpoint (a key, or a local server with none) is unavoidable; (b) the earlier spike found an embedding path
+ranking the right function 31st of 50 on a paraphrase, so it must be tried and measured per project before it replaces the offline default; (c) it
+could not be run live here (no endpoint or key), only against a fake embeddings server; `scripts/embeddings-smoke.ts` is the real-endpoint check.
+The embeddings client lives in `src/research/net/` (the one network-exempt directory, held to B9) and contacts only the configured host. No
+dependency was added. *(risky -- unverified live)*
