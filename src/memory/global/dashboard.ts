@@ -58,7 +58,7 @@ export function readDashboardData(opts: { readonly dbPath?: string; readonly pro
       count: Number(r.count),
       updatedAt: r.updated_at,
     }));
-    const rows = mem.db.prepare(`SELECT id, project, kind, source, text, created_at, updated_at FROM facts WHERE ${where} ORDER BY created_at DESC, id DESC LIMIT ?`).all(...args, limit) as {
+    const rows = mem.db.prepare(`SELECT id, project, kind, source, text, created_at, updated_at FROM facts WHERE ${where} ORDER BY created_at DESC, rowid DESC LIMIT ?`).all(...args, limit) as {
       id: string;
       project: string;
       kind: string;

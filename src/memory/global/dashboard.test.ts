@@ -248,3 +248,17 @@ test("the page script renders every fact through textContent, and search and fil
   assert.equal(list.children.length, 0, "widget has no decisions");
   assert.match((els["count"] as StubEl).textContent, /^0 shown of 4 facts$/);
 });
+
+test("CI found this class of bug: facts that share one millisecond still list newest-first and export oldest-first by when they were written", async () => {
+  const dbPath = await tempDbPath();
+  for (const t of ["first fact about caching", "second fact about queues", "third fact about retries"]) saveFact({ text: t, project: "p" }, { dbPath });
+  const mem = openMemoryDb(dbPath);
+  try {
+    mem.db.exec("UPDATE facts SET created_at = '2026-10-24T00:00:00.000Z', updated_at = '2026-10-24T00:00:00.000Z'"); // a fast machine writes them within one millisecond
+  } finally {
+    mem.close();
+  }
+  const data = readDashboardData({ dbPath });
+  assert.deepEqual(data.facts.map((f) => f.text), ["third fact about retries", "second fact about queues", "first fact about caching"], "newest written first");
+  assert.deepEqual(buildExport(data).facts.map((f) => f.text), ["first fact about caching", "second fact about queues", "third fact about retries"], "the export replays them oldest first");
+});
