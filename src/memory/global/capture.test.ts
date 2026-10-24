@@ -144,9 +144,17 @@ test("FM-C: a goal that is an instruction aimed at an AI is refused and counted;
   assert.ok(stored.every((x) => !/ignore all previous instructions/i.test(x.text)), "it never reached the table");
 });
 
-test("classifyFailure maps database errors to the fixed reason classes", () => {
-  assert.equal(classifyFailure(new Error("the memory database at X is locked by another process")), "locked");
-  assert.equal(classifyFailure(new Error("this Node.js build has no SQLite FTS5 support")), "fts-unavailable");
-  assert.equal(classifyFailure(new Error("the memory database at X could not be opened (it may be corrupt or unreadable)")), "corrupt");
+// The class comes from the error's typed `reason`, not from its message (the message names the database path, so a folder called "busy"
+// was reported as "locked"); see M-23 and the review tests in capture-review.test.ts.
+const typed = (message: string, reason: string): Error => Object.assign(new Error(message), { reason });
+
+test("classifyFailure maps typed database errors to the fixed reason classes", () => {
+  assert.equal(classifyFailure(typed("x", "locked")), "locked");
+  assert.equal(classifyFailure(typed("x", "fts-unavailable")), "fts-unavailable");
+  assert.equal(classifyFailure(typed("x", "corrupt")), "corrupt");
+  assert.equal(classifyFailure(typed("x", "unwritable")), "unwritable");
+  assert.equal(classifyFailure(typed("x", "something-invented")), "other");
   assert.equal(classifyFailure(new Error("something else entirely")), "other");
+  assert.equal(classifyFailure(new Error("the memory database at X is locked by another process")), "other", "message text alone never decides the class");
+  assert.equal(classifyFailure(null), "other");
 });

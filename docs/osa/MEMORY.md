@@ -9,12 +9,22 @@ and are **not** built yet.
 
 At the end of a run that got past the lock (finished **or** stopped early -- a stopped run's failures are the most
 useful facts), the same facts OSA already derives for the project's `.osa/memory` files are **also** saved to the global
-store, plus one run-summary note. The facts come only from the run's deterministic RECORD (what the person locked, the
-spec and architecture decisions, per-phase outcomes, the application check, research outcomes) via `deriveFacts` -- never
-from the raw chat log, which stays write-only, and never from any model's free text.
+store, plus one run-summary note. The facts come only from the run's RECORD (what the person locked, the spec and
+architecture decisions, per-phase outcomes, the application check, research outcomes) via `deriveFacts`, which is
+deterministic and makes no model call -- never from the raw chat log, which stays write-only. Be aware that the record
+itself holds text a model or a web page wrote (the goal summary, assumptions, spec decisions, the architecture reason,
+flagged research claims): the store's secret, hidden-text and instruction checks are the only gate on those, and they
+are pattern-based (see the known limits above).
 
-- **The run-summary note** (kind `note`, always first): the outcome and why, the locked goal in one line, the
-  architecture chosen, how many phases passed, and the count of unmet requirements.
+A run that stops by an **exception** after the lock (the locked PRD was changed, or research or the spec stage failed) is
+captured too, as a stopped run. Its note uses fixed words only: no error message and no text from the failure is stored.
+A run that stops before the lock has nothing locked to remember and is not captured.
+
+- **The run-summary note** (kind `note`, always first): the outcome and why, then the phase and requirement counts, the
+  architecture chosen, and the locked goal in whatever room is left (the counts can never be pushed out by a long goal).
+  A spec-only run says "spec only, nothing built" and reports no counts; if the final check could not run or was not
+  run, the note says so instead of reporting "0 unmet requirements". If the goal itself would be refused (for example
+  it quotes an instruction), the note is still stored, without the goal.
 - **Decisions** (risky assumptions accepted, the architecture decision, spec decisions, out-of-scope choices) as kind
   `decision`; **failures**, **preferences** and **conventions** as kind `fact`.
 - At most **40** facts per run (the summary note first), each cleaned and clipped to 300 characters. Secrets, hidden
@@ -27,9 +37,14 @@ genuinely new facts are added.
 
 Capture is **fail-soft**: it runs after the run's own outcome is already decided and can never change the run's outcome,
 exit code or timing. An unreachable, locked or corrupt database becomes a single `global_memory_failed` event (reason
-class only: `locked`, `corrupt`, `fts-unavailable`, `other`) and nothing else. A successful capture emits
-`global_memory_written` with counts (saved, deduped, refused, redacted spans) and the reason classes of any refusals --
-**never** any fact text, the goal, or any user text.
+class only: `locked`, `corrupt`, `unwritable`, `fts-unavailable`, `other`, taken from the error's type, not from its
+text) and nothing else. A capture saves all of a run's facts through one open connection and waits at most 1.5 seconds
+for another process's lock, so a busy database costs a run about a second and a half, not the full five. A successful
+capture emits `global_memory_written` with counts (saved, deduped, refused, redacted spans, and `truncated`: facts left
+out by the 40-fact cap) and the reason classes of any refusals -- **never** any fact text, the goal, or any user text.
+
+Two repositories with the same folder name share one project name, and so share de-duplication; the name is the folder's
+basename and nothing more.
 
 ## Turning capture off, and forgetting a run
 

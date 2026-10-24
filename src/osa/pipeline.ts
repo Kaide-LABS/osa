@@ -8,7 +8,7 @@
 import { randomUUID } from "node:crypto";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
-import { ExitCode, UsageError } from "../domain/errors.ts";
+import { ExitCode, PrdLockViolationError, UsageError } from "../domain/errors.ts";
 import type { BabyPrd } from "../domain/intake.ts";
 import type { OsaConfig } from "../domain/osa-config.ts";
 import type { TextCall } from "../ports/text-provider.ts";
@@ -208,6 +208,67 @@ function lockLabel(outcome: LockOutcome): OsaRunReport["lock"] {
  * invariant (provider failure at intake, PRD tampering) throws a `OsaError`.
  */
 export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {}): Promise<OsaRunReport> {
+  const track: StopTracker = { config: null, events: null, runId: null, prdGenerated: null, prdLocked: null, stage: "research", recorded: false };
+  try {
+    return await runOsaCommandInner(opts, deps, track);
+  } catch (err) {
+    // A run that stops by an exception after the lock (a tampered PRD, a failed research or spec stage) is the most useful thing to remember,
+    // so it is captured too -- fail-soft, and the original error is what the caller sees.
+    await captureThrownStop(opts.repoDir, track, err).catch(() => undefined);
+    throw err;
+  }
+}
+
+/** What the wrapper needs to remember a run that ended by exception: filled in as the run passes each point. */
+interface StopTracker {
+  config: OsaConfig | null;
+  events: EventSink | null;
+  runId: string | null;
+  prdGenerated: BabyPrd | null;
+  prdLocked: BabyPrd | null;
+  stage: "research" | "spec" | "build";
+  /** True once the normal end-of-run memory write has been reached (so the wrapper never records the same run twice). */
+  recorded: boolean;
+}
+
+/** Saves a run's record to the global store and reports it as one event. Fail-soft: a failure becomes `global_memory_failed` with a class, nothing else. */
+async function captureGlobally(repoDir: string, record: RunRecord, events: EventSink): Promise<void> {
+  let classify: (e: unknown) => string = () => "other";
+  try {
+    const capture = await import("../memory/global/capture.ts"); // dynamic: the feature-off static import graph never reaches node:sqlite
+    classify = capture.classifyFailure;
+    const res = await capture.captureRun(record, repoDir);
+    await events.emit("global_memory_written", { saved: res.saved, deduped: res.deduped, refused: res.refused, redacted: res.redacted, reasons: res.reasons, truncated: res.truncated });
+  } catch (err) {
+    await events.emit("global_memory_failed", { reason: classify(err) });
+  }
+}
+
+/** Records a run that ended by exception. Only the fixed words below ever describe why: no error message, so no user text or path reaches memory. */
+async function captureThrownStop(repoDir: string, t: StopTracker, err: unknown): Promise<void> {
+  if (t.recorded || t.prdLocked === null || t.config === null || t.events === null || t.runId === null) return;
+  if (!t.config.memory.enabled || !t.config.memory.global.capture) return;
+  const because = err instanceof PrdLockViolationError ? "The run was stopped because the locked PRD was changed after the lock." : `The run stopped during ${t.stage} (an error ended it before it finished).`;
+  const record: RunRecord = {
+    runId: t.runId,
+    date: new Date().toISOString().slice(0, 10),
+    prdGenerated: t.prdGenerated ?? t.prdLocked,
+    prdLocked: t.prdLocked,
+    outcome: "stopped",
+    stoppedBecause: because,
+    specAssumptions: [],
+    architecture: null,
+    flaggedClaims: [],
+    failedResearchItems: [],
+    phases: [],
+    applicationUnmet: [],
+    applicationCouldNotRun: null,
+    built: false,
+  };
+  await captureGlobally(repoDir, record, t.events);
+}
+
+async function runOsaCommandInner(opts: OsaCommandOptions, deps: OsaDeps, track: StopTracker): Promise<OsaRunReport> {
   const runId = deps.runId ?? randomUUID();
   const loaded = deps.config === undefined ? await loadOsaConfig(opts.repoDir) : { config: deps.config, source: null, warnings: [] as string[], explicit: NO_EXPLICIT_KEYS, pairSet: true };
   // The optional plug-ins (CBM, trim-1, quoted stated rules): config < flag. Each is off unless switched on; nothing of an off feature runs.
@@ -230,6 +291,9 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
   const seatCandidates = seatPlan.candidates;
   // Every stage logs through a tracker so planted-instruction evidence (`injection_flagged`) reaches the cross-check and the summary.
   const events: EventSink = new InjectionTracker(deps.events ?? new FileEventSink(opts.repoDir, runId));
+  track.events = events;
+  track.runId = runId;
+  track.config = config;
   const warnings: string[] = [...loaded.warnings];
   const interactive = deps.interactive ?? (process.stdin.isTTY && process.stdout.isTTY);
 
@@ -280,6 +344,7 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
     await mkdir(dirname(prdAbs), { recursive: true });
     await writeFile(prdAbs, renderBabyPrd(prd), "utf8");
   }
+  track.prdGenerated = prd;
   if (opts.stopAfterPlan === true) {
     return {
       schema_version: 1,
@@ -339,6 +404,7 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
   // Pin the locked hash in THIS process's memory. The on-disk lock record sits in the repository beside the PRD, so an agent that
   // rewrites the PRD could rewrite the record to match; only this copy is out of its reach (Suite 4).
   const pinned = { sha256: outcome.record.sha256, prd_path: outcome.record.prd_path };
+  track.prdLocked = outcome.prd; // from here on a stop by exception is worth remembering
 
   // The harness hashes artifacts_read at head_before, so the locked PRD must be committed before dispatch.
   await commitPaths(opts.repoDir, `chore: lock baby PRD for OSA run ${runId}`, [prdPath]);
@@ -362,6 +428,7 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
   await assertPrdUnchanged(opts.repoDir, runId, "after research", events, pinned);
 
   // ---- spec (research output -> spec input is a trimmed handoff; the PRD itself is passed verbatim) ----
+  track.stage = "spec";
   const prdMarkdown = await readFile(prdAbs, "utf8");
   const reportForSpec = await trimText("research-report", research.reportMd, briefOf(outcome.prd), trimDeps);
   const spec: SpecStageResult = await runSpecStage({
@@ -474,6 +541,7 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
   // ---- project memory: written from the run's record (never mid-run chatter) at EVERY run end ----
   const phaseRecords: PhaseRecord[] = [];
   const recordMemory = async (end: { outcome: "finished" | "stopped"; stoppedBecause: string | null; application: ApplicationVerdict | null }): Promise<void> => {
+    track.recorded = true;
     if (!config.memory.enabled) return;
     const record: RunRecord = {
       runId,
@@ -489,6 +557,8 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
       phases: phaseRecords,
       applicationUnmet: end.application?.unmet.map((u) => ({ text: u.text, reason: u.reason })) ?? [],
       applicationCouldNotRun: end.application?.couldNotRun ?? null,
+      built: opts.build !== false,
+      applicationChecked: end.application !== null,
     };
     try {
       await writeRunMemory(opts.repoDir, record, { maxFacts: config.memory.maxFactsPerFile, events });
@@ -498,16 +568,7 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
     // Global memory capture: dynamic import() only (so the feature-off static import graph never reaches node:sqlite),
     // and fail-soft -- an unreachable, locked or corrupt database becomes a single global_memory_failed event and nothing
     // else. It runs after the project write, sees the same record, and can never change the run's outcome or timing.
-    if (config.memory.global.capture) {
-      try {
-        const capture = await import("../memory/global/capture.ts");
-        const res = await capture.captureRun(record, opts.repoDir);
-        await events.emit("global_memory_written", { saved: res.saved, deduped: res.deduped, refused: res.refused, redacted: res.redacted, reasons: res.reasons });
-      } catch (err) {
-        const reason = /\blocked\b|\bbusy\b/i.test(err instanceof Error ? err.message : "") ? "locked" : /FTS5/i.test(err instanceof Error ? err.message : "") ? "fts-unavailable" : /corrupt|unreadable|could not be opened/i.test(err instanceof Error ? err.message : "") ? "corrupt" : "other";
-        await events.emit("global_memory_failed", { reason });
-      }
-    }
+    if (config.memory.global.capture) await captureGlobally(opts.repoDir, record, events);
   };
 
   if (opts.build === false) {
@@ -516,6 +577,7 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
   }
 
   // ---- build: the existing cross-provider driver, with PRD-integrity and step-14 hooks around every phase ----
+  track.stage = "build";
   const stageNotes: StageNote[] = [];
   const oneLiners: string[] = [];
   const ctxRel = executorContextRel(runId);

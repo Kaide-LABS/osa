@@ -493,6 +493,51 @@ classes the PRD names (`locked`, `corrupt`, `fts-unavailable`, `other`). The per
 `global_memory_written.reasons` are a separate, finer vocabulary derived from the store's `UsageError` messages
 (`hidden`, `instruction`, `secret`, `empty`, `too-long`, `other`); none of them carry any fact text. *(safe)*
 
+### Added after the independent review of the run capture (commit 6c4bf3d)
+
+A fresh reviewer attacked the capture path. Where this section says "reproduced", the failure was shown on the unfixed code first
+(for the clip fragment: 40 of 46 padding lengths stored a fragment of the token, such as `ghp_aB3dE5gH7jK9mN1pQ3s`, which is more than
+half of it) and a test now holds the fix: `src/memory/global/capture-review.test.ts` and two more in `src/osa/global-capture.test.ts`.
+
+**M-18 -- Secrets are redacted before anything is clipped, and the clip never cuts inside a word.** `clip` cut at 280/300 characters and
+only then did the store look for secrets, so a token that straddled the cut became a fragment too short for any rule to match.
+The summary note now redacts its goal and reason first, and `clip` cuts at the last space. This changes `clip` for the project
+memory files as well: a long line now ends at a word boundary instead of mid-word. *(safe -- reproduced)*
+
+**M-19 -- The folder name is validated with the store's own label rules.** The name was cleaned, then folded with NFKC, and the
+store scrubbed it again: a legal Windows folder named with fullwidth `<!--` characters became hidden text after the fold, and
+every fact was refused with no failure event. `captureRun` now runs the real label check and falls back to `default`. The
+repository path is also resolved first, so `.` is no longer a project name. Two repositories with the same folder name still
+share one project (documented; a hash suffix was rejected as it would make names unreadable and change if a folder moves). *(safe -- reproduced)*
+
+**M-20 -- The summary note puts the counts first and tells the truth about what ran.** The goal came before the counts and the
+300-character clip cut the tail, and a spec-only run reported `Phases passed: 0/0. Unmet requirements: 0`. Now: outcome, counts,
+architecture, then the goal with the room left; spec-only says so and reports no counts; a final check that could not run or was
+switched off says that instead of "0 unmet". A goal that quotes an instruction no longer costs the run its note (retried without
+the goal). `RunRecord` gained two optional fields (`built`, `applicationChecked`). An existing pipeline assertion changed from
+`^Run finished\.` to the spec-only wording; it still asserts the outcome and now also asserts the absence of fake counts. *(safe)*
+
+**M-21 -- The test guard no longer depends only on `NODE_TEST_CONTEXT`.** A test file run directly (`node x.test.ts`) or with
+`--test-isolation=none` has no such variable, and the reviewer showed the default capture creating `.osa/memory.db` under a fake
+home. The guard now also reads `--test*` flags and a `*.test.*` entry file (`underTestRunner`), only when the real environment
+is passed, and the dead `isInsideHome` check is gone. M-15's rule about the passed env stands. *(safe -- reproduced)*
+
+**M-22 -- A run that stops by exception after the lock is captured.** Only driver-reported stops were; a changed PRD (exit 20) or a
+failed research or spec stage left no memory although the documentation said stopped runs were the most useful. `runOsaCommand`
+is now a thin wrapper that, on an exception after the lock, records a stopped run using fixed words only (no error message, no
+text from the failure) and rethrows the original error. Before the lock nothing is captured. *(safe -- tested at pipeline level)*
+
+**M-23 -- One connection per capture, a short lock wait, and typed failure classes.** Saving 40 facts opened, probed and migrated
+the database 40 times (about 0.7 s of blocked event loop) and a locked database froze the process for about 6 s. `saveFacts`
+opens once; capture waits at most 1.5 s for a lock. The failure class now comes from a typed `reason` on `MemoryDbError`, set from
+the SQLite result code, not from the error message (which names the database path: a folder called `busy` was reported as
+`locked`, an unwritable path as `corrupt`). A fifth class, `unwritable`, was added to the four in M-17, and the pipeline uses the
+one classifier instead of its own copy. *(safe -- reproduced)*
+
+**M-24 -- Smaller changes.** `global_memory_written` carries `truncated` (facts left out by the 40-fact cap); the documentation no
+longer claims facts never come from a model's text (the goal, assumptions and spec decisions do; the checks are the only gate).
+*(safe)*
+
 **M-12 -- Left as they are, on purpose.** Plain-word passwords with no digit, letters-only 32-character tokens and short bearer
 values are not detected; closing them refuses ordinary notes. The limits are listed in MEMORY.md. `forget` and `search` match
 project names case-sensitively, as before. File modes on POSIX could not be tested on this Windows machine: the directory is

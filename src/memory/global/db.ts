@@ -31,21 +31,26 @@ export function resolveMemoryDbPath(path?: string, env: NodeJS.ProcessEnv = proc
   if (path !== undefined && path.trim() !== "") return path;
   const fromEnv = env["OSA_MEMORY_DB"];
   if (fromEnv !== undefined && fromEnv.trim() !== "") return fromEnv;
-  const def = join(homedir(), ".osa", "memory.db");
-  // FM-H guard: a test run (node:test sets NODE_TEST_CONTEXT) that reaches the real home default -- with no explicit path
-  // and no OSA_MEMORY_DB -- is refused, so the suite can never create or write the real ~/.osa/memory.db. A test that wants
-  // the store must pass a temp path or set OSA_MEMORY_DB. Keyed on the passed env, so a pure resolution test with its own
-  // env map (e.g. {}) is unaffected.
-  if (env["NODE_TEST_CONTEXT"] !== undefined && isInsideHome(def)) {
-    throw new MemoryDbError("refusing to use the real home memory database under the test runner; set OSA_MEMORY_DB or pass an explicit path to a temp file");
+  // FM-H guard: a test run that reaches the real home default -- with no explicit path and no OSA_MEMORY_DB -- is refused, so
+  // the suite can never create or write the real ~/.osa/memory.db. A test that wants the store must pass a temp path or set
+  // OSA_MEMORY_DB. The process-level signals (execArgv, argv[1]) are read only when the caller passed the real environment,
+  // so a pure resolution test with its own env map (e.g. {}) is unaffected.
+  const real = env === process.env;
+  if (underTestRunner(env, real ? process.execArgv : [], real ? process.argv[1] : undefined)) {
+    throw new MemoryDbError("refusing to use the real home memory database under the test runner; set OSA_MEMORY_DB or pass an explicit path to a temp file", "other");
   }
-  return def;
+  return join(homedir(), ".osa", "memory.db");
 }
 
-/** True when `target` is the real home-profile default location (or inside it). Pure given `homedir()`. */
-function isInsideHome(target: string): boolean {
-  const home = homedir();
-  return target === home || target.startsWith(home.endsWith("\\") || home.endsWith("/") ? home : `${home}${target.includes("\\") ? "\\" : "/"}`);
+/**
+ * True when this process looks like a test run: the node:test runner sets NODE_TEST_CONTEXT in the processes it spawns, but a
+ * test file run directly (`node x.test.ts`) or with `--test-isolation=none` has no such variable, so the `--test*` flags and a
+ * `*.test.*` entry file count too. Pure.
+ */
+export function underTestRunner(env: NodeJS.ProcessEnv, execArgv: readonly string[], argv1: string | undefined): boolean {
+  if (env["NODE_TEST_CONTEXT"] !== undefined) return true;
+  if (execArgv.some((a) => a === "--test" || a.startsWith("--test-"))) return true;
+  return argv1 !== undefined && /\.test\.[cm]?[jt]s$/.test(argv1);
 }
 
 /** An open global-memory database. A thin wrapper so callers never touch `node:sqlite` directly. */
@@ -55,11 +60,47 @@ export interface MemoryDb {
   close(): void;
 }
 
+/** Why the database could not be used. A fixed set, so a caller (the run's capture event) can report a class without parsing message text. */
+export type MemoryDbReason = "locked" | "corrupt" | "unwritable" | "fts-unavailable" | "other";
+
 /** Raised when the database cannot be opened or is unusable. Never carries any stored fact text. */
 export class MemoryDbError extends Error {
-  constructor(message: string) {
+  readonly reason: MemoryDbReason;
+  constructor(message: string, reason: MemoryDbReason = "other") {
     super(message);
     this.name = "MemoryDbError";
+    this.reason = reason;
+  }
+}
+
+/** SQLite result codes (primary): BUSY 5, LOCKED 6, READONLY 8, CORRUPT 11, FULL 13, CANTOPEN 14, NOTADB 26. */
+function reasonOf(e: unknown): MemoryDbReason {
+  const code = (e as { errcode?: unknown } | null)?.errcode;
+  const primary = typeof code === "number" ? code & 0xff : null;
+  if (primary === 5 || primary === 6) return "locked";
+  if (primary === 11 || primary === 26) return "corrupt";
+  if (primary === 8 || primary === 13 || primary === 14 || primary === 3) return "unwritable"; // READONLY, FULL, CANTOPEN, PERM
+  return "other";
+}
+
+/**
+ * Turns whatever the SQLite layer threw into a {@link MemoryDbError} with a class. An error that is already one passes through.
+ * The message never carries stored text; it names the database file only for the cases where that helps a person.
+ */
+export function toMemoryDbError(e: unknown, path: string): MemoryDbError {
+  if (e instanceof MemoryDbError) return e;
+  const reason = reasonOf(e);
+  const code = (e as { errcode?: unknown } | null)?.errcode;
+  const detail = typeof code === "number" ? `; sqlite code ${String(code)}` : "";
+  switch (reason) {
+    case "locked":
+      return new MemoryDbError(`the memory database at ${path} is locked by another process; try again in a moment`, reason);
+    case "corrupt":
+      return new MemoryDbError(`the memory database at ${path} is corrupt or not a database${detail}`, reason);
+    case "unwritable":
+      return new MemoryDbError(`the memory database at ${path} cannot be opened or written${detail}`, reason);
+    default:
+      return new MemoryDbError(`the memory database at ${path} could not be used${detail}`, reason);
   }
 }
 
@@ -69,7 +110,7 @@ function assertFts5(db: DatabaseSync): void {
     db.exec("CREATE VIRTUAL TABLE temp._osa_fts5_probe USING fts5(x)");
     db.exec("DROP TABLE temp._osa_fts5_probe");
   } catch {
-    throw new MemoryDbError("this Node.js build has no SQLite FTS5 support, which OSA memory requires (expected in Node 22+)");
+    throw new MemoryDbError("this Node.js build has no SQLite FTS5 support, which OSA memory requires (expected in Node 22+)", "fts-unavailable");
   }
 }
 
@@ -184,8 +225,9 @@ function migrate(db: DatabaseSync): void {
  * the owner; on Windows OSA relies on the per-user profile folder (documented in docs/osa/MEMORY.md). Errors are clean
  * and never include any stored fact text (a corrupt or unreadable file surfaces as a {@link MemoryDbError}, FM-F).
  */
-export function openMemoryDb(path?: string, env: NodeJS.ProcessEnv = process.env): MemoryDb {
+export function openMemoryDb(path?: string, env: NodeJS.ProcessEnv = process.env, opts: { readonly busyTimeoutMs?: number } = {}): MemoryDb {
   const resolved = resolveMemoryDbPath(path, env);
+  const busyTimeoutMs = Math.max(0, Math.floor(opts.busyTimeoutMs ?? 5000));
   try {
     mkdirSync(dirname(resolved), { recursive: true, mode: 0o700 });
   } catch {
@@ -195,7 +237,7 @@ export function openMemoryDb(path?: string, env: NodeJS.ProcessEnv = process.env
   try {
     db = new DatabaseSync(resolved);
     // The busy timeout comes FIRST: switching to WAL needs a lock, and with the default timeout of zero a second process opening at the same moment fails at once.
-    db.exec("PRAGMA busy_timeout = 5000");
+    db.exec(`PRAGMA busy_timeout = ${String(busyTimeoutMs)}`);
     db.exec("PRAGMA journal_mode = WAL");
     // Deleted content is overwritten with zeros, not left in free pages (forget must not leave the text in the file).
     db.exec("PRAGMA secure_delete = ON");
@@ -208,14 +250,7 @@ export function openMemoryDb(path?: string, env: NodeJS.ProcessEnv = process.env
     } catch {
       // already closed or never opened
     }
-    if (e instanceof MemoryDbError) throw e;
-    const code = (e as { errcode?: unknown; code?: unknown }).errcode ?? (e as { code?: unknown }).code;
-    const busy = code === 5 || code === 6 || /database is locked|busy/i.test(e instanceof Error ? e.message : "");
-    throw new MemoryDbError(
-      busy
-        ? `the memory database at ${resolved} is locked by another process; try again in a moment`
-        : `the memory database at ${resolved} could not be opened (it may be corrupt or unreadable${typeof code === "number" || typeof code === "string" ? `; sqlite code ${String(code)}` : ""})`,
-    );
+    throw toMemoryDbError(e, resolved);
   }
   const handle = db as DatabaseSync; // set: the try block above either assigned it or threw
   try {

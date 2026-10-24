@@ -14,7 +14,8 @@ import { randomUUID } from "node:crypto";
 import { UsageError } from "../../domain/errors.ts";
 import { detectInjection, scrubUntrusted } from "../../osa/untrusted.ts";
 import { findSecret } from "../secrets.ts";
-import { factKey, openMemoryDb } from "./db.ts";
+import { factKey, openMemoryDb, toMemoryDbError } from "./db.ts";
+import type { MemoryDb } from "./db.ts";
 import { maskCommitHashes, redactSecrets, stillHasSecret } from "./redact.ts";
 
 export { factKey } from "./db.ts";
@@ -115,7 +116,61 @@ function requireKind(kind: FactKind | undefined): FactKind {
  * an existing identical fact has its `updated_at` refreshed instead of a second row being inserted. Returns the stored
  * (or refreshed) id and the redaction reasons.
  */
-export function saveFact(input: SaveFactInput, opts: { readonly dbPath?: string } = {}): SaveFactResult {
+export function saveFact(input: SaveFactInput, opts: SaveOptions = {}): SaveFactResult {
+  const prepared = prepareFact(input);
+  const mem = openMemoryDb(opts.dbPath, process.env, opts.busyTimeoutMs !== undefined ? { busyTimeoutMs: opts.busyTimeoutMs } : {});
+  try {
+    return writeFact(mem, prepared);
+  } finally {
+    mem.close();
+  }
+}
+
+/** One entry of {@link saveFacts}: either the stored result or the store's refusal (a {@link UsageError}; it never carries the text). */
+export type SaveFactsEntry = { readonly ok: true; readonly result: SaveFactResult } | { readonly ok: false; readonly error: UsageError };
+
+/**
+ * Saves several facts through ONE open connection (a run's capture saves up to 40; opening, probing and migrating per fact cost
+ * ~0.7 s of blocked event loop). Each fact is validated and written on its own, so a refusal never loses its neighbours.
+ * Results come back in input order. Anything other than a refusal (a locked, corrupt or unwritable database) is thrown as a
+ * typed {@link MemoryDbError}. If every fact is refused before any write, the database is not even opened.
+ */
+export function saveFacts(inputs: readonly SaveFactInput[], opts: SaveOptions = {}): SaveFactsEntry[] {
+  const prepared = inputs.map((input): { readonly p: PreparedFact } | { readonly error: UsageError } => {
+    try {
+      return { p: prepareFact(input) };
+    } catch (e) {
+      if (e instanceof UsageError) return { error: e };
+      throw e;
+    }
+  });
+  if (!prepared.some((x) => "p" in x)) return prepared.map((x) => ({ ok: false as const, error: (x as { error: UsageError }).error }));
+  const mem = openMemoryDb(opts.dbPath, process.env, opts.busyTimeoutMs !== undefined ? { busyTimeoutMs: opts.busyTimeoutMs } : {});
+  try {
+    return prepared.map((x): SaveFactsEntry => ("p" in x ? { ok: true, result: writeFact(mem, x.p) } : { ok: false, error: x.error }));
+  } finally {
+    mem.close();
+  }
+}
+
+/** Options shared by the save functions. */
+export interface SaveOptions {
+  readonly dbPath?: string;
+  /** How long a write waits for another process's lock. Default 5000 ms; a run's capture passes a shorter one. */
+  readonly busyTimeoutMs?: number;
+}
+
+interface PreparedFact {
+  readonly text: string;
+  readonly redactions: string[];
+  readonly project: string;
+  readonly kind: FactKind;
+  readonly source: string | null;
+  readonly key: string;
+}
+
+/** Everything about a save that needs no database: cleaning, limits, the injection and secret checks, redaction, labels. Throws {@link UsageError}. */
+function prepareFact(input: SaveFactInput): PreparedFact {
   // Hidden text is judged BEFORE it is removed: an instruction spelled in invisible characters is refused, not quietly cleaned and saved.
   const text = cleanStored(input.text, "text").trim();
   if (text === "") throw new UsageError("memory save: the text is empty.");
@@ -131,35 +186,45 @@ export function saveFact(input: SaveFactInput, opts: { readonly dbPath?: string 
   const project = rawProject === "" ? "default" : rawProject;
   const kind = requireKind(input.kind);
   const source = input.source === undefined || input.source.trim() === "" ? null : cleanLabel(input.source, "source", MAX_SOURCE_CHARS);
-  const now = new Date().toISOString();
-  const key = factKey(redacted.text);
+  return { text: redacted.text, redactions: redacted.redactions, project, kind, source, key: factKey(redacted.text) };
+}
 
-  const mem = openMemoryDb(opts.dbPath);
+/** Writes one prepared fact on an open connection: one transaction that takes the write lock first, so two processes saving the same fact serialise and the second sees the first's row. */
+function writeFact(mem: MemoryDb, p: PreparedFact): SaveFactResult {
+  const now = new Date().toISOString();
   try {
-    // One transaction that takes the write lock first: two processes saving the same fact serialise, and the second sees the first's row.
     mem.db.exec("BEGIN IMMEDIATE");
-    try {
-      const dup = mem.db.prepare("SELECT id FROM facts WHERE project = ? AND dedup_key = ? AND deleted_at IS NULL").get(project, key) as { id: string } | undefined;
-      let result: SaveFactResult;
-      if (dup !== undefined) {
-        mem.db.prepare("UPDATE facts SET updated_at = ? WHERE id = ?").run(now, dup.id);
-        result = { id: dup.id, redactions: redacted.redactions, deduped: true };
-      } else {
-        const id = randomUUID();
-        mem.db
-          .prepare("INSERT INTO facts(id, project, kind, source, text, created_at, updated_at, deleted_at, dedup_key) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)")
-          .run(id, project, kind, source, redacted.text, now, now, key);
-        result = { id, redactions: redacted.redactions, deduped: false };
-      }
-      mem.db.exec("COMMIT");
-      return result;
-    } catch (e) {
-      mem.db.exec("ROLLBACK");
-      throw e;
-    }
-  } finally {
-    mem.close();
+  } catch (e) {
+    throw toMemoryDbError(e, mem.path);
   }
+  try {
+    const dup = mem.db.prepare("SELECT id FROM facts WHERE project = ? AND dedup_key = ? AND deleted_at IS NULL").get(p.project, p.key) as { id: string } | undefined;
+    let result: SaveFactResult;
+    if (dup !== undefined) {
+      mem.db.prepare("UPDATE facts SET updated_at = ? WHERE id = ?").run(now, dup.id);
+      result = { id: dup.id, redactions: p.redactions, deduped: true };
+    } else {
+      const id = randomUUID();
+      mem.db
+        .prepare("INSERT INTO facts(id, project, kind, source, text, created_at, updated_at, deleted_at, dedup_key) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)")
+        .run(id, p.project, p.kind, p.source, p.text, now, now, p.key);
+      result = { id, redactions: p.redactions, deduped: false };
+    }
+    mem.db.exec("COMMIT");
+    return result;
+  } catch (e) {
+    try {
+      mem.db.exec("ROLLBACK");
+    } catch {
+      // no transaction left to roll back
+    }
+    throw toMemoryDbError(e, mem.path);
+  }
+}
+
+/** Validates a project or source label with the exact rules `save` applies (cleaned, capped, no secret, no instruction); throws {@link UsageError} if it would be refused. */
+export function validateLabel(value: string, what: string, max: number): string {
+  return cleanLabel(value, what, max);
 }
 
 /**

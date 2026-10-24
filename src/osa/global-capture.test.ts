@@ -5,9 +5,10 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { existsSync } from "node:fs";
-import { mkdtemp, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { PrdLockViolationError } from "../domain/errors.ts";
 import { OsaConfig } from "../domain/osa-config.ts";
 import { MinIntervalLimiter } from "../research/net/http.ts";
 import { openMemoryDb } from "../memory/global/db.ts";
@@ -65,7 +66,7 @@ test("capture on (the default): a run's facts land in the global store and globa
   const written = events.events.find((e) => e.event === "global_memory_written");
   assert.ok(written !== undefined, "global_memory_written was emitted");
   assert.ok(typeof written.data["saved"] === "number" && (written.data["saved"] as number) >= 1, "at least one fact saved");
-  assert.deepEqual(Object.keys(written.data).sort(), ["deduped", "reasons", "redacted", "refused", "saved"], "counts and reason classes only");
+  assert.deepEqual(Object.keys(written.data).sort(), ["deduped", "reasons", "redacted", "refused", "saved", "truncated"], "counts and reason classes only");
   const payload = JSON.stringify(written.data);
   assert.ok(!/word counter|Goal:/i.test(payload), "the event never carries fact text or the goal");
   const mem = openMemoryDb(dbPath);
@@ -73,7 +74,8 @@ test("capture on (the default): a run's facts land in the global store and globa
     const n = (mem.db.prepare("SELECT COUNT(*) AS c FROM facts WHERE deleted_at IS NULL").get() as { c: number }).c;
     assert.ok(n >= 1, "facts were stored");
     const note = mem.db.prepare("SELECT text FROM facts WHERE kind='note'").get() as { text: string } | undefined;
-    assert.match(note?.text ?? "", /^Run finished\./);
+    assert.match(note?.text ?? "", /^Run finished \(spec only, nothing built\)\./, "a run that built nothing says so instead of reporting phase counts");
+    assert.ok(!/Phases passed|nmet requirements/.test(note?.text ?? ""));
   } finally {
     mem.close();
   }
@@ -107,4 +109,43 @@ test("FM-A: a corrupt database -- the run still finishes and exactly one global_
   assert.equal(failed.length, 1, "exactly one failed event");
   assert.equal(failed[0]?.data["reason"], "corrupt");
   assert.ok(!events.names().includes("global_memory_written"), "no written event when the store is unreachable");
+});
+
+test("a run that stops by an exception after the lock is captured too, as stopped, with fixed words and no error text", async () => {
+  const repoDir = await tempGitRepo();
+  const dbDir = await mkdtemp(join(tmpdir(), "osa-gcap-stop-"));
+  const dbPath = join(dbDir, "memory.db");
+  const events = new MemoryEventSink(RUN_ID);
+  const base = fakeModel();
+  const tamper: typeof base.call = async (provider, req, purpose) => {
+    if (purpose === "github-lookup-summary") {
+      const p = `${repoDir}/runs/${RUN_ID}/baby-prd.md`;
+      await writeFile(p, `${await readFile(p, "utf8")}\nSneaky new requirement.\n`, "utf8");
+    }
+    return base.call(provider, req, purpose);
+  };
+  await withEnv(dbPath, async () => {
+    await assert.rejects(runOsaCommand(runOpts(repoDir), deps(repoDir, events, { textCall: tamper })), (e: unknown) => e instanceof PrdLockViolationError);
+  });
+  const written = events.events.find((e) => e.event === "global_memory_written");
+  assert.ok(written !== undefined, "the stopped run was captured");
+  const mem = openMemoryDb(dbPath);
+  try {
+    const note = mem.db.prepare("SELECT text FROM facts WHERE kind='note'").get() as { text: string } | undefined;
+    assert.match(note?.text ?? "", /^Run stopped \(The run was stopped because the locked PRD was changed after the lock\.\)\./);
+    assert.ok(!/Sneaky/.test(JSON.stringify(mem.db.prepare("SELECT text FROM facts").all())), "no text from the error or the tampered file");
+  } finally {
+    mem.close();
+  }
+});
+
+test("a stop by exception before the lock is not captured (there is nothing locked to remember)", async () => {
+  const repoDir = await tempGitRepo();
+  const dbPath = join(await mkdtemp(join(tmpdir(), "osa-gcap-pre-")), "memory.db");
+  const events = new MemoryEventSink(RUN_ID);
+  await withEnv(dbPath, async () => {
+    await assert.rejects(runOsaCommand(runOpts(repoDir), deps(repoDir, events, { textCall: () => Promise.reject(new Error("the provider is down")) })));
+  });
+  assert.deepEqual(globalEvents(events), []);
+  assert.equal(existsSync(dbPath), false);
 });
