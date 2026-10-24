@@ -28,9 +28,10 @@ import { screenHits } from "../code-index/guard.ts";
 import { runIntake } from "./intake.ts";
 import type { IntakeFile } from "./intake.ts";
 import { assertPrdUnchanged, exitCodeForLockOutcome, lockBabyPrd, runGate, exitCodeForGateOutcome } from "./lock.ts";
-import type { LockIO, LockOutcome, GateIO } from "./lock.ts";
-import { makeTerminalLockIO } from "./terminal.ts";
+import type { LockIO, LockOutcome, GateIO, GateMode } from "./lock.ts";
+import { makeTerminalLockIO, makeTerminalGateIO } from "./terminal.ts";
 import { writeSpecGate, verifySpecGate } from "./spec-gate.ts";
+import { buildApprovalTldr } from "./tldr.ts";
 import { runDrive } from "../dispatch/driver-loop.ts";
 import type { DriveDispatchDeps, DrivePhaseHooks } from "../dispatch/driver-loop.ts";
 import { DriveConfig } from "../domain/driver.ts";
@@ -119,6 +120,7 @@ export interface OsaDeps {
   readonly probeProvider?: ProviderProbe;
   readonly textCall?: TextCall;
   readonly io?: LockIO;
+  readonly gateIo?: GateIO;
   readonly events?: EventSink;
   /** Whether a human can answer the lock prompt. Default: both stdin and stdout are TTYs. */
   readonly interactive?: boolean;
@@ -372,17 +374,22 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
   await commitPaths(opts.repoDir, `chore: lock baby PRD for OSA run ${runId}`, [prdPath]);
 
   // ---- fromSpec: skip research/spec, verify spec-gate, resume at gate/build ----
-  // TODO (Part B): fromSpec currently returns a scaffold. Complete: read spec artifacts,
+  // Note: fromSpec skips intake/research/spec entirely. It reads the locked PRD (already done above
+  // via fromDraft path), verifies both spec-gate hashes, and resumes at the gate/build. The spec
+  // artifacts are available on disk from the prior run; the TL;DR must be read back from
+  // event logs or persisted artifacts to avoid re-running spec. For now, return a scaffold.
+  // Full implementation deferred to Phase 2 Part B: read event log, reconstruct TldrInput,
   // assemble TL;DR, and wire the real gate.
   if (opts.fromSpec === true) {
     try {
       const specGateRecord = await verifySpecGate(opts.repoDir, runId, outcome.record.sha256);
+      // TODO (Phase 2 Part B): Read spec artifacts and event log, assemble tldrLines, wire gate.
       return {
         schema_version: 1,
         generated_at: new Date().toISOString(),
         run_id: runId,
-        ok: false, // Part B wires the real gate
-        exit_code: ExitCode.OK,
+        ok: false,
+        exit_code: ExitCode.STAGE_FAILED,
         stage: "spec",
         lock: "locked",
         prd_path: prdPath,
@@ -397,7 +404,7 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
         review: { author: seatKey(seatPlan.review.author), reviewer: seatKey(seatPlan.review.reviewer), level: seatPlan.review.level, text: reviewText },
         summary_path: null,
         warnings,
-        problems: [],
+        problems: ["fromSpec resumption: TL;DR assembly not yet implemented in Part B."],
       };
     } catch (err) {
       return {
@@ -544,6 +551,48 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
     total_phases: spec.totalPhases,
     assumptions: spec.specAssumptions.length,
   };
+
+  // Build the deterministic approval TL;DR from existing artifacts.
+  const tldrResult = buildApprovalTldr({
+    prd: outcome.prd,
+    specAssumptions: spec.specAssumptions,
+    totalPhases: spec.totalPhases,
+    risky: outcome.prd.assumptions.filter((a) => a.risk === "risky"),
+    defaulted: outcome.prd.assumptions.filter((a) => a.risk === "defaulted"),
+    researchSkipped: research.skipped,
+    flaggedClaims: (research.crosscheck?.flagged ?? []).map((c) => c.claim),
+    reviewText,
+  });
+
+  if ("stop" in tldrResult) {
+    // Cannot assemble a readable TL;DR: report the failure and stop.
+    // (recordMemory not called for this early failure; it's a critical pipeline error)
+    return {
+      schema_version: 1,
+      generated_at: new Date().toISOString(),
+      run_id: runId,
+      ok: false,
+      exit_code: ExitCode.STAGE_FAILED,
+      stage: "spec",
+      lock: "locked",
+      prd_path: prdPath,
+      prd_sha256: outcome.record.sha256,
+      assumptions: counts(outcome.prd),
+      research: researchSummary,
+      spec: specSummary,
+      spec_gate: { spec_gate_sha256: specGateRecord.spec_gate_sha256, prd_sha256: specGateRecord.prd_sha256 },
+      tldr: null,
+      build: null,
+      agents: { architecture, implications, application: null },
+      review: { author: seatKey(seatPlan.review.author), reviewer: seatKey(seatPlan.review.reviewer), level: seatPlan.review.level, text: reviewText },
+      summary_path: null,
+      warnings,
+      problems: [tldrResult.stop],
+    };
+  }
+
+  const tldrLines = tldrResult.lines;
+
   const base = {
     review: { author: seatKey(seatPlan.review.author), reviewer: seatKey(seatPlan.review.reviewer), level: seatPlan.review.level, text: reviewText },
     schema_version: 1 as const,
@@ -595,7 +644,7 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
       exit_code: ExitCode.OK,
       stage: "spec",
       spec_gate: { spec_gate_sha256: specGateRecord.spec_gate_sha256, prd_sha256: specGateRecord.prd_sha256 },
-      tldr: null, // Part B supplies deterministic TL;DR
+      tldr: tldrLines,
       build: null,
       agents: { architecture, implications, application: null },
       summary_path: null,
@@ -613,12 +662,72 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
       exit_code: ExitCode.OK,
       stage: "spec",
       spec_gate: { spec_gate_sha256: specGateRecord.spec_gate_sha256, prd_sha256: specGateRecord.prd_sha256 },
-      tldr: null, // Part B supplies deterministic TL;DR
+      tldr: tldrLines,
       build: null,
       agents: { architecture, implications, application: null },
       summary_path: null,
       warnings,
       problems: [],
+    };
+  }
+
+  // ---- post-spec gate: confirm before build ----
+  // Map CLI intent to GateMode.
+  const gateMode: GateMode = opts.yes
+    ? { kind: "unattended", acceptRisky: opts.acceptRisky ?? false }
+    : { kind: "interactive" };
+
+  // Prepare the gate IO (real terminal, or test fake injected via deps).
+  const gateIo: GateIO = deps.gateIo ?? makeTerminalGateIO();
+
+  // Show the TL;DR to the person first.
+  gateIo.show(tldrLines.join("\n"));
+
+  // Run the gate (confirms in interactive mode, or decides unattended).
+  const gateOutcome = await runGate({
+    repoDir: opts.repoDir,
+    runId,
+    artifactPath: prdPath,
+    risky: outcome.prd.assumptions.filter((a) => a.risk === "risky"),
+    io: gateIo,
+    events,
+    mode: gateMode,
+  });
+
+  if (gateOutcome.kind === "refused") {
+    await recordMemory({ outcome: "stopped", stoppedBecause: "Build not approved: risky assumptions need a human decision.", application: null });
+    return {
+      ...base,
+      generated_at: new Date().toISOString(),
+      ok: false,
+      exit_code: exitCodeForGateOutcome(gateOutcome),
+      stage: "spec",
+      spec_gate: { spec_gate_sha256: specGateRecord.spec_gate_sha256, prd_sha256: specGateRecord.prd_sha256 },
+      tldr: tldrLines,
+      build: null,
+      agents: { architecture, implications, application: null },
+      summary_path: null,
+      warnings,
+      problems: [gateOutcome.message],
+    };
+  }
+
+  if (gateOutcome.kind === "cancelled") {
+    await recordMemory({ outcome: "stopped", stoppedBecause: "Build cancelled at approval.", application: null });
+    const redirect = "To change direction, refine your prompt or supply answers to the recommended questions, then run again.";
+    return {
+      ...base,
+      generated_at: new Date().toISOString(),
+      ok: false,
+      exit_code: exitCodeForGateOutcome(gateOutcome),
+      stage: "spec",
+      spec_gate: { spec_gate_sha256: specGateRecord.spec_gate_sha256, prd_sha256: specGateRecord.prd_sha256 },
+      tldr: tldrLines,
+      build: null,
+      agents: { architecture, implications, application: null },
+      summary_path: null,
+      warnings,
+      problems: [redirect],
     };
   }
 
@@ -781,6 +890,7 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
     stoppedBecause: !driven.ok ? plainStop(driven.problems, driven.exitCode) : applicationFailed ? "The finished project did not pass the final check against the requirements." : null,
     stages: stageNotes,
     lockedRiskyAssumptions: outcome.prd.assumptions.filter((a) => a.risk === "risky").map((a) => a.text),
+    ...(opts.acceptRisky === true ? { lockedDefaultedAssumptions: outcome.prd.assumptions.filter((a) => a.risk === "defaulted").map((a) => a.text) } : {}),
     specDecisions: plain.rewritten ? plain.bullets : [`${String(rawDecisions.length)} technical decision(s) were made while writing the spec; they are listed under "For engineers" at the end.`],
     research: { ...researchSummary, degradedCheck: research.crosscheck?.degraded ?? false },
     warnings,
@@ -804,7 +914,7 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
     exit_code: exitCode,
     stage: !driven.ok ? "build" : applicationFailed ? "verify" : "done",
     spec_gate: { spec_gate_sha256: specGateRecord.spec_gate_sha256, prd_sha256: specGateRecord.prd_sha256 },
-    tldr: null, // Part B supplies deterministic TL;DR
+    tldr: tldrLines,
     build: { ok: driven.ok, exit_code: driven.exitCode, phases_run: new Set(driven.phases.map((p) => p.dispatched_run_id).filter((id): id is string => id !== null)).size, final_state: driven.finalStateId },
     agents: {
       architecture,
