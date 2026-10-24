@@ -1,6 +1,6 @@
 {
   "name": "@kaide-labs/osa",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "OSA -- One-Shot Anything: a local, headless harness that takes one prompt, locks a baby PRD, and runs a build with an independent reviewer across Claude Code, Codex CLI and Antigravity CLI, driven by CLI or as a local MCP server.",
   "type": "module",
   "license": "MIT",
