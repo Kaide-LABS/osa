@@ -17,7 +17,7 @@ import { repoRelToAbs } from "../util/paths.ts";
 import { runAcademicSearch } from "./academic.ts";
 import type { AcademicResult } from "./academic.ts";
 import { runAllItems } from "./agent.ts";
-import type { ItemOutcome } from "./agent.ts";
+import type { ItemOutcome, ReuseCandidate, ReuseSeam } from "./agent.ts";
 import { appendCrosscheck } from "./report.ts";
 import { crossCheckReport } from "./crosscheck.ts";
 import type { CrosscheckResult } from "./crosscheck.ts";
@@ -26,7 +26,7 @@ import type { DocsReport } from "./docs.ts";
 import { runGithubLookup } from "./github-lookup.ts";
 import type { PriorArtResult } from "./github-lookup.ts";
 import type { HttpDeps, MinIntervalLimiter } from "./net/http.ts";
-import { buildFields, buildOutline, writeOutlineFiles } from "./outline.ts";
+import { buildFields, buildOutline, docsTargetOf, writeOutlineFiles } from "./outline.ts";
 import { flagsOf, screenUntrusted } from "../osa/untrusted.ts";
 import { compileReport } from "./report.ts";
 import { chooseResearchProviders } from "./routing.ts";
@@ -51,6 +51,8 @@ export interface ResearchStageInput {
   readonly nowIso?: () => string;
   /** Commit the research artifacts (default true; tests may disable). */
   readonly commit?: boolean;
+  /** Path to the global memory database for documentation reuse (tests pass a temp path; production uses the default/`OSA_MEMORY_DB`). */
+  readonly memoryDbPath?: string;
 }
 
 /** What the stage produced. */
@@ -78,6 +80,15 @@ export function briefOf(prd: BabyPrd): string {
     ...prd.acceptanceCriteria.map((c, i) => `${String(i + 1)}. ${c}`),
     ...(prd.constraints.length > 0 ? ["Constraints:", ...prd.constraints.map((c) => `- ${c}`)] : []),
   ].join("\n");
+}
+
+/** The lock wait reuse uses -- the same short 1.5 s capture uses, so a busy database never makes a run wait long. */
+const REUSE_BUSY_TIMEOUT_MS = 1500;
+
+/** Classifies a database failure during reuse into the typed {@link import("../memory/global/db.ts").MemoryDbReason} class, duck-typed so this file never statically imports the sqlite-backed store. Pure. */
+function reuseFailReason(err: unknown): string {
+  const reason = (err as { reason?: unknown } | null)?.reason;
+  return reason === "locked" || reason === "corrupt" || reason === "unwritable" || reason === "fts-unavailable" ? reason : "other";
 }
 
 function defaultHasWebSearch(p: ProviderId): boolean {
@@ -161,6 +172,37 @@ export async function runResearchStage(input: ResearchStageInput): Promise<Resea
     await writeFile(`${resultsDir}/prior-art.json`, JSON.stringify(priorArt, null, 2) + "\n", "utf8");
   }
 
+  // ---- 2b. documentation reuse: load reusable prior-run results with ONE database open (dynamic import, only when enabled) ----
+  const reuseEnabled = config.memory.enabled && config.memory.global.reuse.enabled;
+  let reuseSeam: ReuseSeam | undefined;
+  if (reuseEnabled) {
+    const docsItems = outline.items.filter((it) => it.kind === "docs");
+    const targetBySlug = new Map<string, string>();
+    for (const it of docsItems) {
+      const target = docsTargetOf(it.title);
+      if (target !== null) targetBySlug.set(it.slug, target);
+    }
+    if (targetBySlug.size > 0) {
+      try {
+        const { findReusable, docsKey } = await import("../memory/global/research.ts"); // dynamic: the feature-off static import graph never reaches node:sqlite
+        const byKey = findReusable([...targetBySlug.values()], {
+          maxAgeDays: config.memory.global.reuse.maxAgeDays,
+          now: new Date(nowIso()),
+          busyTimeoutMs: REUSE_BUSY_TIMEOUT_MS,
+          ...(input.memoryDbPath !== undefined ? { dbPath: input.memoryDbPath } : {}),
+        });
+        const bySlug = new Map<string, ReuseCandidate>();
+        for (const [slug, target] of targetBySlug) {
+          const candidate = byKey.get(docsKey(target));
+          if (candidate !== undefined) bySlug.set(slug, candidate);
+        }
+        reuseSeam = { lookup: (slug: string): ReuseCandidate | null => bySlug.get(slug) ?? null };
+      } catch (err) {
+        await events.emit("research_reuse_failed", { reason: reuseFailReason(err), phase: "lookup" });
+      }
+    }
+  }
+
   // ---- 3. one agent per item ----
   const outcomes = await runAllItems({
     textCall: input.textCall,
@@ -174,12 +216,18 @@ export async function runResearchStage(input: ResearchStageInput): Promise<Resea
     prdBrief: briefOf(prd),
     academicLeads: academic?.papers ?? [],
     modelOverride,
+    ...(reuseSeam !== undefined ? { reuse: reuseSeam } : {}),
   });
   const done = outcomes.filter((o) => o.status === "done").length;
   const resumed = outcomes.filter((o) => o.status === "resumed").length;
+  const reused = outcomes.filter((o) => o.status === "reused");
   const failed = outcomes.filter((o) => o.status === "failed");
-  await events.emit("research_validated", { items: outcomes.length, done, resumed, failed: failed.length, failedSlugs: failed.map((f) => f.slug) });
-  if (done + resumed === 0) {
+  await events.emit("research_validated", { items: outcomes.length, done, resumed, reused: reused.length, failed: failed.length, failedSlugs: failed.map((f) => f.slug) });
+  if (reused.length > 0) {
+    const resultCharsEstimate = reused.reduce((n, o) => n + (o.result === null ? 0 : JSON.stringify(o.result).length), 0);
+    await events.emit("research_reused", { items: reused.length, oldestAgeDays: Math.max(...reused.map((o) => o.reusedFrom?.ageDays ?? 0)), resultCharsEstimate });
+  }
+  if (done + resumed + reused.length === 0) {
     throw new StageError(`Every research item failed (${failed.map((f) => f.slug).join(", ")}); there is nothing to build a spec from.`, { failed: failed.map((f) => f.slug) });
   }
   for (const f of failed) warnings.push(`Research item "${f.slug}" could not be completed: ${f.problems.join(" ")}`);
@@ -221,6 +269,39 @@ export async function runResearchStage(input: ResearchStageInput): Promise<Resea
     warnings.push("The independent research check was disabled by configuration (research.crossProviderCheck); the research report was not independently checked.");
   }
   await writeFile(`${researchDir}/report.md`, reportMd, "utf8");
+
+  // ---- 6b. remember: store freshly-researched documentation items, only when the independent check ran and flagged nothing ----
+  if (reuseEnabled && crosscheck !== null && crosscheck.flagged.length === 0) {
+    const toRemember: { target: string; title: string; resultJson: string; checkLevel: "full" | "consistency-only"; project: string; createdAt: string }[] = [];
+    for (const o of outcomes) {
+      if (o.status !== "done" || o.result === null) continue; // only freshly done items (never resumed, reused or failed)
+      const item = outline.items.find((it) => it.slug === o.slug);
+      if (item === undefined || item.kind !== "docs") continue;
+      const target = docsTargetOf(item.title);
+      if (target === null) continue;
+      toRemember.push({ target, title: item.title, resultJson: JSON.stringify(o.result, null, 2) + "\n", checkLevel: crosscheck.degraded ? "consistency-only" : "full", project: "", createdAt: nowIso() });
+    }
+    if (toRemember.length > 0) {
+      try {
+        const { rememberItems } = await import("../memory/global/research.ts"); // dynamic: the feature-off static import graph never reaches node:sqlite
+        const { projectNameFor } = await import("../memory/global/capture.ts");
+        const { validateLabel } = await import("../memory/global/memory.ts");
+        let project = "default";
+        try {
+          project = validateLabel(projectNameFor(repoDir), "project name", 100) || "default";
+        } catch {
+          project = "default"; // a folder name the store would refuse never costs the run its reuse
+        }
+        const r = rememberItems(
+          toRemember.map((t) => ({ ...t, project })),
+          { busyTimeoutMs: REUSE_BUSY_TIMEOUT_MS, ...(input.memoryDbPath !== undefined ? { dbPath: input.memoryDbPath } : {}) },
+        );
+        await events.emit("research_remembered", { stored: r.stored, refused: r.refused });
+      } catch (err) {
+        await events.emit("research_reuse_failed", { reason: reuseFailReason(err), phase: "remember" });
+      }
+    }
+  }
 
   if (input.commit !== false) {
     await commitPaths(repoDir, `chore: research artifacts for OSA run ${runId}`, [researchDirRel]);

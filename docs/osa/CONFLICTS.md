@@ -538,6 +538,47 @@ one classifier instead of its own copy. *(safe -- reproduced)*
 longer claims facts never come from a model's text (the goal, assumptions and spec decisions do; the checks are the only gate).
 *(safe)*
 
+## Step 3 -- reuse documentation research across runs (memory-phase3)
+
+**M-25 -- The reuse seam is keyed by item SLUG, not by the documentation key.** The SPEC puts `docsKey` in
+`src/memory/global/research.ts`, but `src/research/agent.ts` (which consults the seam) and `src/research/stage.ts` are both
+reachable from the entry points, and the import-graph invariant (CONTEXT, `import-graph.test.ts`) forbids them from
+statically importing any `src/memory/global/` module. *Resolution:* the stage computes the keys inside its dynamic
+`import()` of `research.ts`, builds a `slug -> candidate` map there, and hands `agent.ts` a `ReuseSeam.lookup(slug)`. The
+key format still has one source (`docsKey`); `agent.ts` never sees it and imports nothing from the store. Two docs items
+with the same key both resolve to the same candidate (FM-G). *(safe)*
+
+**M-26 -- The documentation-title format lives in `outline.ts`, the key normalisation in `research.ts`.** The SPEC asks for
+"one source of that format" next to `buildOutline` and also places `docsKey` in the memory module. *Resolution:* both
+exist and are distinct concerns -- `outline.ts` owns the title wording (`docsItemTitle` / `docsTargetOf`, round-trippable and
+statically importable by the research side), and `research.ts` owns the reuse-key normalisation (`docsKey`). The stage
+derives a target from a title with the former, then keys it with the latter. *(safe)*
+
+**M-27 -- A reused result is screened but not re-validated after screening.** A fresh result is validated, then
+`screenDeep`-ed, then written; screening can neutralise a line. Reuse mirrors that order exactly (validate the stored
+result for THIS item, then screen, then write), so a reused result gets precisely a fresh result's treatment and no more
+(FM-C). A planted instruction is neutralised to a `[removed by OSA …]` marker just as in a fresh result; it is not grounds
+to refuse the whole result, matching the fresh path. *(safe)*
+
+**M-28 -- Capture-off does not imply reuse-off.** The step-2 pipeline test "FM-E: capture off -- … the database file is
+never created" left reuse at its default (on), so the research stage would now open the store and create the file.
+*Resolution:* that test is scoped to capture; reuse is a separate switch, so the test now also sets `reuse.enabled: false`.
+The assertion is unchanged, matching the CONTEXT instruction to turn reuse off in tests that assert no store access rather
+than weaken the assertion. The feature-off behaviour (no store module imported, no database created) is covered by the new
+`src/research/reuse.test.ts` FM-F case and the unchanged static import-graph invariant. *(safe)*
+
+**M-29 -- The origin project stored with a remembered result reuses capture's own project derivation.** So that `forget
+--project P` removes a project's facts and its remembered research together, the remember path derives the project exactly
+as capture does (`projectNameFor` + `validateLabel`, falling back to `default`), via a dynamic import inside the stage.
+Reuse LOOKUP ignores the project (it keys by technology, so any project's run benefits); only forgetting and the report's
+provenance line use it, and the report re-cleans the stored name before printing it. *(safe)*
+
+**M-30 -- `research_reuse_failed` carries the typed reason class, duck-typed.** The event reason reuses the
+`MemoryDbReason` value set (`locked` / `corrupt` / `unwritable` / `fts-unavailable` / `other`), read from the thrown error's
+`reason` field by a local helper in `stage.ts` so the stage still imports nothing from the sqlite-backed store. It also
+carries a `phase` (`lookup` / `remember`) so the two call sites are distinguishable; neither carries any target, project or
+stored text. *(safe)*
+
 **M-12 -- Left as they are, on purpose.** Plain-word passwords with no digit, letters-only 32-character tokens and short bearer
 values are not detected; closing them refuses ordinary notes. The limits are listed in MEMORY.md. `forget` and `search` match
 project names case-sensitively, as before. File modes on POSIX could not be tested on this Windows machine: the directory is

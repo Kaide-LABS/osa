@@ -1,9 +1,10 @@
 # OSA global memory
 
 OSA keeps **one** global memory database that survives across projects and runs. Step 1 built the store and its
-read/write surfaces; step 2 (this one) makes every finished or stopped run capture what it learned into that store.
-Research reuse (reading memory back into prompts), ingestion of outside sources, and any dashboard/sync are later steps
-and are **not** built yet.
+read/write surfaces; step 2 makes every finished or stopped run capture what it learned into that store; step 3 lets a
+run reuse a prior run's **documentation research** (see "Reusing documentation research across runs" below). Reading
+general facts back into prompts, free-form research reuse, ingestion of outside sources, and any dashboard/sync are later
+steps and are **not** built yet.
 
 ## What a run captures
 
@@ -56,6 +57,56 @@ basename and nothing more.
 
 > **Step 1 note (below):** the step-1 sections said "nothing writes to it automatically yet". Step 2 is that automatic
 > writer; the store guarantees, limits and the forget semantics it describes are unchanged.
+
+## Reusing documentation research across runs (step 3)
+
+Documentation research repeats across projects: every build that names React, SQLite or Express pays to "find the official
+documentation" again, and in a measured run that documentation lookup is 27–28% of the research input tokens. Step 3 lets a
+run READ a prior run's documentation result back instead of researching it afresh. Accuracy and freshness come first: a
+stale or unverified result is never served.
+
+**Scope: documentation items only.** A research outline has two kinds of item. A *documentation* item's question is fixed
+by the technology's name ("Find the OFFICIAL documentation for `<target>` …"), so it repeats verbatim across projects and is
+safe to key by that name. A *free-form* research item is worded per project, almost never matches, and is never remembered
+or reused — matching it by similarity would risk serving the wrong answer.
+
+- **What is remembered.** After the research stage, each documentation item that finished is stored in the global
+  database — but **only** when the independent cross-provider check ran and flagged nothing in the report. A run whose check
+  was disabled, failed, or flagged any claim stores nothing. The validated result JSON is stored exactly as it was written
+  to disk (already screened), keyed by the normalised technology name, with the origin project and the check level (full or
+  consistency-only). One row per key: a newer result replaces the older one. A result over 64 KB or on which the secret
+  filter still fires is refused (counted, not stored), and the store keeps at most 500 rows, evicting the oldest.
+- **When it is reused.** Before a documentation item's agent is started, the store is asked for the same technology. A
+  stored result is reused only when it is **no older than the freshness window** (default 30 days), still **passes the
+  current validator** for that item (a docs item requires an official-docs source), and passes the **same untrusted-data
+  screening** a fresh result gets. Any failure at any step is a cache miss and the agent runs exactly as before. A reused
+  result is written to the item's result file and used like a fresh one.
+- **Visible provenance.** A reused item is marked in the research report (`Reused from an earlier run (project P, N days
+  old) …`), in its `research_item_done` event (status `reused`), and in the stage's counts (`research_validated` carries
+  `reused`; `research_reused` carries `items`, `oldestAgeDays` and a `resultCharsEstimate` lower bound on the output
+  avoided). No documentation target, project name or stored text ever appears in an event.
+- **Untrusted data.** A stored result is third-party text derived from web pages. It gets exactly the same validation and
+  screening as a fresh result every time it is used; storing it never makes it trusted. A secret or an instruction planted
+  into a stored row is neutralised exactly as it would be in a fresh result (or the result fails to validate and is a miss),
+  so it never reaches a prompt.
+
+**Freshness window and the switch.** Reuse is **on by default** with a 30-day window:
+
+```json
+"memory": { "global": { "reuse": { "enabled": true, "maxAgeDays": 30 } } }
+```
+
+`maxAgeDays` is 1–365. With `enabled` false the research stage imports no store module and opens (or creates) **no**
+database — behaviour is identical to before step 3. (`"memory": { "enabled": false }` turns the whole feature off too.)
+
+**Fail-soft.** A locked, corrupt or unwritable database is a cache miss: the lookup (and the remember) swallow the error
+after a single `research_reuse_failed` event carrying only a reason class (`locked`, `corrupt`, `unwritable`,
+`fts-unavailable`, `other`), and the run proceeds unaffected. The lookup waits at most 1.5 seconds for another process's
+lock, so a busy database never makes a run wait long.
+
+**Forgetting.** `osa memory forget --project <folder-name>` and `--all` remove a project's (or all) remembered research
+along with its facts. The rows are physically purged and the file vacuumed; the forgotten target text survives in neither
+the database file nor its `-wal`. The `research_items` table is not search-indexed, so no index segments hold its text.
 
 ## Where it lives
 

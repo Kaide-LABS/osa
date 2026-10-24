@@ -3,6 +3,7 @@
 // through visibly, never smoothed over.
 
 import type { Outline } from "../domain/research.ts";
+import { scrubUntrusted } from "../osa/untrusted.ts";
 import type { AcademicResult } from "./academic.ts";
 import type { DocsReport } from "./docs.ts";
 import { sourcesOf } from "./docs.ts";
@@ -11,6 +12,12 @@ import type { PriorArtResult } from "./github-lookup.ts";
 
 function bullets(v: unknown): string[] {
   return Array.isArray(v) ? (v as unknown[]).filter((x): x is string => typeof x === "string").map((x) => `- ${x}`) : [];
+}
+
+/** A stored origin-project name is cleaned before it reaches the report: hidden content scrubbed, NFKC-folded, whitespace collapsed, capped. No other stored text (only the validated result) reaches the report. Pure. */
+function cleanProjectLabel(project: string): string {
+  const s = scrubUntrusted(project).text.replace(/\s+/g, " ").normalize("NFKC").trim().slice(0, 100);
+  return s === "" ? "default" : s;
 }
 
 /** Inputs of {@link compileReport}. */
@@ -44,7 +51,11 @@ export function compileReport(input: ReportInput): string {
     const o = bySlug.get(item.slug);
     if (o === undefined || o.result === null) continue;
     const r = o.result;
-    lines.push("", `### ${item.title}`, `*${item.question}*`, "", String(r["summary"] ?? ""), "");
+    lines.push("", `### ${item.title}`);
+    if (o.status === "reused" && o.reusedFrom !== undefined) {
+      lines.push(`_Reused from an earlier run (project ${cleanProjectLabel(o.reusedFrom.project)}, ${String(o.reusedFrom.ageDays)} days old); not researched again in this run._`);
+    }
+    lines.push(`*${item.question}*`, "", String(r["summary"] ?? ""), "");
     const kf = bullets(r["key_findings"]);
     if (kf.length > 0) lines.push("**Key findings**", ...kf, "");
     const rec = bullets(r["recommendations"]);

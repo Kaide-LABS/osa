@@ -14,7 +14,7 @@ import { randomUUID } from "node:crypto";
 import { UsageError } from "../../domain/errors.ts";
 import { detectInjection, scrubUntrusted } from "../../osa/untrusted.ts";
 import { findSecret } from "../secrets.ts";
-import { factKey, openMemoryDb, toMemoryDbError } from "./db.ts";
+import { factKey, openMemoryDb, purgeResearch, toMemoryDbError } from "./db.ts";
 import type { MemoryDb } from "./db.ts";
 import { maskCommitHashes, redactSecrets, stillHasSecret } from "./redact.ts";
 
@@ -58,6 +58,8 @@ export interface SearchResult {
 
 export interface ForgetResult {
   readonly facts: number;
+  /** Remembered documentation-research rows removed (docs/osa/memory-phase3). */
+  readonly research: number;
 }
 
 export interface ProjectInfo {
@@ -255,9 +257,11 @@ export function searchMemory(input: { readonly query: string; readonly project?:
 }
 
 /**
- * Physically purges facts (the triggers drop their FTS entries) and runs `VACUUM`, returning the count removed. A
- * project match is EXACT, so `forget --project x` never touches project `xy` (FM-G). The soft-delete column is for
- * later sync; `forget` does not merely mark.
+ * Physically purges facts (the triggers drop their FTS entries) and remembered research rows, then runs `VACUUM`,
+ * returning the counts removed. A project match is EXACT, so `forget --project x` never touches project `xy` (FM-G). The
+ * soft-delete column is for later sync; `forget` does not merely mark. The forgotten text survives in neither the file nor
+ * its `-wal` (FM-H): `secure_delete` overwrites freed pages and the WAL is truncated; `research_items` is not FTS-indexed,
+ * so no search segments hold its text and only facts need the `optimize` merge.
  */
 export function forgetMemory(input: { readonly project: string } | { readonly all: true }, opts: { readonly dbPath?: string } = {}): ForgetResult {
   const mem = openMemoryDb(opts.dbPath);
@@ -267,9 +271,11 @@ export function forgetMemory(input: { readonly project: string } | { readonly al
     if (project === "") throw new UsageError("memory forget: the project name is empty.");
     mem.db.exec("BEGIN IMMEDIATE");
     let removed: number;
+    let research: number;
     try {
       const result = project === null ? mem.db.prepare("DELETE FROM facts").run() : mem.db.prepare("DELETE FROM facts WHERE project = ?").run(project);
       removed = Number(result.changes);
+      research = purgeResearch(mem.db, project);
       // FTS5 keeps deleted text in its index segments until they are merged; 'optimize' merges them away so VACUUM can drop the old pages.
       mem.db.exec("INSERT INTO facts_fts(facts_fts) VALUES('optimize')");
       mem.db.exec("COMMIT");
@@ -279,7 +285,7 @@ export function forgetMemory(input: { readonly project: string } | { readonly al
     }
     mem.db.exec("VACUUM");
     mem.db.exec("PRAGMA wal_checkpoint(TRUNCATE)"); // the write-ahead log would otherwise still hold the pages that held the text
-    return { facts: removed };
+    return { facts: removed, research };
   } finally {
     mem.close();
   }
