@@ -57,7 +57,8 @@ export async function runMemoryCommand(opts: MemoryCommandOptions): Promise<{ te
   if (opts.all && !opts.yes) throw new UsageError("memory forget --all requires --yes.");
   if (!opts.all && opts.project === null) throw new UsageError("memory forget requires --project <name> or --all.");
   const r = opts.all ? forgetMemory({ all: true }) : forgetMemory({ project: opts.project as string });
-  if (opts.json) return { text: `${JSON.stringify({ forgotten: r.facts, scope: opts.all ? "all" : opts.project }, null, 2)}\n`, exitCode: ExitCode.OK };
+  if (opts.json) return { text: `${JSON.stringify({ forgotten: r.facts, research: r.research, scope: opts.all ? "all" : opts.project }, null, 2)}\n`, exitCode: ExitCode.OK };
   const scope = opts.all ? "all projects" : `project "${opts.project as string}"`;
-  return { text: `Forgot ${String(r.facts)} fact(s) from ${scope}.\n`, exitCode: ExitCode.OK };
+  const research = r.research > 0 ? ` and ${String(r.research)} remembered research item(s)` : "";
+  return { text: `Forgot ${String(r.facts)} fact(s)${research} from ${scope}.\n`, exitCode: ExitCode.OK };
 }

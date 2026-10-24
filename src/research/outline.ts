@@ -27,6 +27,19 @@ export function slugify(text: string): string {
   return s === "" ? "item" : s;
 }
 
+/** The one source of a documentation item's title format: `Official documentation: <target>`. Pure. */
+const DOCS_TITLE_PREFIX = "Official documentation: ";
+
+/** The documentation item title for `target`. The single source of that wording (the reuse key is derived from it). Pure. */
+export function docsItemTitle(target: string): string {
+  return `${DOCS_TITLE_PREFIX}${target}`;
+}
+
+/** The documentation target a docs item title names, or `null` if the title is not in {@link docsItemTitle}'s format. Pure. */
+export function docsTargetOf(title: string): string | null {
+  return title.startsWith(DOCS_TITLE_PREFIX) ? title.slice(DOCS_TITLE_PREFIX.length).trim() || null : null;
+}
+
 /** The result-field schema shared by every item. */
 export const COMMON_FIELDS: readonly FieldSpec[] = [
   { name: "summary", description: "2-5 sentences answering the item's question for THIS build.", type: "string", required: true },
@@ -60,7 +73,7 @@ export function buildOutline(prd: BabyPrd, config: OsaConfig): Outline {
   for (const target of plan.docsTargets) {
     items.push({
       slug: unique(`docs-${slugify(target)}`),
-      title: `Official documentation: ${target}`,
+      title: docsItemTitle(target),
       question:
         `Find the OFFICIAL documentation for "${target}": its current stable version, how it is installed or enabled, ` +
         `the API surface this build will use, and any breaking changes or pitfalls in the ${plan.timeRange}.`,

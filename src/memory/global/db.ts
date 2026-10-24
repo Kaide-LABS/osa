@@ -15,7 +15,7 @@ import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
 /** Current schema version. The runner and the `schema_version` table let later migrations drop in. */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 /** Normalised key used to de-duplicate a fact within a project. Pure. */
 export function factKey(text: string): string {
@@ -188,7 +188,9 @@ END;
  * logarithmic. Existing rows are back-filled; of any duplicates only the first keeps a key.
  */
 function migrateDedupKey(db: DatabaseSync): void {
-  db.exec("ALTER TABLE facts ADD COLUMN dedup_key TEXT");
+  // Idempotent: a process that lost an upgrade race can reach this with the column already added.
+  const hasColumn = (db.prepare("PRAGMA table_info(facts)").all() as { name: string }[]).some((c) => c.name === "dedup_key");
+  if (!hasColumn) db.exec("ALTER TABLE facts ADD COLUMN dedup_key TEXT");
   const seen = new Set<string>();
   const set = db.prepare("UPDATE facts SET dedup_key = ? WHERE id = ?");
   for (const r of db.prepare("SELECT id, project, text FROM facts WHERE deleted_at IS NULL ORDER BY created_at, id").all() as { id: string; project: string; text: string }[]) {
@@ -198,7 +200,44 @@ function migrateDedupKey(db: DatabaseSync): void {
     seen.add(full);
     set.run(key, r.id);
   }
-  db.exec("CREATE UNIQUE INDEX facts_dedup_idx ON facts(project, dedup_key) WHERE deleted_at IS NULL AND dedup_key IS NOT NULL");
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS facts_dedup_idx ON facts(project, dedup_key) WHERE deleted_at IS NULL AND dedup_key IS NOT NULL");
+}
+
+/**
+ * Migration 3: `research_items`, the store behind documentation-research reuse (docs/osa/memory-phase3). One row per
+ * documentation key (`dkey`, the normalised target); `result` is the validated result JSON exactly as it was written to
+ * disk, `check_level` records whether the independent cross-check was full or consistency-only, and `project` is the
+ * origin run's project. The table is NOT FTS-indexed (reuse is an exact-key lookup, not a search), so `forget` needs no
+ * `optimize` step for it -- `secure_delete` and `VACUUM` alone clear the text from the file. A partial unique index keeps
+ * at most one live row per key; a newer result replaces the older one.
+ */
+function migrateResearchItems(db: DatabaseSync): void {
+  db.exec(`
+CREATE TABLE IF NOT EXISTS research_items (
+  id TEXT PRIMARY KEY,
+  dkey TEXT NOT NULL,
+  title TEXT NOT NULL,
+  result TEXT NOT NULL,
+  check_level TEXT NOT NULL,
+  project TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  deleted_at TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS research_items_key_idx ON research_items(dkey) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS research_items_project_idx ON research_items(project);
+`);
+}
+
+/**
+ * Physically deletes remembered research rows -- a project's (exact match, so `forget --project x` never touches `xy`) or
+ * all of them -- and returns the count. `secure_delete` (set at open) overwrites the freed pages; the caller runs `VACUUM`
+ * and truncates the WAL so the forgotten target text survives in neither the file nor its `-wal`. The table is not
+ * FTS-indexed, so no index segments hold the text. Must run inside the caller's transaction.
+ */
+export function purgeResearch(db: DatabaseSync, project: string | null): number {
+  const result = project === null ? db.prepare("DELETE FROM research_items").run() : db.prepare("DELETE FROM research_items WHERE project = ?").run(project);
+  return Number(result.changes);
 }
 
 /** Runs every migration past the recorded version inside one transaction. Idempotent: a current database is untouched. */
@@ -209,8 +248,15 @@ function migrate(db: DatabaseSync): void {
   if (current >= SCHEMA_VERSION) return;
   db.exec("BEGIN IMMEDIATE");
   try {
-    if (current < 1) db.exec(MIGRATION_1);
-    if (current < 2) migrateDedupKey(db);
+    // Read the version AGAIN now that this process holds the write lock: another process may have finished the upgrade while this one waited for it.
+    const now = (db.prepare("SELECT MAX(version) AS v FROM schema_version").get() as { v: number | null }).v ?? 0;
+    if (now >= SCHEMA_VERSION) {
+      db.exec("COMMIT");
+      return;
+    }
+    if (now < 1) db.exec(MIGRATION_1);
+    if (now < 2) migrateDedupKey(db);
+    if (now < 3) migrateResearchItems(db);
     db.prepare("INSERT INTO schema_version(version, applied_at) VALUES (?, ?)").run(SCHEMA_VERSION, new Date().toISOString());
     db.exec("COMMIT");
   } catch (e) {

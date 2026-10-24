@@ -538,6 +538,65 @@ one classifier instead of its own copy. *(safe -- reproduced)*
 longer claims facts never come from a model's text (the goal, assumptions and spec decisions do; the checks are the only gate).
 *(safe)*
 
+## Step 3 -- reuse documentation research across runs (memory-phase3)
+
+**M-25 -- The reuse seam is keyed by item SLUG, not by the documentation key.** The SPEC puts `docsKey` in
+`src/memory/global/research.ts`, but `src/research/agent.ts` (which consults the seam) and `src/research/stage.ts` are both
+reachable from the entry points, and the import-graph invariant (CONTEXT, `import-graph.test.ts`) forbids them from
+statically importing any `src/memory/global/` module. *Resolution:* the stage computes the keys inside its dynamic
+`import()` of `research.ts`, builds a `slug -> candidate` map there, and hands `agent.ts` a `ReuseSeam.lookup(slug)`. The
+key format still has one source (`docsKey`); `agent.ts` never sees it and imports nothing from the store. Two docs items
+with the same key both resolve to the same candidate (FM-G). *(safe)*
+
+**M-26 -- The documentation-title format lives in `outline.ts`, the key normalisation in `research.ts`.** The SPEC asks for
+"one source of that format" next to `buildOutline` and also places `docsKey` in the memory module. *Resolution:* both
+exist and are distinct concerns -- `outline.ts` owns the title wording (`docsItemTitle` / `docsTargetOf`, round-trippable and
+statically importable by the research side), and `research.ts` owns the reuse-key normalisation (`docsKey`). The stage
+derives a target from a title with the former, then keys it with the latter. *(safe)*
+
+**M-27 -- A reused result is screened but not re-validated after screening.** A fresh result is validated, then
+`screenDeep`-ed, then written; screening can neutralise a line. Reuse mirrors that order exactly (validate the stored
+result for THIS item, then screen, then write), so a reused result gets precisely a fresh result's treatment and no more
+(FM-C). A planted instruction is neutralised to a `[removed by OSA …]` marker just as in a fresh result; it is not grounds
+to refuse the whole result, matching the fresh path. *(safe)*
+
+**M-28 -- Capture-off does not imply reuse-off.** The step-2 pipeline test "FM-E: capture off -- … the database file is
+never created" left reuse at its default (on), so the research stage would now open the store and create the file.
+*Resolution:* that test is scoped to capture; reuse is a separate switch, so the test now also sets `reuse.enabled: false`.
+The assertion is unchanged, matching the CONTEXT instruction to turn reuse off in tests that assert no store access rather
+than weaken the assertion. The feature-off behaviour (no store module imported, no database created) is covered by the new
+`src/research/reuse.test.ts` FM-F case and the unchanged static import-graph invariant. *(safe)*
+
+**M-29 -- The origin project stored with a remembered result reuses capture's own project derivation.** So that `forget
+--project P` removes a project's facts and its remembered research together, the remember path derives the project exactly
+as capture does (`projectNameFor` + `validateLabel`, falling back to `default`), via a dynamic import inside the stage.
+Reuse LOOKUP ignores the project (it keys by technology, so any project's run benefits); only forgetting and the report's
+provenance line use it, and the report re-cleans the stored name before printing it. *(safe)*
+
+**M-30 -- `research_reuse_failed` carries the typed reason class, duck-typed.** The event reason reuses the
+`MemoryDbReason` value set (`locked` / `corrupt` / `unwritable` / `fts-unavailable` / `other`), read from the thrown error's
+`reason` field by a local helper in `stage.ts` so the stage still imports nothing from the sqlite-backed store. It also
+carries a `phase` (`lookup` / `remember`) so the two call sites are distinguishable; neither carries any target, project or
+stored text. *(safe)*
+
+### Added after the independent review of research reuse (commit f4a43d5)
+
+A fresh reviewer attacked the reuse path. Every item below is covered by a test in `src/research/reuse-review.test.ts` that failed against the unfixed commit first. The executor's own 1,163 passing tests did not cover any of them.
+
+**M-31 -- The key no longer trims `#` or `+`.** `docsKey` trimmed every trailing punctuation character, and `#` is punctuation, so "C#" and "C" (and "F#" and "F") shared a key and one language's documentation was served for the other (confirmed end to end). Only sentence punctuation (`. , ; : ! ?`) and spaces are trimmed now. *(safe -- reproduced)*
+
+**M-32 -- Only fully checked, fully certain research is remembered. This reverses part of the SPEC.** The SPEC stored consistency-only results with a `check_level` tag that nothing ever read, so unverified research was later served as if checked. The gate is now: a full (not degraded) check, a verdict of `pass`, at least one examined claim, no flagged claim, and no item whose own `uncertain` list is non-empty. `check_level` stays in the table for a later use but is always "full" for new rows. This remembers less, on purpose: the feature's promise is accuracy first. *(risky -- fewer reuses; reversible)*
+
+**M-33 -- A stored result is checked again on the way OUT.** The secret filter and the 64 KB cap ran only when remembering, so a row edited afterwards could put a secret into a report. `findReusable` now applies both, and a row dated more than a day in the future is never fresh. The count of stored items is what survived the 500-row cap. *(safe -- reproduced)*
+
+**M-34 -- The origin project name is shown only if it is a plain label.** The reader scrubbed hidden characters but accepted any text, and the report reaches later model prompts. Only letters, digits, dot, underscore, space and hyphen (60 characters at most) are shown; anything else prints "another project". *(safe -- reproduced)*
+
+**M-35 -- The schema upgrade is safe to race.** A process that waited for the upgrade lock re-ran it and failed with "table already exists" (4 of 16 opens in the reviewer's run). The version is re-read after taking the write lock, and the migrations use `IF NOT EXISTS` and check for the column. *(safe -- reproduced)*
+
+**M-36 -- A locked lookup skips the remember.** A locked version-2 database cost a run two lock waits (3.5 s) instead of one. A corrupt database still reports both phases, because it fails instantly and the existing test requires it. *(safe)*
+
+**M-37 -- Left open.** `forget` ignores the result of the WAL checkpoint: if another connection is reading at that moment, the text can remain in the main file until that reader closes. The test that reads the `-wal` after the connection closes is therefore weaker than it looks. Both are narrow and unchanged. A live-provider test in `src/adapters/codex-cli.test.ts` (two real Codex probes compared with each other) failed once in a loaded full-suite run and passes alone; it depends on the developer machine's Codex state and touches nothing here. *(open)*
+
 **M-12 -- Left as they are, on purpose.** Plain-word passwords with no digit, letters-only 32-character tokens and short bearer
 values are not detected; closing them refuses ordinary notes. The limits are listed in MEMORY.md. `forget` and `search` match
 project names case-sensitively, as before. File modes on POSIX could not be tested on this Windows machine: the directory is

@@ -87,7 +87,8 @@ test("FM-E: capture off -- no global_memory event, and the database file is neve
   const dbPath = join(dbDir, "memory.db");
   const events = new MemoryEventSink(RUN_ID);
   await withEnv(dbPath, async () => {
-    const report = await runOsaCommand(runOpts(repoDir), deps(repoDir, events, { config: OsaConfig.parse({ agents: { application: false }, memory: { global: { capture: false } } }) }));
+    // This test is scoped to capture being off; reuse is a separate feature (on by default) that would otherwise open the store, so it is off here too.
+    const report = await runOsaCommand(runOpts(repoDir), deps(repoDir, events, { config: OsaConfig.parse({ agents: { application: false }, memory: { global: { capture: false, reuse: { enabled: false } } } }) }));
     assert.equal(report.ok, true, report.problems.join("; "));
   });
   assert.deepEqual(globalEvents(events), [], "no global memory event at all");

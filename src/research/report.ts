@@ -3,6 +3,7 @@
 // through visibly, never smoothed over.
 
 import type { Outline } from "../domain/research.ts";
+import { scrubUntrusted } from "../osa/untrusted.ts";
 import type { AcademicResult } from "./academic.ts";
 import type { DocsReport } from "./docs.ts";
 import { sourcesOf } from "./docs.ts";
@@ -11,6 +12,16 @@ import type { PriorArtResult } from "./github-lookup.ts";
 
 function bullets(v: unknown): string[] {
   return Array.isArray(v) ? (v as unknown[]).filter((x): x is string => typeof x === "string").map((x) => `- ${x}`) : [];
+}
+
+/**
+ * A stored origin-project name reaches the report, and the report reaches later model prompts, so it is accepted only as a PLAIN label: letters, digits, dot, underscore, space
+ * and hyphen, at most 60 characters (after hidden content is scrubbed and the text NFKC-folded). Anything else -- markdown, links, prose, role markers -- is not shown at all;
+ * the line then says "another project". The writer already applies stricter rules, but a stored row can be edited afterwards, so the reader does not trust it. Pure.
+ */
+function cleanProjectLabel(project: string): string | null {
+  const s = scrubUntrusted(project).text.normalize("NFKC").replace(/\s+/g, " ").trim();
+  return /^[\p{L}\p{N}._ -]{1,60}$/u.test(s) ? s : null;
 }
 
 /** Inputs of {@link compileReport}. */
@@ -44,7 +55,12 @@ export function compileReport(input: ReportInput): string {
     const o = bySlug.get(item.slug);
     if (o === undefined || o.result === null) continue;
     const r = o.result;
-    lines.push("", `### ${item.title}`, `*${item.question}*`, "", String(r["summary"] ?? ""), "");
+    lines.push("", `### ${item.title}`);
+    if (o.status === "reused" && o.reusedFrom !== undefined) {
+      const label = cleanProjectLabel(o.reusedFrom.project);
+      lines.push(`_Reused from an earlier run (${label === null ? "another project" : `project ${label}`}, ${String(o.reusedFrom.ageDays)} days old); not researched again in this run._`);
+    }
+    lines.push(`*${item.question}*`, "", String(r["summary"] ?? ""), "");
     const kf = bullets(r["key_findings"]);
     if (kf.length > 0) lines.push("**Key findings**", ...kf, "");
     const rec = bullets(r["recommendations"]);
