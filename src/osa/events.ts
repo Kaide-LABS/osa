@@ -28,6 +28,8 @@ export const OSA_EVENT_NAMES = [
   "application_sandbox_leftover",
   "index_updated",
   "memory_written",
+  "global_memory_written",
+  "global_memory_failed",
   // additions
   "run_started",
   "config_loaded",

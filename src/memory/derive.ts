@@ -49,7 +49,7 @@ const ABS_PATH_RE = /(?:[A-Za-z]:[\\/]|(?<![\w.])\/(?:home|tmp|var|Users|private
  * "Failed to parse C:\Users\x\...\84ef52b0-....json" is junk the next run cannot use), byte-order marks dropped,
  * whitespace collapsed, length bounded. Pure.
  */
-function clip(s: string, max = 280): string {
+export function clip(s: string, max = 280): string {
   const one = s.replace(/\uFEFF/g, "").replace(UUID_RE, "<id>").replace(ABS_PATH_RE, "<path>").replace(/\s+/g, " ").trim();
   return one.length > max ? `${one.slice(0, max - 3)}...` : one;
 }

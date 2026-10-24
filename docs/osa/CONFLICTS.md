@@ -463,6 +463,36 @@ moment failed (6 of 48 opens in the reviewer's run) and the error blamed corrupt
 existing rows back-filled) and the check-then-insert runs under `BEGIN IMMEDIATE`: 40 of 40 parallel saves of one fact succeeded
 and left exactly one row each time. *(safe)*
 
+## Added during memory phase 2 (capture each run into the global store)
+
+**M-13 -- The run-summary note's content.** PRD step 2 lists what the one note must carry (outcome and why, the locked
+goal in one line, the architecture chosen, phases passed, unmet count). `summaryNote` renders exactly those, reusing
+`deriveFacts`' `clip` (run ids and absolute paths scrubbed) and clipping to 300 characters. The goal is the locked PRD's
+`tldr` lines joined. *(safe)*
+
+**M-14 -- `captureRun` loads the store by `await import("./memory.ts")`, and the pipeline loads `capture.ts` by
+`await import(...)`.** Both are dynamic, so no entry point's static import graph reaches `src/memory/global/**` or
+`node:sqlite` with the feature unused (FM-I; the existing `import-graph.test.ts` and `modular-features.test.ts` both pass
+unchanged). The capture hook in `recordMemory` is wrapped so even a failed dynamic import becomes `global_memory_failed`,
+never a thrown run. *(safe)*
+
+**M-15 -- The FM-H guard keys on the PASSED env, not only `process.env`.** `resolveMemoryDbPath` throws a `MemoryDbError`
+when `NODE_TEST_CONTEXT` is set in the env it was given and the path would resolve to the real home default with no
+explicit path / `OSA_MEMORY_DB`. Keying on the passed env keeps the existing pure resolution test (which passes its own
+`{}` env) green while protecting every real pipeline/capture call under the runner (whose env is `process.env`). *(safe)*
+
+**M-16 -- Existing pipeline tests are kept safe by the guard + fail-soft, not individually rewired.** With capture on by
+default, every test that runs the full pipeline now reaches the global capture; under the runner the FM-H guard refuses
+the real-home database, the capture is fail-soft, so those runs emit a harmless `global_memory_failed` and nothing is
+written to the real `~/.osa`. No existing assertion was weakened (they filter events by name and assert git/warnings,
+which are unaffected). The new pipeline-level test (`src/osa/global-capture.test.ts`) points `OSA_MEMORY_DB` at a temp
+file to exercise a real successful capture, the off-switch (no file created) and the corrupt-database failure. *(safe)*
+
+**M-17 -- Refusal reason classes vs. failure reason classes.** `global_memory_failed` uses the four fixed database-level
+classes the PRD names (`locked`, `corrupt`, `fts-unavailable`, `other`). The per-fact refusals counted in
+`global_memory_written.reasons` are a separate, finer vocabulary derived from the store's `UsageError` messages
+(`hidden`, `instruction`, `secret`, `empty`, `too-long`, `other`); none of them carry any fact text. *(safe)*
+
 **M-12 -- Left as they are, on purpose.** Plain-word passwords with no digit, letters-only 32-character tokens and short bearer
 values are not detected; closing them refuses ordinary notes. The limits are listed in MEMORY.md. `forget` and `search` match
 project names case-sensitively, as before. File modes on POSIX could not be tested on this Windows machine: the directory is

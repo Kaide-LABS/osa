@@ -22,6 +22,14 @@ test("FM-H: path resolution prefers the explicit path, then OSA_MEMORY_DB, then 
   assert.equal(resolveMemoryDbPath("  ", { OSA_MEMORY_DB: "C:/tmp/env.db" }), "C:/tmp/env.db", "a blank explicit path falls through to the env");
 });
 
+test("FM-H guard: under the test runner, the real-home default is refused unless OSA_MEMORY_DB or an explicit path is given", () => {
+  // The guard keys on NODE_TEST_CONTEXT in the PASSED env, so a pure resolution test with its own env map is unaffected.
+  assert.throws(() => resolveMemoryDbPath(undefined, { NODE_TEST_CONTEXT: "child-v8" }), (e: unknown) => e instanceof MemoryDbError && /test runner/.test((e as Error).message));
+  assert.equal(resolveMemoryDbPath(undefined, { NODE_TEST_CONTEXT: "child-v8", OSA_MEMORY_DB: "C:/tmp/env.db" }), "C:/tmp/env.db", "an explicit OSA_MEMORY_DB is allowed under the test runner");
+  assert.equal(resolveMemoryDbPath("C:/tmp/x.db", { NODE_TEST_CONTEXT: "child-v8" }), "C:/tmp/x.db", "an explicit path is allowed under the test runner");
+  assert.match(resolveMemoryDbPath(undefined, {}), /[\\/]\.osa[\\/]memory\.db$/, "outside the test runner the default resolves normally");
+});
+
 test("open creates the database with all five tables, the FTS mirror, and the recorded schema version", () => {
   return (async () => {
     const path = await tempDbPath();

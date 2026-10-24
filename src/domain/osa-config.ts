@@ -158,6 +158,13 @@ const MemoryConfig = z.strictObject({
   maxFactsPerFile: z.number().int().min(10).max(2000).default(200),
   /** Cap on the memory block handed to intake / the spec author. */
   readBudgetChars: z.number().int().min(200).max(20000).default(3000),
+  /** The ONE global memory store (docs/osa/memory-phase2). */
+  global: z
+    .strictObject({
+      /** Capture each finished or stopped run's facts into the global store. Fail-soft; never affects the run. */
+      capture: z.boolean().default(true),
+    })
+    .prefault({}),
 });
 
 const ProvidersConfig = z.strictObject({

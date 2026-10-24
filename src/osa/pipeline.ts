@@ -55,7 +55,7 @@ import { caveatFor, createCodeSearcher } from "../code-index/searcher.ts";
 import { rewriteSeatFor } from "../code-index/rewrite-seat.ts";
 import type { CodeSearchEngine } from "../code-index/engine.ts";
 import { writeRunMemory } from "../memory/derive.ts";
-import type { PhaseRecord } from "../memory/derive.ts";
+import type { PhaseRecord, RunRecord } from "../memory/derive.ts";
 import { readMemoryForPrompt } from "../memory/store.ts";
 import { renderIndexContext } from "../code-index/search.ts";
 import { nextPhaseSpecPath } from "../dispatch/artifacts.ts";
@@ -475,28 +475,38 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
   const phaseRecords: PhaseRecord[] = [];
   const recordMemory = async (end: { outcome: "finished" | "stopped"; stoppedBecause: string | null; application: ApplicationVerdict | null }): Promise<void> => {
     if (!config.memory.enabled) return;
+    const record: RunRecord = {
+      runId,
+      date: new Date().toISOString().slice(0, 10),
+      prdGenerated: prd,
+      prdLocked: outcome.prd,
+      outcome: end.outcome,
+      stoppedBecause: end.stoppedBecause,
+      specAssumptions: spec.specAssumptions,
+      architecture: architecture !== null ? { chosen: architecture.chosen, why: architecture.why } : null,
+      flaggedClaims: (research.crosscheck?.flagged ?? []).map((c) => c.claim),
+      failedResearchItems: research.outcomes.filter((o) => o.status === "failed").map((o) => ({ slug: o.slug, problem: o.problems[0] ?? "unknown" })),
+      phases: phaseRecords,
+      applicationUnmet: end.application?.unmet.map((u) => ({ text: u.text, reason: u.reason })) ?? [],
+      applicationCouldNotRun: end.application?.couldNotRun ?? null,
+    };
     try {
-      await writeRunMemory(
-        opts.repoDir,
-        {
-          runId,
-          date: new Date().toISOString().slice(0, 10),
-          prdGenerated: prd,
-          prdLocked: outcome.prd,
-          outcome: end.outcome,
-          stoppedBecause: end.stoppedBecause,
-          specAssumptions: spec.specAssumptions,
-          architecture: architecture !== null ? { chosen: architecture.chosen, why: architecture.why } : null,
-          flaggedClaims: (research.crosscheck?.flagged ?? []).map((c) => c.claim),
-          failedResearchItems: research.outcomes.filter((o) => o.status === "failed").map((o) => ({ slug: o.slug, problem: o.problems[0] ?? "unknown" })),
-          phases: phaseRecords,
-          applicationUnmet: end.application?.unmet.map((u) => ({ text: u.text, reason: u.reason })) ?? [],
-          applicationCouldNotRun: end.application?.couldNotRun ?? null,
-        },
-        { maxFacts: config.memory.maxFactsPerFile, events },
-      );
+      await writeRunMemory(opts.repoDir, record, { maxFacts: config.memory.maxFactsPerFile, events });
     } catch (err) {
       warnings.push(`Project memory could not be written (${err instanceof Error ? err.message : String(err)}); the run itself is unaffected.`);
+    }
+    // Global memory capture: dynamic import() only (so the feature-off static import graph never reaches node:sqlite),
+    // and fail-soft -- an unreachable, locked or corrupt database becomes a single global_memory_failed event and nothing
+    // else. It runs after the project write, sees the same record, and can never change the run's outcome or timing.
+    if (config.memory.global.capture) {
+      try {
+        const capture = await import("../memory/global/capture.ts");
+        const res = await capture.captureRun(record, opts.repoDir);
+        await events.emit("global_memory_written", { saved: res.saved, deduped: res.deduped, refused: res.refused, redacted: res.redacted, reasons: res.reasons });
+      } catch (err) {
+        const reason = /\blocked\b|\bbusy\b/i.test(err instanceof Error ? err.message : "") ? "locked" : /FTS5/i.test(err instanceof Error ? err.message : "") ? "fts-unavailable" : /corrupt|unreadable|could not be opened/i.test(err instanceof Error ? err.message : "") ? "corrupt" : "other";
+        await events.emit("global_memory_failed", { reason });
+      }
     }
   };
 

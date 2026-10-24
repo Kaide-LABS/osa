@@ -31,7 +31,21 @@ export function resolveMemoryDbPath(path?: string, env: NodeJS.ProcessEnv = proc
   if (path !== undefined && path.trim() !== "") return path;
   const fromEnv = env["OSA_MEMORY_DB"];
   if (fromEnv !== undefined && fromEnv.trim() !== "") return fromEnv;
-  return join(homedir(), ".osa", "memory.db");
+  const def = join(homedir(), ".osa", "memory.db");
+  // FM-H guard: a test run (node:test sets NODE_TEST_CONTEXT) that reaches the real home default -- with no explicit path
+  // and no OSA_MEMORY_DB -- is refused, so the suite can never create or write the real ~/.osa/memory.db. A test that wants
+  // the store must pass a temp path or set OSA_MEMORY_DB. Keyed on the passed env, so a pure resolution test with its own
+  // env map (e.g. {}) is unaffected.
+  if (env["NODE_TEST_CONTEXT"] !== undefined && isInsideHome(def)) {
+    throw new MemoryDbError("refusing to use the real home memory database under the test runner; set OSA_MEMORY_DB or pass an explicit path to a temp file");
+  }
+  return def;
+}
+
+/** True when `target` is the real home-profile default location (or inside it). Pure given `homedir()`. */
+function isInsideHome(target: string): boolean {
+  const home = homedir();
+  return target === home || target.startsWith(home.endsWith("\\") || home.endsWith("/") ? home : `${home}${target.includes("\\") ? "\\" : "/"}`);
 }
 
 /** An open global-memory database. A thin wrapper so callers never touch `node:sqlite` directly. */
