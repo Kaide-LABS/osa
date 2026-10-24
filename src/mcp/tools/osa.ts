@@ -8,6 +8,7 @@
 // The tool descriptions tell the calling assistant to show the plan and get an explicit yes; the server additionally refuses a plan whose risky
 // assumptions were not explicitly accepted, and a fingerprint that does not match, so a confirmation cannot be applied to a different plan.
 
+import { mkdirSync, writeFileSync } from "node:fs";
 import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { z } from "zod";
@@ -18,7 +19,7 @@ import { parseBabyPrd } from "../../osa/baby-prd.ts";
 import type { GateIO } from "../../osa/lock.ts";
 import type { OsaCommandOptions, OsaDeps, OsaRunReport } from "../../osa/pipeline.ts";
 import { runOsaCommand } from "../../osa/pipeline.ts";
-import { specGateRecordPath, writeSpecGate } from "../../osa/spec-gate.ts";
+import { SpecGateRecord, buildSpecManifest, specGateRecordPath } from "../../osa/spec-gate.ts";
 import { sha256String } from "../../util/hash.ts";
 import { osaDir } from "../../util/paths.ts";
 
@@ -61,14 +62,12 @@ export type PlanOutput = z.infer<typeof PlanOutput>;
 export const BuildInput = z.strictObject({
   repo_dir: z.string().min(1),
   run_id: z.uuid(),
-  /** The plan_sha256 returned by osa_plan for the plan the person approved. */
-  plan_sha256: z.string().regex(/^[0-9a-f]{64}$/),
-  /** "lock" = the person approved this plan; "cancel" = they did not. */
+  /** The spec_sha256 osa_status reported for the spec the person was shown. */
+  spec_sha256: z.string().regex(/^[0-9a-f]{64}$/),
+  /** "lock" = the person approved this spec and the build may start; "cancel" = they did not. */
   decision: z.enum(["lock", "cancel"]),
   /** Required to be true when the plan lists risky assumptions: only after the person has read and accepted each one. */
   accept_risky_assumptions: z.boolean().default(false),
-  /** Stop after the research and the spec; do not build. */
-  spec_only: z.boolean().default(false),
 });
 export type BuildInput = z.infer<typeof BuildInput>;
 
@@ -129,17 +128,19 @@ export type StatusOutput = z.infer<typeof StatusOutput>;
 
 export const PLAN_TOOL_DESCRIPTION =
   "Step 1 of OSA's one-shot build. Turns a request into a plain-language plan (TL;DR, scope, acceptance criteria, tagged assumptions) and writes it " +
-  "into the repository. The plan lists up to 3 recommended questions when scope is broad; answering them (by calling osa_plan again with answers) saves " +
-  "a ~20 minute research and spec run. NOTHING is built or locked. Skipping answers is fine: they become defaults listed as 'defaulted assumptions'. " +
-  "After the person has seen the plan (risky assumptions first), call osa_spec to start research and spec. Takes about a minute.";
+  "into the repository. Show the person the plan (risky assumptions first) before proceeding. The plan lists up to 3 recommended questions when scope is broad; " +
+  "answering them (by calling osa_plan again with answers) saves a ~20 minute research and spec run. NOTHING is built or locked. Skipping answers is fine: " +
+  "they become defaults listed as 'defaulted assumptions'. Only after the person has explicitly approved, call osa_spec to start research and spec. Takes about a minute.";
 export const SPEC_TOOL_DESCRIPTION =
   "Step 2 of OSA's one-shot build: start research and spec in the background after the person has seen the plan from osa_plan. Returns immediately; the " +
   "run reaches the post-spec gate and stops there waiting for approval. Follow progress with osa_status. Never call this step without the person's explicit yes. " +
   "Typically takes 15 to 20 minutes. Once the spec is ready, osa_status shows awaiting_confirmation and the deterministic TL;DR; only then call osa_build.";
 export const BUILD_TOOL_DESCRIPTION =
   "Step 3 of OSA's one-shot build. Only after osa_status shows awaiting_confirmation at stage spec and the person has seen the TL;DR: lock the spec and " +
-  "run the build in the background. Pass the spec_sha256 from osa_status. If risky assumptions are present, set accept_risky_assumptions to true only after " +
-  "the person has read and accepted them. decision \"cancel\" stops the run without building. Typically 30 to 60 minutes. Follow with osa_status.";
+  "run the build in the background. Pass the spec_sha256 from osa_status; it must match the spec the person was shown. Show the person the TL;DR (risky " +
+  "assumptions first) and call this only on their explicit yes. If risky assumptions are present, set accept_risky_assumptions to true only after the " +
+  "person has read and accepted each one: never set accept_risky_assumptions yourself. decision \"cancel\" stops the run without building. Typically " +
+  "30 to 60 minutes. Follow with osa_status.";
 export const STATUS_TOOL_DESCRIPTION =
   "Progress and result of an OSA run: its state (awaiting_confirmation, running, finished, stopped, cancelled, interrupted), the stage, recent events, and, " +
   "when awaiting_confirmation at spec stage, the TL;DR, spec_sha256, and risky/defaulted assumptions. Once the run has ended, the report and the " +
@@ -201,18 +202,23 @@ function makeWaitingGate(repoDir: string, runId: string): GateIO {
   let tldrWritten = false;
   return {
     show(text: string): void {
-      if (!tldrWritten) {
-        tldrWritten = true;
-        const gateFile = `${osaDir(repoDir)}/runs/${runId}/mcp-gate.json`;
-        mkdir(dirname(gateFile), { recursive: true }).then(async () => {
-          const tldrLines = text.split("\n");
-          await writeFile(gateFile, JSON.stringify({ tldr: tldrLines, created_at: new Date().toISOString() }, null, 2) + "\n", "utf8");
-        }).catch(() => undefined);
-      }
+      // Only the FIRST call is the TL;DR (the pipeline's gate shows the PRD again afterwards). Written synchronously, so by the time confirm() makes the
+      // run visible as "waiting", the file osa_status reads already exists.
+      if (tldrWritten) return;
+      tldrWritten = true;
+      const gateFile = `${osaDir(repoDir)}/runs/${runId}/mcp-gate.json`;
+      mkdirSync(dirname(gateFile), { recursive: true });
+      writeFileSync(gateFile, JSON.stringify({ tldr: text.split("\n"), created_at: new Date().toISOString() }, null, 2) + "\n", "utf8");
     },
     confirm(): Promise<boolean> {
       return new Promise((resolve) => {
-        pendingGates.set(runId, { resolve });
+        // A decision removes the gate: a decided run is no longer "awaiting" anything.
+        pendingGates.set(runId, {
+          resolve: (approved) => {
+            pendingGates.delete(runId);
+            resolve(approved);
+          },
+        });
       });
     },
   };
@@ -253,7 +259,7 @@ export async function planOsaRun(input: PlanInput, deps: OsaToolDeps = {}): Prom
   const risky = prd.assumptions.filter((a) => a.risk === "risky").map((a) => a.text);
   const defaulted = prd.assumptions.filter((a) => a.risk === "defaulted").map((a) => a.text);
   const safe = prd.assumptions.filter((a) => a.risk === "safe").map((a) => a.text);
-  const nextStepMain = "Show the person this plan (risky assumptions first), then call osa_spec (or call osa_plan again to refine it).";
+  const nextStepMain = "Show the person this plan (risky assumptions first), then after their explicit yes, call osa_spec (or call osa_plan again to refine it).";
   const nextStep = prd.recommendedQuestions.length > 0
     ? `Highly recommended: answer these questions (saves redoing a ~20 minute research and spec run): ${prd.recommendedQuestions.map(q => q.question).join("; ")}. ` +
       `Answering means calling osa_plan again with answers. ${nextStepMain}`
@@ -295,6 +301,9 @@ export async function startOsaSpec(input: SpecInput, deps: OsaToolDeps = {}): Pr
     return { run_id: input.run_id, status: "cancelled", message: "Plan discarded; nothing was built." };
   }
 
+  const busy = [...jobs.values()].find((j) => normRepo(j.repoDir) === normRepo(input.repo_dir));
+  if (busy !== undefined) return { refusal: `Run ${busy.runId} is still working in this repository (started ${busy.startedAt}). Wait for it to end (osa_status) before starting another.` };
+
   const run = deps.run ?? runOsaCommand;
   const startedAt = new Date().toISOString();
   const resultPath = `${runDir(input.repo_dir, input.run_id)}/mcp-result.json`;
@@ -312,7 +321,6 @@ export async function startOsaSpec(input: SpecInput, deps: OsaToolDeps = {}): Pr
         json: true,
         build: true,
         fromDraft: true,
-        stopAfterSpec: true,
       };
       const opts = Object.keys(request.answers ?? {}).length > 0 ? { ...baseOpts, answers: request.answers } : baseOpts;
       report = await run(
@@ -326,6 +334,8 @@ export async function startOsaSpec(input: SpecInput, deps: OsaToolDeps = {}): Pr
       await writeFile(resultPath, JSON.stringify({ finished_at: new Date().toISOString(), report, error, cancelled: false }, null, 2) + "\n", "utf8");
     } finally {
       jobs.delete(input.run_id);
+      // The pipeline has ended: nothing can be waiting on this gate any more (a still-pending one means it threw before the decision).
+      pendingGates.get(input.run_id)?.resolve(false);
       pendingGates.delete(input.run_id);
     }
   })();
@@ -340,59 +350,44 @@ export async function startOsaSpec(input: SpecInput, deps: OsaToolDeps = {}): Pr
 
 // ---- osa_build -------------------------------------------------------------------------------------------------------------------
 
-/** Locks the approved plan and starts the pipeline in the background. */
-export async function startOsaBuild(input: BuildInput, deps: OsaToolDeps = {}): Promise<BuildOutput | { readonly refusal: string }> {
-  const request = await readJson(`${runDir(input.repo_dir, input.run_id)}/plan-request.json`, PlanRequestFile);
-  if (request === null) return { refusal: `There is no plan for run ${input.run_id} in ${input.repo_dir}. Call osa_plan first.` };
-  if ((await readJson(`${runDir(input.repo_dir, input.run_id)}/mcp-result.json`, ResultFile)) !== null || [...jobs.values()].some((j) => j.runId === input.run_id)) {
-    return { refusal: `Run ${input.run_id} was already decided or is already running. Use osa_status to see it, or osa_plan for a new plan.` };
+/**
+ * Releases the run that is waiting at the post-spec gate (started by osa_spec). The decision is bound to the spec the person was shown: the
+ * spec_sha256 must equal the one recorded when the spec was written AND the one recomputed from the spec files on disk now, so a confirmation
+ * cannot be applied to a spec that changed after it was shown. "lock" lets the pipeline carry on into the build in the same background job.
+ */
+export async function startOsaBuild(input: BuildInput): Promise<BuildOutput | { readonly refusal: string }> {
+  const gate = pendingGates.get(input.run_id);
+  if (gate === undefined) {
+    return { refusal: `No spec is waiting for a decision for run ${input.run_id}. Call osa_plan, then osa_spec, and wait until osa_status shows awaiting_confirmation at stage spec. (If the MCP server was restarted since, the run was interrupted: start again with osa_plan.)` };
   }
-  let markdown: string;
+  let recorded: SpecGateRecord;
   try {
-    markdown = await readFile(draftPath(input.repo_dir, input.run_id), "utf8");
+    recorded = SpecGateRecord.parse(JSON.parse(await readFile(specGateRecordPath(input.repo_dir, input.run_id), "utf8")));
   } catch {
-    return { refusal: `The plan file for run ${input.run_id} is missing; call osa_plan again.` };
+    return { refusal: `The spec record for run ${input.run_id} is missing or unreadable, so the spec cannot be confirmed. Nothing was built.` };
   }
-  const sha = sha256String(markdown);
-  if (sha !== input.plan_sha256 || sha !== request.plan_sha256) {
-    return { refusal: "The plan_sha256 does not match the plan on disk: either it is not the plan the person was shown, or the plan file changed after it was shown. Nothing was locked. Call osa_plan again and show the person the new plan." };
+  const current = await buildSpecManifest(input.repo_dir, input.run_id);
+  if (input.spec_sha256 !== recorded.spec_gate_sha256 || current.gateHash !== recorded.spec_gate_sha256) {
+    return { refusal: "The spec_sha256 does not match: either it is not the spec the person was shown, or a spec file changed after it was shown. Nothing was built. Read osa_status again and show the person the TL;DR it reports." };
   }
   if (input.decision === "cancel") {
-    await writeFile(`${runDir(input.repo_dir, input.run_id)}/mcp-result.json`, JSON.stringify({ finished_at: new Date().toISOString(), report: null, error: null, cancelled: true }, null, 2) + "\n", "utf8");
-    return { run_id: input.run_id, status: "cancelled", message: "Plan discarded; nothing was built." };
+    gate.resolve(false);
+    return { run_id: input.run_id, status: "cancelled", message: "The spec was declined; nothing was built. The research and spec are kept under runs/ for reference." };
   }
-  const risky = parseBabyPrd(markdown).assumptions.filter((a) => a.risk === "risky");
+  let risky: string[] = [];
+  try {
+    risky = parseBabyPrd(await readFile(draftPath(input.repo_dir, input.run_id), "utf8")).assumptions.filter((a) => a.risk === "risky").map((a) => a.text);
+  } catch {
+    return { refusal: `The plan file for run ${input.run_id} is missing, so its risky assumptions cannot be checked. Nothing was built.` };
+  }
   if (risky.length > 0 && !input.accept_risky_assumptions) {
-    return { refusal: `The plan has ${String(risky.length)} risky assumption(s) that the person must accept explicitly before it is locked:\n${risky.map((a) => `- ${a.text}`).join("\n")}\nShow them, and call osa_build again with accept_risky_assumptions true only if the person accepts them.` };
+    return { refusal: `The plan has ${String(risky.length)} risky assumption(s) that the person must accept explicitly before the build starts:\n${risky.map((a) => `- ${a}`).join("\n")}\nShow them, and call osa_build again with accept_risky_assumptions true only if the person accepts them.` };
   }
-  const busy = [...jobs.values()].find((j) => normRepo(j.repoDir) === normRepo(input.repo_dir));
-  if (busy !== undefined) return { refusal: `Run ${busy.runId} is still building in this repository (started ${busy.startedAt}). Wait for it to end (osa_status) before starting another.` };
-
-  const run = deps.run ?? runOsaCommand;
-  const startedAt = new Date().toISOString();
-  const resultPath = `${runDir(input.repo_dir, input.run_id)}/mcp-result.json`;
-  const promise = (async (): Promise<void> => {
-    let report: OsaRunReport | null = null;
-    let error: string | null = null;
-    try {
-      report = await run(
-        { prompt: request.prompt, files: request.files, repoDir: input.repo_dir, yes: false, json: true, build: !input.spec_only, fromDraft: true },
-        { runId: input.run_id, interactive: true, io: { ...NO_TERMINAL, choose: () => Promise.resolve("lock" as const) }, ...(deps.pipeline ?? {}) },
-      );
-    } catch (err) {
-      error = err instanceof OsaError ? err.message : err instanceof Error ? err.message : String(err);
-    }
-    try {
-      await writeFile(resultPath, JSON.stringify({ finished_at: new Date().toISOString(), report, error, cancelled: false }, null, 2) + "\n", "utf8");
-    } finally {
-      jobs.delete(input.run_id);
-    }
-  })();
-  jobs.set(input.run_id, { runId: input.run_id, repoDir: input.repo_dir, startedAt, promise });
+  gate.resolve(true);
   return {
     run_id: input.run_id,
     status: "started",
-    message: "The plan is locked and the build is running in the background (research, spec, build, final check; typically 15 to 60 minutes). Follow it with osa_status.",
+    message: "The spec is confirmed and the build is running in the background (typically 30 to 60 minutes, then a final check). Follow it with osa_status.",
   };
 }
 
@@ -474,9 +469,7 @@ export async function osaRunStatus(input: StatusInput): Promise<StatusOutput | {
       let defaulted: string[] = [];
 
       try {
-        const specGateRecord = await readJson(specGateRecordPath(input.repo_dir, runId), z.strictObject({
-          spec_gate_sha256: z.string(),
-        }));
+        const specGateRecord = await readJson(specGateRecordPath(input.repo_dir, runId), SpecGateRecord);
         if (specGateRecord) specSha256 = specGateRecord.spec_gate_sha256;
       } catch {
         // no spec gate yet
@@ -579,7 +572,7 @@ export function registerOsaTools(server: McpServer, deps: OsaToolDeps = {}): voi
   });
   server.registerTool("osa_build", { description: BUILD_TOOL_DESCRIPTION, inputSchema: BuildInput, outputSchema: BuildOutput }, async (input) => {
     try {
-      const r = await startOsaBuild(input, deps);
+      const r = await startOsaBuild(input);
       return "refusal" in r ? refuse(r.refusal) : ok(r);
     } catch (err) {
       return errorResult(err);

@@ -1,4 +1,4 @@
-// The one-shot MCP flow: osa_plan -> (the person confirms) -> osa_build -> osa_status. Runs the real pipeline against a scripted model.
+// The one-shot MCP flow: osa_plan -> osa_spec -> (the person confirms the spec) -> osa_build -> osa_status. Runs the real pipeline against a scripted model.
 
 import assert from "node:assert/strict";
 import { appendFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
@@ -40,7 +40,7 @@ test("osa_plan: returns the plan and its fingerprint, writes the request, and lo
   assert.match(plan.risky_assumptions[0] ?? "", /personal data/);
   assert.ok(plan.safe_assumptions.length >= 1);
   assert.match(plan.next_step, /explicit yes/);
-  assert.match(plan.next_step, /accept_risky_assumptions true/);
+  assert.match(plan.next_step, /osa_spec/);
   const names = await eventNames(repoDir, plan.run_id);
   assert.ok(names.includes("assumptions_generated"));
   for (const later of ["prd_locked", "research_item_done", "spec_written"]) assert.ok(!names.includes(later), `${later} must not have happened`);
@@ -57,76 +57,139 @@ test("osa_plan: a folder that is not a git repository is a plain error, not a cr
   await assert.rejects(planOsaRun({ repo_dir: dir, prompt: "x", files: [], answers: {} }, realDeps()), /not a git repository/);
 });
 
-test("osa_build refuses, and locks nothing, when the confirmation cannot be applied to the plan the person saw", async () => {
-  const repoDir = await tempGitRepo();
-  const deps = realDeps();
-  const plan = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [], answers: {} }, deps);
-  const base = { repo_dir: repoDir, run_id: plan.run_id, plan_sha256: plan.plan_sha256, decision: "lock" as const, accept_risky_assumptions: true, spec_only: true };
+/** Polls osa_status until the run waits at the post-spec gate (the real pipeline with a scripted model reaches it in a few seconds). */
+async function awaitingGate(repoDir: string, runId: string): Promise<Extract<Awaited<ReturnType<typeof osaRunStatus>>, { state: string }>> {
+  for (let i = 0; i < 600; i++) {
+    const st = await osaRunStatus({ repo_dir: repoDir, run_id: runId });
+    if (!("refusal" in st) && st.state === "awaiting_confirmation" && st.stage === "spec") return st;
+    if (!("refusal" in st) && (st.state === "stopped" || st.state === "finished")) throw new Error(`the run ended before the gate: ${st.message}`);
+    await new Promise((r) => setTimeout(r, 100));
+  }
+  throw new Error("the run never reached the post-spec gate");
+}
 
-  const unknown = await startOsaBuild({ ...base, run_id: "11111111-1111-4111-8111-111111111111" }, deps);
-  assert.ok("refusal" in unknown && /Call osa_plan first/.test(unknown.refusal));
+/** A build that "succeeds" without a provider: each phase writes the next phase's spec, the last writes BUILD_COMPLETE.md (as in lock-hardening.test.ts). */
+function withFakeBuild(deps: OsaToolDeps, repoDir: string): OsaToolDeps {
+  const runDispatchFn = (async (rc: { spec_path: string; phase: number; is_final_phase: boolean }) => {
+    const dir = rc.spec_path.slice(0, rc.spec_path.lastIndexOf("/") + 1);
+    await mkdir(`${repoDir}/${dir}`, { recursive: true });
+    await writeFile(rc.is_final_phase ? `${repoDir}/BUILD_COMPLETE.md` : `${repoDir}/${dir}PHASE_${String(rc.phase + 1)}_SPEC.md`, "x\n", "utf8");
+    return { ok: true, exitCode: 0, turns: [], halt: null, problems: [], warnings: [] };
+  }) as never;
+  return { ...deps, pipeline: { ...(deps.pipeline ?? {}), drive: { runDispatchFn } } };
+}
 
-  const wrong = await startOsaBuild({ ...base, plan_sha256: "0".repeat(64) }, deps);
-  assert.ok("refusal" in wrong && /does not match the plan on disk/.test(wrong.refusal));
-
-  const noAccept = await startOsaBuild({ ...base, accept_risky_assumptions: false }, deps);
-  assert.ok("refusal" in noAccept && /risky assumption/.test(noAccept.refusal) && /personal data/.test(noAccept.refusal));
-
-  // the plan file is edited after it was shown: the fingerprint no longer matches
-  await appendFile(`${repoDir}/runs/${plan.run_id}/baby-prd.md`, "\n- sneaked in\n", "utf8");
-  const tampered = await startOsaBuild(base, deps);
-  assert.ok("refusal" in tampered && /does not match the plan on disk/.test(tampered.refusal));
-
-  assert.deepEqual(runningJobs(), []);
-  assert.ok(!(await eventNames(repoDir, plan.run_id)).includes("prd_locked"), "nothing was locked by any refusal");
-});
-
-test("osa_build 'cancel' discards the plan; the decision is final", async () => {
-  const repoDir = await tempGitRepo();
-  const deps = realDeps(false);
-  const plan = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [], answers: {} }, deps);
-  const cancelled = await startOsaBuild({ repo_dir: repoDir, run_id: plan.run_id, plan_sha256: plan.plan_sha256, decision: "cancel", accept_risky_assumptions: false, spec_only: false }, deps);
-  assert.ok(!("refusal" in cancelled) && cancelled.status === "cancelled");
-  const st = await osaRunStatus({ repo_dir: repoDir, run_id: plan.run_id });
-  assert.ok(!("refusal" in st) && st.state === "cancelled");
-  const again = await startOsaBuild({ repo_dir: repoDir, run_id: plan.run_id, plan_sha256: plan.plan_sha256, decision: "lock", accept_risky_assumptions: true, spec_only: true }, deps);
-  assert.ok("refusal" in again && /already decided/.test(again.refusal));
-});
-
-test("osa_build locks EXACTLY the plan that was shown, starts at once, and osa_status follows the run to its report", async () => {
+test("osa_spec runs research and spec in the background and stops at the gate: osa_status shows awaiting_confirmation with the TL;DR, a spec hash and the risky assumptions; no build has started", async () => {
   const repoDir = await tempGitRepo();
   const deps = realDeps();
   const plan = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [], answers: {} }, deps);
   const t0 = Date.now();
-  const started = await startOsaBuild({ repo_dir: repoDir, run_id: plan.run_id, plan_sha256: plan.plan_sha256, decision: "lock", accept_risky_assumptions: true, spec_only: true }, deps);
+  const started = await startOsaSpec({ repo_dir: repoDir, run_id: plan.run_id, plan_sha256: plan.plan_sha256, decision: "go" }, deps);
   assert.ok(!("refusal" in started) && started.status === "started");
   assert.ok(Date.now() - t0 < 5000, "returns at once; the work continues in the background");
   assert.deepEqual(runningJobs(), [plan.run_id]);
-  const during = await osaRunStatus({ repo_dir: repoDir });
-  assert.ok(!("refusal" in during) && during.run_id === plan.run_id && (during.state === "running" || during.state === "finished"));
 
+  const st = await awaitingGate(repoDir, plan.run_id);
+  assert.ok(st.tldr !== null && st.tldr.length > 0, "the TL;DR is there");
+  assert.match(st.spec_sha256 ?? "", /^[0-9a-f]{64}$/);
+  assert.equal(st.risky_assumptions.length, 1);
+  assert.match(st.risky_assumptions[0] ?? "", /personal data/);
+  const gateFile = JSON.parse(await readFile(`${repoDir}/.osa/runs/${plan.run_id}/mcp-gate.json`, "utf8")) as { tldr: string[] };
+  assert.deepEqual(gateFile.tldr, st.tldr);
+  const names = await eventNames(repoDir, plan.run_id);
+  assert.ok(names.includes("prd_locked") && names.includes("spec_written"), "the PRD was locked automatically and the spec written");
+  assert.ok(!names.includes("step14_done"), "no build has started");
+  assert.deepEqual(runningJobs(), [plan.run_id], "the run is still alive, waiting for the person");
+
+  // leave nothing hanging: decline at the gate
+  const done = await startOsaBuild({ repo_dir: repoDir, run_id: plan.run_id, spec_sha256: st.spec_sha256 as string, decision: "cancel", accept_risky_assumptions: false });
+  assert.ok(!("refusal" in done) && done.status === "cancelled");
   await waitForJobs();
-  assert.deepEqual(runningJobs(), []);
+});
+
+test("osa_build refuses, and builds nothing, when the confirmation cannot be applied to the spec the person saw", async () => {
+  const repoDir = await tempGitRepo();
+  const deps = realDeps();
+  const plan = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [], answers: {} }, deps);
+
+  const nothingWaiting = await startOsaBuild({ repo_dir: repoDir, run_id: plan.run_id, spec_sha256: "0".repeat(64), decision: "lock", accept_risky_assumptions: true });
+  assert.ok("refusal" in nothingWaiting && /No spec is waiting/.test(nothingWaiting.refusal), "before osa_spec there is nothing to confirm");
+
+  await startOsaSpec({ repo_dir: repoDir, run_id: plan.run_id, plan_sha256: plan.plan_sha256, decision: "go" }, deps);
+  const st = await awaitingGate(repoDir, plan.run_id);
+  const sha = st.spec_sha256 as string;
+  const base = { repo_dir: repoDir, run_id: plan.run_id, spec_sha256: sha, decision: "lock" as const, accept_risky_assumptions: true };
+
+  const unknown = await startOsaBuild({ ...base, run_id: "11111111-1111-4111-8111-111111111111" });
+  assert.ok("refusal" in unknown && /No spec is waiting/.test(unknown.refusal));
+
+  const wrong = await startOsaBuild({ ...base, spec_sha256: "0".repeat(64) });
+  assert.ok("refusal" in wrong && /spec_sha256 does not match/.test(wrong.refusal));
+
+  const noAccept = await startOsaBuild({ ...base, accept_risky_assumptions: false });
+  assert.ok("refusal" in noAccept && /risky assumption/.test(noAccept.refusal) && /personal data/.test(noAccept.refusal));
+
+  // a spec file is edited after the TL;DR was shown: the hash the person confirmed no longer describes what is on disk
+  const specFile = `${repoDir}/runs/${plan.run_id}/spec/PHASE_1_SPEC.md`;
+  const original = await readFile(specFile, "utf8");
+  await appendFile(specFile, "\n- sneaked in\n", "utf8");
+  const tampered = await startOsaBuild(base);
+  assert.ok("refusal" in tampered && /spec_sha256 does not match/.test(tampered.refusal));
+  assert.deepEqual(runningJobs(), [plan.run_id], "every refusal left the run waiting at the gate");
+  assert.ok(!(await eventNames(repoDir, plan.run_id)).includes("step14_done"), "nothing was built by any refusal");
+
+  await writeFile(specFile, original, "utf8");
+  const declined = await startOsaBuild({ ...base, decision: "cancel" });
+  assert.ok(!("refusal" in declined) && declined.status === "cancelled");
+  await waitForJobs();
+});
+
+test("osa_build 'cancel' at the gate ends the run without building; the decision is final", async () => {
+  const repoDir = await tempGitRepo();
+  const deps = realDeps(false);
+  const plan = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [], answers: {} }, deps);
+  await startOsaSpec({ repo_dir: repoDir, run_id: plan.run_id, plan_sha256: plan.plan_sha256, decision: "go" }, deps);
+  const st = await awaitingGate(repoDir, plan.run_id);
+  const cancelled = await startOsaBuild({ repo_dir: repoDir, run_id: plan.run_id, spec_sha256: st.spec_sha256 as string, decision: "cancel", accept_risky_assumptions: false });
+  assert.ok(!("refusal" in cancelled) && cancelled.status === "cancelled");
+  await waitForJobs();
+  const after = await osaRunStatus({ repo_dir: repoDir, run_id: plan.run_id });
+  assert.ok(!("refusal" in after));
+  assert.equal(after.state, "stopped");
+  assert.equal((after.report as OsaRunReport).build, null, "no build was started");
+  assert.equal((after.report as OsaRunReport).exit_code, 22);
+  const again = await startOsaBuild({ repo_dir: repoDir, run_id: plan.run_id, spec_sha256: st.spec_sha256 as string, decision: "lock", accept_risky_assumptions: true });
+  assert.ok("refusal" in again && /No spec is waiting/.test(again.refusal), "a decided gate cannot be decided again");
+});
+
+test("the whole flow: osa_plan -> osa_spec -> osa_status awaiting -> osa_build lock -> osa_status finished, with the locked plan byte-identical to the one shown", async () => {
+  const repoDir = await tempGitRepo();
+  const deps = withFakeBuild(realDeps(false), repoDir);
+  const plan = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [], answers: {} }, deps);
+  await startOsaSpec({ repo_dir: repoDir, run_id: plan.run_id, plan_sha256: plan.plan_sha256, decision: "go" }, deps);
+  const st = await awaitingGate(repoDir, plan.run_id);
+  const released = await startOsaBuild({ repo_dir: repoDir, run_id: plan.run_id, spec_sha256: st.spec_sha256 as string, decision: "lock", accept_risky_assumptions: false });
+  assert.ok(!("refusal" in released) && released.status === "started");
+  await waitForJobs();
   const done = await osaRunStatus({ repo_dir: repoDir, run_id: plan.run_id });
   assert.ok(!("refusal" in done));
   assert.equal(done.state, "finished", done.message);
   const report = done.report as OsaRunReport;
   assert.equal(report.ok, true, JSON.stringify(report.problems));
-  assert.equal(report.stage, "spec", "spec_only stops after the spec");
   assert.equal(report.prd_sha256, plan.plan_sha256, "the locked plan is byte-identical to the one the person was shown");
   assert.equal(report.run_id, plan.run_id);
+  assert.notEqual(report.build, null, "the build ran after the confirmation");
   const names = await eventNames(repoDir, plan.run_id);
-  assert.ok(names.includes("prd_locked") && names.includes("spec_written"));
-  assert.ok(names.filter((n) => n === "assumptions_generated").length === 1, "intake ran once, in osa_plan; the build did not ask the model for a second plan");
-  assert.ok((await readdir(`${repoDir}/runs/${plan.run_id}/spec`)).includes("PHASE_1_SPEC.md"));
+  assert.equal(names.filter((n) => n === "assumptions_generated").length, 1, "intake ran once, in osa_plan");
+  assert.ok(names.indexOf("spec_written") < names.indexOf("step14_done"), "the spec came before the build");
 });
 
-test("only one build per repository at a time; a second must wait", async () => {
+test("only one run per repository at a time; a second must wait", async () => {
   const repoDir = await tempGitRepo();
   let release: () => void = () => undefined;
   const gate = new Promise<void>((r) => (release = r));
-  // a pipeline whose build call waits on the gate (the plans are written directly below)
-  const fakeRun = async (opts: { stopAfterPlan?: boolean; fromDraft?: boolean }, d: { runId?: string }): Promise<OsaRunReport> => {
+  // a pipeline that waits on the gate (the plans are written directly below)
+  const fakeRun = async (_opts: unknown, d: { runId?: string }): Promise<OsaRunReport> => {
     const runId = d.runId ?? "22222222-2222-4222-8222-222222222222";
     const report = { schema_version: 1, generated_at: "t", run_id: runId, ok: true, exit_code: 0, stage: "spec", lock: "locked", prd_path: null, prd_sha256: null, assumptions: { risky: 0, safe: 1 }, research: null, spec: null, build: null, agents: null, summary_path: null, warnings: [], problems: [] } as unknown as OsaRunReport;
     await gate;
@@ -134,22 +197,22 @@ test("only one build per repository at a time; a second must wait", async () => 
   };
   const a = "44444444-4444-4444-8444-444444444444";
   const b = "55555555-5555-4555-8555-555555555555";
+  const md = renderBabyPrd(samplePrd());
+  const sha = sha256String(md);
   for (const id of [a, b]) {
     await mkdir(`${repoDir}/runs/${id}`, { recursive: true });
     await mkdir(`${repoDir}/.osa/runs/${id}`, { recursive: true });
-    const md = renderBabyPrd(samplePrd());
     await writeFile(`${repoDir}/runs/${id}/baby-prd.md`, md, "utf8");
-    await writeFile(`${repoDir}/.osa/runs/${id}/plan-request.json`, JSON.stringify({ prompt: "p", files: [], plan_sha256: sha256String(md), created_at: "t" }), "utf8");
+    await writeFile(`${repoDir}/.osa/runs/${id}/plan-request.json`, JSON.stringify({ prompt: "p", files: [], plan_sha256: sha, created_at: "t" }), "utf8");
   }
-  const sha = sha256String(renderBabyPrd(samplePrd()));
   const deps: OsaToolDeps = { run: ((o: never, d: never) => fakeRun(o, d as { runId?: string })) as never };
-  const first = await startOsaBuild({ repo_dir: repoDir, run_id: a, plan_sha256: sha, decision: "lock", accept_risky_assumptions: true, spec_only: false }, deps);
+  const first = await startOsaSpec({ repo_dir: repoDir, run_id: a, plan_sha256: sha, decision: "go" }, deps);
   assert.ok(!("refusal" in first) && first.status === "started");
-  const second = await startOsaBuild({ repo_dir: repoDir, run_id: b, plan_sha256: sha, decision: "lock", accept_risky_assumptions: true, spec_only: false }, deps);
-  assert.ok("refusal" in second && /still building in this repository/.test(second.refusal));
+  const second = await startOsaSpec({ repo_dir: repoDir, run_id: b, plan_sha256: sha, decision: "go" }, deps);
+  assert.ok("refusal" in second && /still working in this repository/.test(second.refusal));
   release();
   await waitForJobs();
-  const third = await startOsaBuild({ repo_dir: repoDir, run_id: b, plan_sha256: sha, decision: "lock", accept_risky_assumptions: true, spec_only: false }, deps);
+  const third = await startOsaSpec({ repo_dir: repoDir, run_id: b, plan_sha256: sha, decision: "go" }, deps);
   assert.ok(!("refusal" in third), "once the first has ended, the next may start");
   await waitForJobs();
 });
@@ -173,13 +236,15 @@ test("osa_status: a run that locked but has no result and no live job (server re
 test("the tools are registered on the server with the descriptions that tell the assistant to ask the person first", () => {
   const server = buildMcpServer() as unknown as { _registeredTools: Record<string, { description?: string }> };
   const tools = server._registeredTools;
-  assert.match(tools["osa_plan"]?.description ?? "", /show the person the plan/);
+  assert.match(tools["osa_plan"]?.description ?? "", /show the person the plan/i);
   assert.match(tools["osa_plan"]?.description ?? "", /NOTHING is built or locked/);
   assert.match(tools["osa_plan"]?.description ?? "", /recommended questions/);
   assert.match(tools["osa_spec"]?.description ?? "", /start research and spec in the background/);
-  assert.match(tools["osa_spec"]?.description ?? "", /After the person has seen the plan/);
+  assert.match(tools["osa_spec"]?.description ?? "", /after the person has seen the plan/i);
   assert.match(tools["osa_build"]?.description ?? "", /Only after osa_status shows awaiting_confirmation/);
   assert.match(tools["osa_build"]?.description ?? "", /accept_risky_assumptions/);
+  assert.match(tools["osa_build"]?.description ?? "", /never set accept_risky_assumptions yourself/i);
+  assert.match(tools["osa_build"]?.description ?? "", /spec_sha256/);
   assert.match(tools["osa_status"]?.description ?? "", /awaiting_confirmation/);
 });
 
@@ -226,6 +291,10 @@ test("osa_spec refuses on wrong plan_sha256, on unknown run, and while another j
   assert.ok(!("refusal" in first) && first.status === "started");
   const second = await startOsaSpec({ repo_dir: repoDir, run_id: plan.run_id, plan_sha256: plan.plan_sha256, decision: "go" }, deps);
   assert.ok("refusal" in second && /already waiting/.test(second.refusal));
+  // The job now waits at the post-spec gate for the person; decline there so it can end.
+  const st = await awaitingGate(repoDir, plan.run_id);
+  const declined = await startOsaBuild({ repo_dir: repoDir, run_id: plan.run_id, spec_sha256: st.spec_sha256 as string, decision: "cancel", accept_risky_assumptions: false });
+  assert.ok(!("refusal" in declined) && declined.status === "cancelled");
   await waitForJobs();
 });
 
@@ -237,29 +306,4 @@ test("osa_spec 'cancel' discards the plan without building", async () => {
   assert.ok(!("refusal" in cancelled) && cancelled.status === "cancelled");
   const st = await osaRunStatus({ repo_dir: repoDir, run_id: plan.run_id });
   assert.ok(!("refusal" in st) && st.state === "cancelled");
-});
-
-test("osa_spec starts a background job that reaches the gate, and osa_status returns awaiting_confirmation with tldr and spec_sha256", async () => {
-  const repoDir = await tempGitRepo();
-  const deps = realDeps(false);
-  const plan = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [], answers: {} }, deps);
-  const t0 = Date.now();
-  const started = await startOsaSpec({ repo_dir: repoDir, run_id: plan.run_id, plan_sha256: plan.plan_sha256, decision: "go" }, deps);
-  assert.ok(!("refusal" in started) && started.status === "started");
-  assert.ok(Date.now() - t0 < 3000, "returns at once");
-  assert.deepEqual(runningJobs(), [plan.run_id]);
-
-  await waitForJobs();
-  assert.deepEqual(runningJobs(), []);
-  const st = await osaRunStatus({ repo_dir: repoDir, run_id: plan.run_id });
-  assert.ok(!("refusal" in st));
-  assert.equal(st.state, "awaiting_confirmation");
-  assert.equal(st.stage, "spec");
-  assert.ok(Array.isArray(st.tldr) && st.tldr.length > 0, "tldr should be present and non-empty");
-  assert.match(st.spec_sha256 ?? "", /^[0-9a-f]{64}$/);
-  assert.ok(Array.isArray(st.risky_assumptions));
-  assert.ok(Array.isArray(st.defaulted_assumptions));
-  const gateFile = await readFile(`${repoDir}/.osa/runs/${plan.run_id}/mcp-gate.json`, "utf8");
-  const gateData = JSON.parse(gateFile);
-  assert.deepEqual(gateData.tldr, st.tldr);
 });

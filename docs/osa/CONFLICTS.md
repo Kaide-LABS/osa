@@ -418,3 +418,15 @@ with a risky assumption" and "interactive: Cancel ...", and `lock-hardening.test
 model prompt still forbids questions; the prompt is now after the spec). Not changed: the PRD hash is still checked before research, around every build phase and
 at the end. Cost of the new order: a refusal or a cancel now happens after about 20 minutes of research and spec, not before them; the broad-prompt nudge exists
 to make that rare. *(risky -- changes when the person decides; reversible by restoring `lockBabyPrd` in the pipeline)*
+
+**S-12 -- The MCP flow is plan -> spec -> confirm -> build (it was plan -> confirm -> build).** Follows from S-11. `osa_plan` still runs intake only and now also returns
+`scope`, `recommended_questions` and `defaulted_assumptions` (`safe_assumptions` no longer includes defaulted ones) and accepts `answers`. New `osa_spec` locks the PRD
+automatically and runs research and spec in the background; the same background job then WAITS at the post-spec gate, so a run is one pipeline invocation, not two. While it waits,
+`osa_status` reports `awaiting_confirmation` at stage `spec` with the deterministic TL;DR, a `spec_sha256` and the risky and defaulted assumptions. `osa_build` now takes that
+`spec_sha256` (not `plan_sha256`; `spec_only` is gone) and releases the waiting run: it refuses with no spec waiting, a hash that is not the recorded one, a spec file that changed after
+the TL;DR was shown (the hash is recomputed from disk), and risky assumptions without `accept_risky_assumptions`; the tool descriptions tell the assistant never to set that flag itself.
+One run at a time per repository is kept (now enforced by `osa_spec`). A server restart while a run waits leaves it `interrupted`, as for a running build; `fromSpec`, which would
+let a restarted server resume from disk, is still a stub. Tests replaced because they pinned the reversed contract: the `osa_build` tests in `src/mcp/tools/osa.test.ts` (plan fingerprint,
+`spec_only`, one build per repository) and the tool-list pins in `src/code-index/surfaces.test.ts` and `src/mcp/server.test.ts` (now include `osa_spec`), plus the `osa_plan` next-step
+assertion about `accept_risky_assumptions` (that flag now belongs to `osa_build`). Breaking for any client that called the old two-step flow: published 0.4.x clients must move to
+plan/spec/build. *(risky -- changes the public MCP tool contract; the next release should be 0.5.0)*

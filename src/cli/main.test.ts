@@ -273,5 +273,5 @@ test("mcp-config prints a paste-ready MCP entry for the installation it runs fro
   assert.match(bad.stderr, /Unknown flag for mcp-config/);
   const help = await runMain(["--help"]);
   assert.match(help.stdout, /osa mcp-config/);
-  assert.match(help.stdout, /osa_plan \/ osa_build \/ osa_status/);
+  assert.match(help.stdout, /osa_plan \/ osa_spec \/ osa_build \/ osa_status/);
 });

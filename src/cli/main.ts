@@ -76,7 +76,7 @@ Commands:
                                             runDispatch() call per phase, halting on the first
                                             ambiguous or incoherent filesystem read.
   osa mcp                                   Start a local, stdio-only Model Context Protocol server
-                                            exposing osa_plan / osa_build / osa_status (the one-shot
+                                            exposing osa_plan / osa_spec / osa_build / osa_status (one-shot
                                             flow) and run/drive/doctor/evidence/code_search/memory.
   osa setup [--json]                        Register osa's own MCP server into your Claude Code
                                             configuration, at user scope.
