@@ -54,7 +54,7 @@ function record(over: Partial<RunRecord> = {}): RunRecord {
 function rows(dbPath: string): { project: string; kind: string; text: string }[] {
   const mem = openMemoryDb(dbPath);
   try {
-    return mem.db.prepare("SELECT project, kind, text FROM facts WHERE deleted_at IS NULL ORDER BY created_at, id").all() as { project: string; kind: string; text: string }[];
+    return mem.db.prepare("SELECT project, kind, text FROM facts WHERE deleted_at IS NULL ORDER BY rowid").all() as { project: string; kind: string; text: string }[];
   } finally {
     mem.close();
   }
