@@ -1,0 +1,41 @@
+{
+  "summary": "The canonical, cross-platform-reproducible way to hash a set of files is the pattern used by Go's golang.org/x/mod/sumdb/dirhash.Hash1: compute the hex SHA-256 of each file's raw bytes, build one text line per file in a fixed format (hex-digest, two spaces, path, newline), sort those lines by path, concatenate them, and take the SHA-256 of that concatenation as the final manifest hash. For this build, read each spec file as a Buffer and hash the exact bytes with Node's crypto.createHash('sha256').digest('hex'), normalize every path to POSIX forward slashes and sort byte/code-point-wise before assembling the manifest, then sha256 the joined manifest string to produce the spec-gate hash. Determinism across Windows/Linux comes from the forward-slash normalization, the stable sort, a fixed line format, and hashing content as raw bytes rather than through any text decoding.",
+  "key_findings": [
+    "Node.js crypto (docs current as of v26.12.1) provides createHash('sha256'); you call hash.update(data[, inputEncoding]) and hash.digest('hex') to get a deterministic hex digest. The docs state the same input always produces the same output. Pass a Buffer to update() to hash exact bytes with no encoding ambiguity.",
+    "Go's dirhash.Hash1 ('h1:' algorithm) is the reference design: for each file it emits a line of `<hex-sha256-of-file-content><two spaces U+0020><name><newline U+000A>`, sorts by file name, concatenates the lines into a summary, then SHA-256-hashes that summary (equivalent to `sha256sum $(find . -type f | sort) | sha256sum`). Our spec-gate hash is this inner->outer construction, differing only in output encoding (hex vs base64).",
+    "dirhash.Hash1 constraints: file names containing a newline (U+000A) are disallowed (they would corrupt the line-oriented summary), and names always use forward slashes even on Windows.",
+    "The Dirhash Standard (andhus/dirhash) confirms the cross-platform rules: entries are sorted before hashing, paths are normalized to the unix standard with forward slash '/' separating directories, and file content is hashed first with its hex digest becoming the value fed into the summary (indirection), rather than raw bytes being concatenated inline.",
+    "Sorting must be on the normalized path bytes/code points (byte-wise / C-locale), not a locale-aware collation, so that order is identical on every platform. For ASCII spec paths JavaScript's default Array.sort (UTF-16 code-unit order) matches byte order; for non-ASCII paths a UTF-8 Buffer.compare keeps it equal to byte-wise sort.",
+    "Reproducibility depends on three things being pinned: the exact set of files included, the path normalization (relative-to-spec-root + path.sep -> '/'), and hashing content as raw bytes. CRLF vs LF differences in a file's on-disk bytes will change that file's content hash, so line endings must be consistent in the committed spec files (hash the bytes as-is; do not re-normalize at hash time)."
+  ],
+  "recommendations": [
+    "Implement the spec-gate hash as a two-layer SHA-256 modeled on dirhash.Hash1: (1) per file, hex = createHash('sha256').update(readFileSync(absPath)).digest('hex'); (2) line = `${hex}  ${posixRelPath}\\n` (exactly two spaces, '\\n'); (3) sort lines by posixRelPath byte-wise; (4) manifest = sorted lines joined; (5) specGateHash = createHash('sha256').update(manifest,'utf8').digest('hex').",
+    "Normalize every path with path.relative(specRoot, file) then split(path.sep).join('/') so Windows backslashes become forward slashes; this is what makes a manifest built on Windows equal to one built on Linux. Never put absolute paths in the manifest.",
+    "Read file content with readFileSync (Buffer), not as a utf8 string, so the content hash reflects exact bytes and is encoding-independent. Do not strip/convert CRLF at hash time; instead keep committed spec files' line endings stable (e.g., via .gitattributes/text eol) so the bytes are reproducible.",
+    "Sort on the normalized path only (ignore the hash and file size in the sort key), ascending, using a deterministic comparator (Buffer.from(a).compare(Buffer.from(b)) for full byte-wise correctness, or plain < comparison for guaranteed-ASCII paths). Pre-sort the file list before hashing so filesystem/readdir order never affects the result.",
+    "Validate/guard inputs: reject any spec path containing a newline (U+000A) since it would break the line-oriented manifest; enumerate the spec file set explicitly/deterministically rather than relying on raw directory iteration order.",
+    "Store prd_sha256 and the spec-gate hash as lowercase hex in spec-gate.json, and recompute-and-compare both on fromSpec; refuse if either differs. Stay on Node's built-in crypto only (no new dependency), which satisfies the zod/@modelcontextprotocol/sdk-only constraint."
+  ],
+  "as_of": "2026-10-24 (Node.js crypto docs v26.12.1; Go golang.org/x/mod/sumdb/dirhash and andhus/dirhash README current)",
+  "sources": [
+    {
+      "title": "Node.js Documentation — Crypto: crypto.createHash / Hash class",
+      "url": "https://nodejs.org/api/crypto.html",
+      "type": "official-docs",
+      "quote": "hash.update(data[, inputEncoding]) ... hash.digest([encoding]) ... If encoding is specified, returns a string; otherwise a Buffer. Cryptographic hash functions are deterministic: the same input data will always produce the same hash output."
+    },
+    {
+      "title": "dirhash package - golang.org/x/mod/sumdb/dirhash - Go Packages",
+      "url": "https://pkg.go.dev/golang.org/x/mod/sumdb/dirhash",
+      "type": "repo",
+      "quote": "Hash1 ... line containing the hexadecimal SHA-256 hash of the file content, two spaces (U+0020), the file name, a newline (U+000A) ... equivalent to: sha256sum $(find . -type f | sort) | sha256sum ... File names with newlines (U+000A) are disallowed ... File names always use forward slashes (even on Windows)."
+    },
+    {
+      "title": "The Dirhash Standard (andhus/dirhash README)",
+      "url": "https://github.com/andhus/dirhash/blob/master/README.md",
+      "type": "repo",
+      "quote": "dir_descriptor = '\\000\\000'.join(sorted(entry_descriptors)) ... The path is normalized according to the unix standard (with a forward slash / separating directories) ... the file's binary data is first hashed separately, then that hexdigest becomes the property value."
+    }
+  ],
+  "uncertain": []
+}

@@ -1,0 +1,57 @@
+{
+  "summary": "This build targets Node.js 22+/24 and runs TypeScript via Node's built-in type stripping with the erasableSyntaxOnly discipline, so the Node facts that matter are the native TypeScript support surface and its restrictions. Type stripping is stable and enabled by default on both LTS lines the repo supports (default-on since v22.18.0 / v23.6.0; marked stable in v24.12.0 and v25.2.0), replaces type syntax with whitespace and does no type checking, and does not read tsconfig.json. Node's unsupported-syntax rules exactly match the brief's constraints: enums, parameter properties, namespaces with runtime code, and import aliases throw ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX, which is precisely what erasableSyntaxOnly in tsconfig prevents at the TypeScript level. The current 'Current' release is Node 26, where --experimental-transform-types was removed, so nothing in this build may rely on transform-only features.",
+  "key_findings": [
+    "Current/Current-stable release line is Node.js 26.0.0 (released April 2026, scheduled to enter LTS October 2026); the active LTS lines this repo targets are Node 24 'Krypton' and Node 22 'Jod'.",
+    "Native TypeScript type stripping (--experimental-strip-types) was introduced in v22.6.0, became enabled by default in v22.18.0 and v23.6.0, and was marked stable in v24.12.0 and v25.2.0.",
+    "Type stripping replaces TypeScript-only syntax with whitespace and performs NO type checking; type errors must be caught by a separate typecheck step (tsc --noEmit), not by Node.",
+    "Type stripping does NOT read tsconfig.json; compiler options like erasableSyntaxOnly apply to your own tsc typecheck pass, not to Node's runtime behavior.",
+    "Unsupported syntax that throws ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX under type stripping: enums, parameter properties, namespaces containing runtime code, and import aliases (import X = require). Type-only namespaces are allowed.",
+    "WebAssembly support is required for type stripping; there is no non-Wasm fallback.",
+    "tsconfig 'erasableSyntaxOnly' (TypeScript 5.8+) is the recommended guard that makes tsc reject exactly the non-erasable constructs Node's type stripper cannot handle — a clean match for this repo's constraint.",
+    "--experimental-transform-types was added in v22.7.0 and REMOVED in v26.0.0; relying on transform-only features (e.g. enums compiled to runtime code) is therefore unavailable on current Node.",
+    "Node is moving to one major per year starting with v27 (Alpha Oct 2026, 27.0.0 April 2027); every line becomes LTS, ending the odd/even distinction. [uncertain]"
+  ],
+  "recommendations": [
+    "Keep erasableSyntaxOnly: true (and noEmit, verbatimModuleSyntax, module: nodenext, target: esnext) in tsconfig so the typecheck pass rejects enums/parameter properties/runtime namespaces before they ever reach Node — this is what makes the brief's 'no enums, no parameter properties' constraint enforceable.",
+    "Treat 'npm run check' typecheck as the only type-error gate: because Node strips types without checking, the test run alone cannot catch type errors — the tsc pass must stay in the green-check pipeline.",
+    "Do not introduce any TypeScript construct requiring code generation (enums, parameter properties, runtime namespaces, import aliases, decorators); use plain const objects/unions instead of enums.",
+    "Do not depend on --experimental-transform-types anywhere; it is gone in Node 26, and the build's stated runtime is type stripping only.",
+    "Pin CI/local to a Node version where strip-types is default-on and stable (Node 24 LTS is the safest target; Node 22.18+ also works); avoid versions below v22.18.0 where it is not default.",
+    "Use node: prefixed core modules (node:child_process confined to src/util/exec.ts, node network modules confined to src/research/net/**) consistent with boundary rules B1–B12; these are stable Node APIs on 22/24."
+  ],
+  "as_of": "2026-10-24; Node.js 26.0.0 current, Node 24/22 LTS",
+  "sources": [
+    {
+      "title": "Modules: TypeScript — Node.js API Documentation",
+      "url": "https://nodejs.org/api/typescript.html",
+      "type": "official-docs",
+      "quote": "Type stripping ... Enabled by default (as of v23.6.0, v22.18.0) ... Does NOT support features requiring code generation (Enums, namespaces with runtime code, parameter properties, import aliases) ... erasableSyntaxOnly ensures only erasable syntax is used"
+    },
+    {
+      "title": "Evolving the Node.js Release Schedule / Node.js Releases",
+      "url": "https://nodejs.org/en/blog/announcements/evolving-the-nodejs-release-schedule",
+      "type": "official-docs",
+      "quote": "Node.js 26.0.0 was released in April 2026 and will enter LTS in October 2026 ... Node.js v24 (Krypton) and v22 (Jod) are currently in LTS status"
+    }
+  ],
+  "current_version": "Node.js 26.0.0 (Current); Node.js 24 'Krypton' and 22 'Jod' are the active LTS lines this build targets",
+  "api_surface": [
+    "node <file>.ts — built-in type stripping to run TypeScript without a separate transpile step (default-on in v22.18+/v24)",
+    "--no-strip-types — flag to disable type stripping (NOT used by this build)",
+    "tsconfig.json compilerOptions: erasableSyntaxOnly, noEmit, verbatimModuleSyntax, module=nodenext, target=esnext (for the tsc typecheck pass only)",
+    "node:child_process (confined to src/util/exec.ts per B1–B12)",
+    "node: core network modules (confined to src/research/net/** per boundary rules)",
+    "ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX — runtime error thrown for non-erasable syntax"
+  ],
+  "pitfalls": [
+    "Type stripping does no type checking — a passing `node` run says nothing about type correctness; a dedicated tsc --noEmit step is mandatory.",
+    "Node does not read tsconfig.json at runtime, so erasableSyntaxOnly only guards the typecheck pass; the two must stay in sync.",
+    "Enums, parameter properties, runtime namespaces, and import aliases throw ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX under type stripping — exactly the constructs the brief forbids.",
+    "--experimental-transform-types was removed in Node 26.0.0; any workaround that relied on transform (e.g. real enums) will not run.",
+    "Type stripping requires WebAssembly with no fallback; constrained/embedded runtimes without Wasm cannot strip types.",
+    "On Node <22.18.0 strip-types is not default-on, so forgetting to pin the Node version can produce 'cannot run .ts' failures in some environments."
+  ],
+  "uncertain": [
+    "key_findings"
+  ]
+}

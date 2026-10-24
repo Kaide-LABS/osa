@@ -1,0 +1,69 @@
+{
+  "summary": "For this build, TypeScript's relevant surface is the `erasableSyntaxOnly` compiler option, which the official TSConfig docs describe as causing TypeScript to error on TypeScript-specific constructs that have runtime behavior so that files can be run directly via Node.js type stripping. This exactly matches the build's constraint set (no enums, no parameter properties) — the option errors on enum declarations, namespaces/modules with runtime code, parameter properties, non-ECMAScript `import =`/`export =`, and prefix-style type assertions. As of October 2026 the current stable TypeScript line is 7.0 (the new native/Go-based compiler), with 6.0 (March 2026) being the last JavaScript-codebase release; erasableSyntaxOnly has been available since the 5.8 line and remains in 5.9/6.0/7.0. The build should pin a TypeScript version >= 5.8 (any of 5.9, 6.0, or 7.0 supports the flag), enable `erasableSyntaxOnly` together with `verbatimModuleSyntax`, and rely on `tsc --noEmit` for the typecheck in `npm run check`.",
+  "key_findings": [
+    "`erasableSyntaxOnly` (TSConfig flag `--erasableSyntaxOnly`) 'will cause TypeScript to error on most TypeScript-specific constructs that have runtime behavior' — official TSConfig reference page.",
+    "Constructs that error under erasableSyntaxOnly: enum declarations; namespaces and modules with runtime code; parameter properties in classes; non-ECMAScript `import =` and `export =` assignments; `<prefix>`-style type assertions (official docs).",
+    "Official docs example: `constructor(public x: number)` errors with 'This syntax is not allowed when erasableSyntaxOnly is enabled.' — confirms the build's 'no parameter properties' constraint.",
+    "Official docs recommend combining erasableSyntaxOnly with `--verbatimModuleSyntax` to ensure proper import syntax and prevent import elision.",
+    "Official docs: 'Node.js supports running TypeScript files directly as of v23.6' and only syntax that can be erased leaving valid JavaScript is supported — this is the type-stripping mode the flag guards.",
+    "erasableSyntaxOnly was introduced in the TypeScript 5.8 line [uncertain] (the official TSConfig page itself notes it 'does not specify which TypeScript version introduced this feature').",
+    "TypeScript 5.9 was announced August 1, 2025; install via `npm install -D typescript`; 5.9.3 patch released October 1, 2025.",
+    "TypeScript 6.0 was announced March 23, 2026 and is 'the last release based on the current JavaScript codebase'; the compiler/language service is being rewritten in Go for 7.0.",
+    "As of October 24, 2026, the typescript npm package has 7.1.0-dev builds dated 20261024, indicating the 7.0 line is the current stable release line and 7.1 is in development; the exact latest stable patch is 7.0.2 (July 8, 2026) [uncertain] — could not open npm versions page (HTTP 403).",
+    "Install/enable: TypeScript is installed as a dev dependency via `npm install -D typescript`; the flag is enabled under `compilerOptions` in tsconfig.json as `\"erasableSyntaxOnly\": true`."
+  ],
+  "recommendations": [
+    "Pin TypeScript at a version >= 5.8 so `erasableSyntaxOnly` is available; any of 5.9.x, 6.0.x, or 7.0.x works. Do NOT add TypeScript as a new runtime dependency — it is a build/dev tool only, consistent with the zod + @modelcontextprotocol/sdk dependency limit.",
+    "Enable `\"erasableSyntaxOnly\": true` and `\"verbatimModuleSyntax\": true` in compilerOptions; this is what mechanically enforces the build's 'no enums, no parameter properties' rule at typecheck time.",
+    "Run the typecheck as `tsc --noEmit` inside `npm run check`; TypeScript is used for type checking only, since the build runs TS directly via Node type stripping rather than emitting JS.",
+    "Avoid, in all new code: enums (use `as const` object maps or union literals), namespaces with runtime code, constructor parameter properties, `import =`/`export =`, and `<T>`-prefix type assertions (use `as T`) — all are rejected by the flag.",
+    "If adopting the 7.0 native compiler, validate that project tooling (test runner, boundary scan) still invokes the correct `tsc`; 6.0 introduced migration-oriented breaking changes (e.g. `--stableTypeOrdering`) ahead of 7.0 — stay on whatever version the repo already pins at 67e1961 unless a deliberate upgrade is in scope, which it is not for this build.",
+    "Do not rely on Node type stripping requiring a specific flag assumption; the official docs tie unflagged direct execution to Node v23.6 — confirm the repo's actual Node target (22+/24) handles `.ts` execution as configured before assuming behavior."
+  ],
+  "as_of": "2026-10-24; TypeScript stable line 7.0 (erasableSyntaxOnly docs current; TS 6.0 announced 2026-03-23, TS 5.9 announced 2025-08-01)",
+  "sources": [
+    {
+      "title": "TypeScript: TSConfig Option: erasableSyntaxOnly",
+      "url": "https://www.typescriptlang.org/tsconfig/erasableSyntaxOnly.html",
+      "type": "official-docs",
+      "quote": "The --erasableSyntaxOnly flag will cause TypeScript to error on most TypeScript-specific constructs that have runtime behavior ... enum declarations ... Parameter properties in classes ... Non-ECMAScript import = and export = assignments ... <prefix>-style type assertions."
+    },
+    {
+      "title": "Announcing TypeScript 5.9 - TypeScript DevBlog",
+      "url": "https://devblogs.microsoft.com/typescript/announcing-typescript-5-9/",
+      "type": "official-docs",
+      "quote": "TypeScript 5.9 ... install ... npm install -D typescript ... minimal tsc --init, import defer, --module node20."
+    },
+    {
+      "title": "Announcing TypeScript 6.0 - TypeScript DevBlog",
+      "url": "https://devblogs.microsoft.com/typescript/announcing-typescript-6-0/",
+      "type": "official-docs",
+      "quote": "TypeScript 6.0 is the last release based on the current JavaScript codebase ... a new codebase for the TypeScript compiler and language service written in Go ... TypeScript 7.0 is actually extremely close to completion."
+    },
+    {
+      "title": "typescript on npm (releasealert mirror)",
+      "url": "https://releasealert.dev/npmjs/_/typescript",
+      "type": "other",
+      "quote": "pre-release versions ranging from 7.1.0-dev.20260711.1 - 7.1.0-dev.20261024.1 (July 11 - October 24, 2026)."
+    }
+  ],
+  "current_version": "TypeScript 7.0 is the current stable line as of 2026-10-24 (native/Go-based compiler; exact latest patch 7.0.2, released 2026-07-08 [uncertain]). TypeScript 6.0 (2026-03-23) was the last JavaScript-codebase release; 5.9.3 (2025-10-01) is the final 5.9 patch. erasableSyntaxOnly is available in all lines from 5.8 onward.",
+  "api_surface": [
+    "tsconfig.json compilerOptions: \"erasableSyntaxOnly\": true (errors on non-erasable TS syntax)",
+    "tsconfig.json compilerOptions: \"verbatimModuleSyntax\": true (recommended companion to erasableSyntaxOnly)",
+    "CLI: tsc --noEmit (typecheck used by npm run check)",
+    "Install/enable: npm install -D typescript (dev dependency only)"
+  ],
+  "pitfalls": [
+    "erasableSyntaxOnly rejects enum declarations, namespaces/modules with runtime code, class parameter properties, import =/export = assignments, and <prefix>-style type assertions — any such code in new build files fails the typecheck.",
+    "The official TSConfig page does not state which version introduced erasableSyntaxOnly; it is the 5.8 line [uncertain] — a repo pinned below 5.8 would reject the option as unknown (observed as 'Unknown compiler option' errors in older tooling).",
+    "TypeScript 6.0 is the final JavaScript-codebase release and introduced migration-oriented breaking changes (e.g. --stableTypeOrdering) ahead of the Go-based 7.0 rewrite; an unplanned version bump could change typecheck/diagnostic behavior — the repo's pinned version at 67e1961 should be respected, not upgraded, for this build.",
+    "Node direct-execution of .ts relies on erasable-only syntax; the official docs cite Node v23.6 for direct support, so behavior on the build's Node 22 target must be verified rather than assumed.",
+    "Could not open the npm versions page (HTTP 403), so the precise latest stable patch number is unverified from a primary source."
+  ],
+  "uncertain": [
+    "current_version",
+    "key_findings",
+    "pitfalls"
+  ]
+}

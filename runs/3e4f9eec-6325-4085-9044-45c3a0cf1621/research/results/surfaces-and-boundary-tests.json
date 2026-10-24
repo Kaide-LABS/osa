@@ -1,0 +1,40 @@
+{
+  "summary": "The OSA-specific 'surfaces test' and the B1-B12 boundary scanner are internal to the private feat/spec-gate repo at 67e1961; no public source documents them, and I have web tools only (no access to the worktree), so I cannot verify their exact implementation here. From verifiable MCP/testing practice: a 'surfaces test' pins the tool list by invoking the server's tools/list handler (ListToolsRequestSchema) and asserting the exact set/order of tool names against a committed expected value, failing CI on any drift. To keep 0 violations while swapping osa_plan/osa_build for osa_plan/osa_spec/osa_build/osa_status, replace the expected tool-list literal with the new exact set (keep strict equality, don't relax to `contains`), and ensure the moved/added code respects the boundary rules (child_process only in src/util/exec.ts, concrete model names only in src/adapters/**, network only in src/research/net/**).",
+  "key_findings": [
+    "No public documentation exists for OSA's surfaces test or boundary scanner B1-B12; these are repo-internal and verifiable only by reading src/ at 67e1961, which this web-only agent cannot do [uncertain].",
+    "MCP tool registration is done via a ListToolsRequestSchema handler returning an array of tools (name, description, inputSchema); a test can call client.listTools()/the handler and assert the returned names, per MCP SDK docs.",
+    "Established MCP practice is to snapshot the tools/list output, commit it to version control, and fail CI on any breaking change -- directly matching the intent of a 'surfaces test' that pins the exact tool list.",
+    "Tool names and descriptions are part of the contract surface (they act as prompt text influencing model tool choice), so an exact-match assertion on names is the correct strength; weakening to substring/superset checks would defeat the test's purpose (dev.to, 2025).",
+    "The acceptance criteria require the surfaces assertions be 'replaced not weakened' -- i.e. strict equality against the new 4-tool set [osa_plan, osa_spec, osa_build, osa_status], not a loosened check."
+  ],
+  "recommendations": [
+    "To confirm exactly how the surfaces test pins the list and how the scanner enforces B1-B12, read the repo directly (likely under test/ or tests/ for the surfaces test, and a scripts/scan or tooling file for the boundary scan referenced by `npm run check`); do not infer the mechanism from external sources.",
+    "Replace the tool-list expectation with the exact new set [osa_plan, osa_spec, osa_build, osa_status] using the same strict equality/ordering the existing test uses; do not downgrade to `toContain`/superset matchers (criterion 14).",
+    "Keep boundary scan at 0 by placing any new child_process use only in src/util/exec.ts, any concrete model name only in src/adapters/**, and any network I/O only in src/research/net/**; the gate/TL;DR path must add no model call (B-rules + no-new-model-call constraint).",
+    "If the brief's description of the surfaces/boundary mechanism contradicts what the code actually does, stop that phase and report the exact file/line rather than guessing (per the stop-on-contradiction constraint)."
+  ],
+  "as_of": "2026-10-24",
+  "sources": [
+    {
+      "title": "Tool Schemas Are an API Contract (Treat Them Like One)",
+      "url": "https://dev.to/andriiboyko/tool-schemas-are-an-api-contract-treat-them-like-one-bj2",
+      "type": "article",
+      "quote": "Snapshot the contract: Commit tools/list output to version control and fail CI on breaking schema changes."
+    },
+    {
+      "title": "Build an MCP server - Model Context Protocol",
+      "url": "https://modelcontextprotocol.io/docs/develop/build-server",
+      "type": "official-docs",
+      "quote": "you define them by setting a request handler for ListToolsRequestSchema that returns an object containing an array of available tools with their names, descriptions, and input schemas"
+    },
+    {
+      "title": "listTools - Kotlin MCP SDK",
+      "url": "https://kotlin.sdk.modelcontextprotocol.io/kotlin-sdk-client/io.modelcontextprotocol.kotlin.sdk.client/-client/list-tools.html",
+      "type": "official-docs",
+      "quote": "listTools accepts a ListToolsRequest and returns a ListToolsResult containing the list of available tools on the server"
+    }
+  ],
+  "uncertain": [
+    "key_findings"
+  ]
+}

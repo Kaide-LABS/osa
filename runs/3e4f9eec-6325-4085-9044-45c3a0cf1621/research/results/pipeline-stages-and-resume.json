@@ -1,0 +1,46 @@
+{
+  "summary": "The question is about internals of a specific private/internal codebase (OSA / \"One-Shot Anything\", org Kaide-LABS) at commit 67e1961 on branch feat/spec-gate — specifically how src pipeline.ts sequences intake/lock/research/spec with stopAfterPlan and fromDraft, how prd_sha256 is computed and verified via prd_integrity_verified, and the research_validated 'resumed' resume path. I have web tools only and cannot read this repo's files; nothing about these exact symbols or flow is indexed anywhere on the public web. Targeted searches (including the github-debug approach) returned only unrelated projects that happen to share generic terms like 'one-shot', 'sha256', 'PRD' and 'resumed', none of which are this codebase. Therefore I cannot verify the actual sequencing, hashing scheme, or resume-count semantics from any source I opened, and the concrete answer must come from reading pipeline.ts (and its callers/tests) directly in the worktree rather than from research.",
+  "key_findings": [
+    "No public GitHub repo, issue, discussion, release note, or changelog for the OSA 'One-Shot Anything' project (Kaide-LABS) appears in web search; the identifiers pipeline.ts, prd_sha256, prd_integrity_verified, stopAfterPlan, fromDraft, spec-gate.json, and research_validated 'resumed' return zero matching results against this codebase [uncertain].",
+    "Search hits for 'OSA' resolve to unrelated projects (Miosa-osa/OSA terminal agent, aimclub/OSA repo-quality tool, carlosnatalino optical-networks one-shot-learning), none of which implement the intake/lock/spec-gate flow described in the brief.",
+    "Searches for the exact internal symbols ('prd_integrity_verified', 'stopAfterPlan', 'fromDraft', research_validated 'resumed') surfaced only generic third-party PRD/workflow issues (Vaquum/Limen, careeros, AI_Dev_Workflow) with superficially similar vocabulary but no shared code or design.",
+    "General (non-OSA) reference pattern seen across those unrelated repos: a 'resumed' workflow that finds its plan/manifest missing parks or stops rather than silently re-planning, and integrity checks that fail admission when stored manifest content does not match — a convention the OSA resume/verify path may or may not follow [uncertain]."
+  ],
+  "recommendations": [
+    "Do not treat this item as answerable from web research: the sequencing of intake/lock/research/spec, the stopAfterPlan and fromDraft branch behavior, the prd_sha256 computation/verification backing prd_integrity_verified, and the research_validated 'resumed' count must be read directly from pipeline.ts and its tests in the worktree — read the file, do not infer.",
+    "Determine prd_sha256 semantics from code, not assumption: confirm whether it is a plain sha256 of the locked PRD bytes and how prd_integrity_verified gates downstream phases, before relying on it for the spec-gate hash work in acceptance criteria 6–7.",
+    "Keep the spec-gate hash distinct and verifiable: per criterion 7, the spec-gate hash must equal sha256 of the sorted-path + per-file-sha256 manifest of all spec files, and prd_sha256 must be stored alongside; derive both from reading the existing hashing helper rather than from any web pattern.",
+    "For the resume path, verify in code how research_validated's 'resumed' count is incremented and under what re-run conditions (e.g., intake re-running once when answers are supplied per criterion 3), and preserve existing lock-test behavior (criterion 6) rather than reshaping it.",
+    "Avoid importing external conventions: the unrelated 'park instead of re-plan' pattern from other repos is not evidence about OSA and should not drive design decisions here."
+  ],
+  "as_of": "2026-10-24",
+  "sources": [
+    {
+      "title": "Miosa-osa/OSA (unrelated terminal AI agent named OSA)",
+      "url": "https://github.com/Miosa-osa/OSA",
+      "type": "repo",
+      "quote": "An AI agent for your terminal, built on signal theory... works with any model."
+    },
+    {
+      "title": "aimclub/OSA (unrelated open-source quality tool named OSA)",
+      "url": "https://github.com/aimclub/OSA",
+      "type": "repo",
+      "quote": "Tool that just makes your open source project better using LLM agents."
+    },
+    {
+      "title": "paysdoc/AI_Dev_Workflow Issue #1078 (unrelated resume/park pattern)",
+      "url": "https://github.com/paysdoc/AI_Dev_Workflow/issues/1078",
+      "type": "repo",
+      "quote": "a resumed workflow whose plan is missing parks instead of re-planning"
+    },
+    {
+      "title": "Vaquum/Limen Issue #1082 (unrelated manifest-integrity pattern)",
+      "url": "https://github.com/Vaquum/Limen/issues/1082",
+      "type": "repo",
+      "quote": "Verify stored manifest content before admission"
+    }
+  ],
+  "uncertain": [
+    "key_findings"
+  ]
+}

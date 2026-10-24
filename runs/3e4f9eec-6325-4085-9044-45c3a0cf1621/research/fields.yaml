@@ -1,0 +1,114 @@
+# OSA research field schema -- every item result must cover these fields.
+common:
+  - name: "summary"
+    description: "2-5 sentences answering the item's question for THIS build."
+    type: "string"
+    required: true
+  - name: "key_findings"
+    description: "Concrete, verifiable findings (versions, signatures, limits, dates)."
+    type: "string[]"
+    required: true
+  - name: "recommendations"
+    description: "What the build should do, and what it should avoid."
+    type: "string[]"
+    required: true
+  - name: "as_of"
+    description: "The date or version the information is current as of."
+    type: "string"
+    required: true
+  - name: "sources"
+    description: "Every source relied on: title, url, type (official-docs|paper|repo|article|forum|other), and a short supporting quote."
+    type: "sources"
+    required: true
+byItem:
+  docs-zod:
+    - name: "current_version"
+      description: "The current stable version of the library/framework/API."
+      type: "string"
+      required: true
+    - name: "api_surface"
+      description: "The commands/functions/endpoints/config this build will actually use."
+      type: "string[]"
+      required: true
+    - name: "pitfalls"
+      description: "Breaking changes, deprecations and known gotchas in the research time range."
+      type: "string[]"
+      required: true
+  docs-modelcontextprotocol-sdk:
+    - name: "current_version"
+      description: "The current stable version of the library/framework/API."
+      type: "string"
+      required: true
+    - name: "api_surface"
+      description: "The commands/functions/endpoints/config this build will actually use."
+      type: "string[]"
+      required: true
+    - name: "pitfalls"
+      description: "Breaking changes, deprecations and known gotchas in the research time range."
+      type: "string[]"
+      required: true
+  docs-model-context-protocol:
+    - name: "current_version"
+      description: "The current stable version of the library/framework/API."
+      type: "string"
+      required: true
+    - name: "api_surface"
+      description: "The commands/functions/endpoints/config this build will actually use."
+      type: "string[]"
+      required: true
+    - name: "pitfalls"
+      description: "Breaking changes, deprecations and known gotchas in the research time range."
+      type: "string[]"
+      required: true
+  docs-node-js:
+    - name: "current_version"
+      description: "The current stable version of the library/framework/API."
+      type: "string"
+      required: true
+    - name: "api_surface"
+      description: "The commands/functions/endpoints/config this build will actually use."
+      type: "string[]"
+      required: true
+    - name: "pitfalls"
+      description: "Breaking changes, deprecations and known gotchas in the research time range."
+      type: "string[]"
+      required: true
+  docs-typescript:
+    - name: "current_version"
+      description: "The current stable version of the library/framework/API."
+      type: "string"
+      required: true
+    - name: "api_surface"
+      description: "The commands/functions/endpoints/config this build will actually use."
+      type: "string[]"
+      required: true
+    - name: "pitfalls"
+      description: "Breaking changes, deprecations and known gotchas in the research time range."
+      type: "string[]"
+      required: true
+  docs-node-js-crypto:
+    - name: "current_version"
+      description: "The current stable version of the library/framework/API."
+      type: "string"
+      required: true
+    - name: "api_surface"
+      description: "The commands/functions/endpoints/config this build will actually use."
+      type: "string[]"
+      required: true
+    - name: "pitfalls"
+      description: "Breaking changes, deprecations and known gotchas in the research time range."
+      type: "string[]"
+      required: true
+  docs-node-js-test-runner:
+    - name: "current_version"
+      description: "The current stable version of the library/framework/API."
+      type: "string"
+      required: true
+    - name: "api_surface"
+      description: "The commands/functions/endpoints/config this build will actually use."
+      type: "string[]"
+      required: true
+    - name: "pitfalls"
+      description: "Breaking changes, deprecations and known gotchas in the research time range."
+      type: "string[]"
+      required: true
