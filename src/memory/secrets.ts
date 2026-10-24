@@ -22,6 +22,10 @@ export function entropy(s: string): number {
 
 const re = (pattern: RegExp): ((t: string) => boolean) => (t) => pattern.test(t);
 
+/** Vendor tokens with a fixed prefix; the global redactor in memory/global/redact.ts builds its span rule from this same source. */
+export const VENDOR_TOKEN_SOURCE = String.raw`\b(?:glpat-[A-Za-z0-9_-]{20,}|hf_[A-Za-z0-9]{30,}|npm_[A-Za-z0-9]{30,}|shp(?:at|ss|ca|pa)_[a-fA-F0-9]{32}|dop_v1_[a-f0-9]{64}|SG\.[A-Za-z0-9_-]{16,}\.[A-Za-z0-9_-]{16,})`;
+const VENDOR_TOKEN = new RegExp(VENDOR_TOKEN_SOURCE);
+
 const RULES: readonly Rule[] = [
   { reason: "a private key block", test: re(/-----BEGIN [A-Z ]*PRIVATE KEY-----/) },
   { reason: "an API key (sk-/pk-/rk- style)", test: re(/\b(?:sk|pk|rk)-[A-Za-z0-9_-]{16,}/) },
@@ -29,6 +33,7 @@ const RULES: readonly Rule[] = [
   { reason: "an Anthropic key", test: re(/\bsk-ant-[A-Za-z0-9_-]{10,}/) },
   { reason: "a GitHub token", test: re(/\b(?:gh[pousr]_[A-Za-z0-9]{20,}|github_pat_[A-Za-z0-9_]{20,})/) },
   { reason: "a Slack token", test: re(/\bxox[baprs]-[A-Za-z0-9-]{10,}/) },
+  { reason: "a vendor token (GitLab/Hugging Face/npm/Shopify/DigitalOcean/SendGrid)", test: re(VENDOR_TOKEN) },
   { reason: "an AWS access key id", test: re(/\b(?:AKIA|ASIA)[0-9A-Z]{16}\b/) },
   { reason: "a Google API key", test: re(/\bAIza[0-9A-Za-z_-]{30,}/) },
   { reason: "a JSON web token", test: re(/\bey[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{15,}\.[A-Za-z0-9_-]{10,}/) },
@@ -61,7 +66,8 @@ const UUID = /\b[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9
 /** The reason `text` looks like it contains a secret, or `null` if it looks clean. Pure. */
 export function findSecret(text: string): string | null {
   // First live end-to-end run: failure notes carrying a run UUID were rejected as "a long random-looking token".
-  const scanned = text.replace(UUID, "<uuid>");
+  // NFKC folds look-alikes (a fullwidth colon in "password：...") onto the ASCII the rules are written for.
+  const scanned = text.normalize("NFKC").replace(UUID, "<uuid>");
   for (const r of RULES) if (r.test(scanned)) return r.reason;
   return null;
 }

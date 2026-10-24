@@ -397,6 +397,77 @@ could not be run live here (no endpoint or key), only against a fake embeddings 
 The embeddings client lives in `src/research/net/` (the one network-exempt directory, held to B9) and contacts only the configured host. No
 dependency was added. *(risky -- unverified live)*
 
+## Added during memory phase 1 (global memory store, save/search/forget)
+
+**M-01 -- The redactor reuses secrets.ts's rule list but needs spans, which `findSecret` does not give.** `findSecret`
+returns one reason for the whole text, not match offsets. `src/memory/global/redact.ts` therefore mirrors the same rule
+patterns as global (span-finding) regexes to replace each secret-shaped span with `[redacted:<reason>]`, and then uses
+`findSecret` itself as the authoritative final gate: `saveFact` refuses any text on which `findSecret` still fires after
+redaction, so nothing secret-shaped can reach the table or the FTS index even if a span rule has a gap. `findSecret`'s
+own behaviour is unchanged. *(safe)*
+
+**M-02 -- `osa memory` gained subcommands; its options type became a discriminated union.** The existing `osa memory`
+(project-memory view) is preserved as `sub: "show"`; `search`/`save`/`forget` are added. The one existing test that
+called `runMemoryCommand({ repoDir, json })` now passes `{ sub: "show", repoDir, json }` -- an API-shape update, every
+assertion unchanged. The fact `kind` flag is carried as `factKind` in the parsed command so it does not collide with the
+`Command` union's own `kind` discriminator. *(safe)*
+
+**M-03 -- The two pinned MCP tool-set tests were extended by two names.** `src/mcp/server.test.ts` and
+`src/code-index/surfaces.test.ts` each asserted the exact registered-tool set; both now include `memory_save` and
+`memory_search`. As with C-28/C-30 this is a faithful extension of a pinned set to cover the new feature, not a
+weakening -- it is still an exact-set equality. *(safe)*
+
+**M-04 -- The global store (and `node:sqlite`) is loaded only through dynamic `import()`.** The MCP tool handlers and the
+CLI run function import `src/memory/global/memory.ts` lazily, so with memory unused no global-memory module is reachable
+from any entry point's static import graph (FM-I, proved by `src/memory/global/import-graph.test.ts`). The existing
+plug-in invariant test (`src/osa/modular-features.test.ts`) is untouched and still passes. *(safe)*
+
+**M-05 -- A fact with no project is stored under the project `default`.** The CLI's `--project` is optional for `save`;
+an absent or blank project becomes `"default"` rather than being rejected, so a quick `osa memory save "..."` works.
+*(safe)*
+
+## Added after the independent review of the memory store (commit 466a801)
+
+A fresh reviewer attacked `redact.ts`, `memory.ts` and `db.ts` with real experiments. Every finding below was reproduced by a
+failing test in `src/memory/global/review-fixes.test.ts` before it was fixed.
+
+**M-06 -- Labels are rejected, not redacted.** `project` and `source` were stored unscanned, so a token in a project name reached
+the file and every search result. They now go through the same cleaning, a length cap (100 / 200), the secret check and the
+injection check; a hit is a refusal, because redacting a project name would silently move the fact to a different project.
+*(safe)*
+
+**M-07 -- `forget` now removes the text from the file.** FTS5 only tombstones deleted entries and `VACUUM` copies the old segment
+unchanged, so the forgotten words stayed in the database file (the earlier claim in MEMORY.md was untrue). `forget` now runs
+the FTS5 `optimize` merge inside the delete transaction, then `VACUUM`, then truncates the write-ahead log, and `secure_delete`
+is on for every connection. A test searches the file and the `-wal` for the forgotten word. *(safe)*
+
+**M-08 -- Hidden text is refused; NFKC folds look-alikes.** The injection check ran on the raw text, so an instruction spelled in
+Unicode tag characters was stored and then shown to the model. Text is now scrubbed first (existing `scrubUntrusted`), hidden
+content is a refusal, and the stored text is NFKC-folded (so a fullwidth `password：` is caught). `findSecret` also folds with
+NFKC. The cost: fullwidth and ligature characters in a fact become their plain forms. *(risky -- changes stored text; reversible)*
+
+**M-09 -- Wrapped keys, quoted passphrases and vendor tokens.** The credential-assignment rule stopped at the first space, so
+`password = 'correct horse battery staple'` kept three words; a key broken by one newline or space kept its tail. Quoted values are
+now taken whole and one wrapping break inside a key-shaped run is treated as part of the key. GitLab, Hugging Face, npm,
+Shopify, DigitalOcean and SendGrid prefixes were added to the shared rules in `secrets.ts` (project memory gets them too).
+*(safe -- only adds detection)*
+
+**M-10 -- A commit or digest hash is kept when its name precedes it.** A 40- or 64-character hex string after `commit`, `sha`,
+`sha256`, `digest`, `hash`, `rev` or `revision` is no longer redacted as a key (a note such as "fixed in commit <sha>" used to be
+refused as a husk). Anywhere else it is still a key: a Datadog application key is 40 hex characters. *(risky -- a key written
+right after the word "hash" would be stored; judged rarer than losing every commit reference)*
+
+**M-11 -- Concurrency and the dedup index.** `journal_mode=WAL` ran before `busy_timeout`, so a second process opening at the same
+moment failed (6 of 48 opens in the reviewer's run) and the error blamed corruption. The timeout now comes first, the error says
+"locked" when it is, and the half-open handle is closed. Dedup is a unique index on `(project, dedup_key)` (schema version 2,
+existing rows back-filled) and the check-then-insert runs under `BEGIN IMMEDIATE`: 40 of 40 parallel saves of one fact succeeded
+and left exactly one row each time. *(safe)*
+
+**M-12 -- Left as they are, on purpose.** Plain-word passwords with no digit, letters-only 32-character tokens and short bearer
+values are not detected; closing them refuses ordinary notes. The limits are listed in MEMORY.md. `forget` and `search` match
+project names case-sensitively, as before. File modes on POSIX could not be tested on this Windows machine: the directory is
+now created `0700` and the database and its sidecars are `chmod 600`, by code reading only. *(open)*
+
 **S-09 -- The CBM engine runs ranked, with a query rewrite, instead of abstaining.** Requested: optimise codebase-memory-mcp rather than accept the earlier
 negative result. Findings (docs/osa/CBM_NOTES.md section 6): the earlier tuning optimised "confident-wrong <= 2%" by abstaining on 65% of questions;
 CBM's text-search channel alone beat the fused engine; and the question was never translated into code vocabulary. The engine now defaults to

@@ -240,10 +240,10 @@ test("osa memory: parsing and output", async () => {
   assert.equal(parseArgs(argv("memory")).kind, "memory");
   assert.throws(() => parseArgs(argv("memory", "--bogus")), UsageError);
   const repoDir = await tempGitRepo();
-  assert.match((await runMemoryCommand({ repoDir, json: false })).text, /No project memory yet/);
+  assert.match((await runMemoryCommand({ sub: "show", repoDir, json: false })).text, /No project memory yet/);
   await appendFacts(repoDir, "decisions", ["Chose SQLite."]);
-  assert.match((await runMemoryCommand({ repoDir, json: false })).text, /^decisions \(1\):\n {2}- Chose SQLite\./);
-  assert.equal((JSON.parse((await runMemoryCommand({ repoDir, json: true })).text) as { facts: unknown[] }).facts.length, 1);
+  assert.match((await runMemoryCommand({ sub: "show", repoDir, json: false })).text, /^decisions \(1\):\n {2}- Chose SQLite\./);
+  assert.equal((JSON.parse((await runMemoryCommand({ sub: "show", repoDir, json: true })).text) as { facts: unknown[] }).facts.length, 1);
 });
 
 // ---------------------------------------------------------------- the round trip the directive names

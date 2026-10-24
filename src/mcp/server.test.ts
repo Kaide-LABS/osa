@@ -40,10 +40,10 @@ function reflect(server: ReturnType<typeof buildMcpServer>): ReflectedMcpServer 
   return server as unknown as ReflectedMcpServer;
 }
 
-test("buildMcpServer registers exactly the OSA tools: the one-shot flow (osa_plan, osa_build, osa_status), run, drive, doctor, evidence, code_search, memory_read, memory_append", () => {
+test("buildMcpServer registers exactly the OSA tools: the one-shot flow (osa_plan, osa_build, osa_status), run, drive, doctor, evidence, code_search, memory_read, memory_append, and the global-memory tools memory_save, memory_search", () => {
   const server = buildMcpServer();
   const tools = reflect(server)._registeredTools;
-  assert.deepStrictEqual(new Set(Object.keys(tools)), new Set(["osa_plan", "osa_build", "osa_status", "run", "drive", "doctor", "evidence", "code_search", "memory_read", "memory_append"]));
+  assert.deepStrictEqual(new Set(Object.keys(tools)), new Set(["osa_plan", "osa_build", "osa_status", "run", "drive", "doctor", "evidence", "code_search", "memory_read", "memory_append", "memory_save", "memory_search"]));
 });
 
 test("the run/drive tools' inputSchema/outputSchema is the exact RunConfig/DriveConfig/RunReport/DriveReport object identity", () => {
