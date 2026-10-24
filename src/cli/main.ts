@@ -57,6 +57,9 @@ Global memory (one store at ~/.osa/memory.db, shared across projects; override w
   osa memory save <text> [--project p] [--kind fact|decision|note] [--json]
                                             Store a fact; secret-shaped spans are redacted and reported.
   osa memory forget --project p | --all [--yes] [--json]         Purge a project or everything (--all needs --yes).
+  osa memory dashboard [--out file.html] [--project p]            Write ONE self-contained page to browse and search what OSA remembers.
+  osa memory export [--out file.json] [--project p]               Write the facts as JSON, to move them to another machine.
+  osa memory import <file.json> [--project p]                     Read an export back, through the same checks as \`memory save\`.
 
 Optional plug-ins (each has one switch; OFF means none of its code runs):
   osa cbm install [--dir <path>] [--harden] [--write-config]   Download, verify and test the pinned codebase-memory-mcp (opt-in code search);
@@ -431,6 +434,35 @@ function parseMemoryArgs(rest: readonly string[]): Command {
     }
     if (all && project !== null) throw new UsageError("memory forget: give --project <name> OR --all, not both (--all would wipe every project).");
     return { kind: "memory", sub: "forget", project, all, yes, json };
+  }
+
+  if (sub === "dashboard" || sub === "export" || sub === "import") {
+    let out: string | null = null;
+    let project: string | null = null;
+    let json = false;
+    let file: string | null = null;
+    for (let i = 1; i < rest.length; i++) {
+      const arg = rest[i] as string;
+      if (arg === "--json") json = true;
+      else if ((arg === "--out" || arg === "-o") && sub !== "import") {
+        const v = rest[i + 1];
+        if (v === undefined) throw new UsageError(`memory ${sub} --out requires a file path.`, { flag: arg });
+        out = v;
+        i += 1;
+      } else if (arg === "--project") {
+        const v = rest[i + 1];
+        if (v === undefined) throw new UsageError(`memory ${sub} --project requires a value.`, { flag: arg });
+        project = v;
+        i += 1;
+      } else if (arg.startsWith("-")) throw new UsageError(`Unknown flag for memory ${sub}: ${arg}`, { flag: arg });
+      else if (sub === "import" && file === null) file = arg;
+      else throw new UsageError(`memory ${sub}: unexpected argument "${arg}".`, { arg });
+    }
+    if (sub === "import") {
+      if (file === null) throw new UsageError("memory import requires the export file: osa memory import <file> [--project <name>]", { argv: rest });
+      return { kind: "memory", sub: "import", file, project, json };
+    }
+    return { kind: "memory", sub, out, project, json };
   }
 
   // No (or unknown) subcommand: the project-memory view.

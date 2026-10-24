@@ -609,3 +609,11 @@ CBM's text-search channel alone beat the fused engine; and the question was neve
 `index.cbm.abstain: true` restores the previous mode. `index.engine` still defaults to `lexical`. The gain is measured on retrieval only (79% vs 64% right file in
 the top 5 on 70 queries, 30 of them held out); token savings and answer quality are not yet measured, and for greenfield builds the ceiling is low.
 *(risky -- changes what CBM returns for anyone who had enabled it; reversible with index.cbm.abstain)*
+
+### Added with the memory dashboard, export and import (branch feat/memory-dashboard)
+
+**D-01 -- The dashboard is a static snapshot file, not a server or a hosted page.** The request was a dashboard to browse and migrate memory, and a cloud copy was discussed. A hosted copy puts scrubbed-but-imperfect chat-derived text on someone's server and needs accounts, per-user isolation and encrypted sync; none of that is built. `osa memory dashboard` writes one HTML file with no network access (a Content-Security-Policy of `default-src 'none'`), and `export`/`import` move the data between machines. *(safe)*
+
+**D-02 -- Import trusts nothing in the file.** Facts go through `saveFacts`, so import accepts and refuses exactly what `osa memory save` would (a test uses `save` itself as the oracle). Ids and dates in the file are ignored: a fresh id and the import time are used, so a file cannot overwrite or back-date a row. The cost is that a round trip does not preserve original dates. *(safe)*
+
+**D-03 -- The page is attacked, not assumed safe.** Stored facts are untrusted. The data is JSON in a non-executing script element with `<`, `>`, `&`, U+2028 and U+2029 escaped, written to the page with `textContent` only. Tests check that hostile text appears only inside the data block, that the block holds no raw angle bracket, that the page contains no network call and no `innerHTML`, and run the page's script against a stand-in DOM. The page could not be opened in a real browser while this was written (the Chrome extension was not connected), so its look is unchecked. *(open: a human glance at the layout)*
