@@ -50,10 +50,12 @@ function record(over: Partial<RunRecord> = {}): RunRecord {
   };
 }
 
+// INSERTION order, not created_at-then-id: on a fast machine (every CI runner) a run's facts are saved within the same millisecond, so their created_at is equal and a
+// random UUID id would shuffle them. rowid is the order they were written in.
 function rows(dbPath: string): { project: string; kind: string; source: string | null; text: string }[] {
   const mem = openMemoryDb(dbPath);
   try {
-    return mem.db.prepare("SELECT project, kind, source, text FROM facts WHERE deleted_at IS NULL ORDER BY created_at, id").all() as { project: string; kind: string; source: string | null; text: string }[];
+    return mem.db.prepare("SELECT project, kind, source, text FROM facts WHERE deleted_at IS NULL ORDER BY rowid").all() as { project: string; kind: string; source: string | null; text: string }[];
   } finally {
     mem.close();
   }
@@ -123,6 +125,23 @@ test("FM-G: more than 40 derived facts are capped at 40, with the summary note f
   const stored = rows(dbPath);
   assert.equal(stored.length, 40);
   assert.equal(stored[0]?.kind, "note", "the summary note kept its first slot under the cap");
+});
+
+test("CI found this: the summary note is first in insertion order even when every row shares one millisecond (a fast machine)", async () => {
+  const dbPath = await tempDbPath();
+  const manyUnmet = Array.from({ length: 60 }, (_, i) => ({ text: `requirement number ${String(i)} was not met`, reason: null }));
+  await captureRun(record({ applicationUnmet: manyUnmet }), "C:/code/big", { dbPath });
+  // Force the condition on purpose instead of hoping the machine is fast: every row gets the same timestamp, as on a CI runner.
+  const mem = openMemoryDb(dbPath);
+  try {
+    mem.db.exec("UPDATE facts SET created_at = '2026-10-24T00:00:00.000Z', updated_at = '2026-10-24T00:00:00.000Z'");
+  } finally {
+    mem.close();
+  }
+  const stored = rows(dbPath);
+  assert.equal(stored.length, 40);
+  assert.equal(stored[0]?.kind, "note", "the summary note is the first row written, whatever the timestamps");
+  assert.equal(stored[1]?.kind, "decision", "decisions are written right after the note, before failures");
 });
 
 test("FM-B: a secret in an assumption never reaches the database -- it is redacted or the fact is refused", async () => {
