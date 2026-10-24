@@ -28,6 +28,8 @@ export const OSA_EVENT_NAMES = [
   "application_sandbox_leftover",
   "index_updated",
   "memory_written",
+  "global_memory_written",
+  "global_memory_failed",
   // additions
   "run_started",
   "config_loaded",
@@ -37,6 +39,9 @@ export const OSA_EVENT_NAMES = [
   "prd_integrity_verified",
   "research_routed",
   "research_docs_checked",
+  "research_reused",
+  "research_remembered",
+  "research_reuse_failed",
   "spec_assumption",
   "spec_written",
   "step14_done",

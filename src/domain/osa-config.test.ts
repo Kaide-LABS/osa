@@ -22,6 +22,23 @@ test("OsaConfig: {} is valid and every directive default is applied", () => {
   assert.equal(c.agents.application, true);
   assert.equal(c.index.enabled, true);
   assert.equal(c.memory.enabled, true);
+  assert.equal(c.memory.global.capture, true, "global memory capture is ON by default (memory phase 2)");
+});
+
+test("OsaConfig: memory.global.capture can be turned off and stays strict-parse", () => {
+  assert.equal(OsaConfig.parse({ memory: { global: { capture: false } } }).memory.global.capture, false);
+  assert.equal(OsaConfig.parse({ memory: {} }).memory.global.capture, true, "an absent global block defaults capture on");
+  assert.equal(OsaConfig.safeParse({ memory: { global: { capture: true, bogus: 1 } } }).success, false, "an unknown key under memory.global is a loud error");
+});
+
+test("OsaConfig: memory.global.reuse defaults on with a 30-day window and parses strictly (memory phase 3)", () => {
+  const d = defaultOsaConfig().memory.global.reuse;
+  assert.deepEqual({ enabled: d.enabled, maxAgeDays: d.maxAgeDays }, { enabled: true, maxAgeDays: 30 });
+  assert.equal(OsaConfig.parse({ memory: { global: { reuse: { enabled: false } } } }).memory.global.reuse.enabled, false);
+  assert.equal(OsaConfig.parse({ memory: { global: { reuse: { maxAgeDays: 7 } } } }).memory.global.reuse.maxAgeDays, 7);
+  assert.equal(OsaConfig.safeParse({ memory: { global: { reuse: { maxAgeDays: 0 } } } }).success, false, "maxAgeDays below 1 is refused");
+  assert.equal(OsaConfig.safeParse({ memory: { global: { reuse: { maxAgeDays: 366 } } } }).success, false, "maxAgeDays above 365 is refused");
+  assert.equal(OsaConfig.safeParse({ memory: { global: { reuse: { bogus: 1 } } } }).success, false, "an unknown key under reuse is a loud error");
 });
 
 test("OsaConfig: short provider aliases (codex, claude, antigravity) normalise to canonical ids", () => {

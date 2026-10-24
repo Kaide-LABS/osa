@@ -397,6 +397,211 @@ could not be run live here (no endpoint or key), only against a fake embeddings 
 The embeddings client lives in `src/research/net/` (the one network-exempt directory, held to B9) and contacts only the configured host. No
 dependency was added. *(risky -- unverified live)*
 
+## Added during memory phase 1 (global memory store, save/search/forget)
+
+**M-01 -- The redactor reuses secrets.ts's rule list but needs spans, which `findSecret` does not give.** `findSecret`
+returns one reason for the whole text, not match offsets. `src/memory/global/redact.ts` therefore mirrors the same rule
+patterns as global (span-finding) regexes to replace each secret-shaped span with `[redacted:<reason>]`, and then uses
+`findSecret` itself as the authoritative final gate: `saveFact` refuses any text on which `findSecret` still fires after
+redaction, so nothing secret-shaped can reach the table or the FTS index even if a span rule has a gap. `findSecret`'s
+own behaviour is unchanged. *(safe)*
+
+**M-02 -- `osa memory` gained subcommands; its options type became a discriminated union.** The existing `osa memory`
+(project-memory view) is preserved as `sub: "show"`; `search`/`save`/`forget` are added. The one existing test that
+called `runMemoryCommand({ repoDir, json })` now passes `{ sub: "show", repoDir, json }` -- an API-shape update, every
+assertion unchanged. The fact `kind` flag is carried as `factKind` in the parsed command so it does not collide with the
+`Command` union's own `kind` discriminator. *(safe)*
+
+**M-03 -- The two pinned MCP tool-set tests were extended by two names.** `src/mcp/server.test.ts` and
+`src/code-index/surfaces.test.ts` each asserted the exact registered-tool set; both now include `memory_save` and
+`memory_search`. As with C-28/C-30 this is a faithful extension of a pinned set to cover the new feature, not a
+weakening -- it is still an exact-set equality. *(safe)*
+
+**M-04 -- The global store (and `node:sqlite`) is loaded only through dynamic `import()`.** The MCP tool handlers and the
+CLI run function import `src/memory/global/memory.ts` lazily, so with memory unused no global-memory module is reachable
+from any entry point's static import graph (FM-I, proved by `src/memory/global/import-graph.test.ts`). The existing
+plug-in invariant test (`src/osa/modular-features.test.ts`) is untouched and still passes. *(safe)*
+
+**M-05 -- A fact with no project is stored under the project `default`.** The CLI's `--project` is optional for `save`;
+an absent or blank project becomes `"default"` rather than being rejected, so a quick `osa memory save "..."` works.
+*(safe)*
+
+## Added after the independent review of the memory store (commit 466a801)
+
+A fresh reviewer attacked `redact.ts`, `memory.ts` and `db.ts` with real experiments. Every finding below was reproduced by a
+failing test in `src/memory/global/review-fixes.test.ts` before it was fixed.
+
+**M-06 -- Labels are rejected, not redacted.** `project` and `source` were stored unscanned, so a token in a project name reached
+the file and every search result. They now go through the same cleaning, a length cap (100 / 200), the secret check and the
+injection check; a hit is a refusal, because redacting a project name would silently move the fact to a different project.
+*(safe)*
+
+**M-07 -- `forget` now removes the text from the file.** FTS5 only tombstones deleted entries and `VACUUM` copies the old segment
+unchanged, so the forgotten words stayed in the database file (the earlier claim in MEMORY.md was untrue). `forget` now runs
+the FTS5 `optimize` merge inside the delete transaction, then `VACUUM`, then truncates the write-ahead log, and `secure_delete`
+is on for every connection. A test searches the file and the `-wal` for the forgotten word. *(safe)*
+
+**M-08 -- Hidden text is refused; NFKC folds look-alikes.** The injection check ran on the raw text, so an instruction spelled in
+Unicode tag characters was stored and then shown to the model. Text is now scrubbed first (existing `scrubUntrusted`), hidden
+content is a refusal, and the stored text is NFKC-folded (so a fullwidth `password：` is caught). `findSecret` also folds with
+NFKC. The cost: fullwidth and ligature characters in a fact become their plain forms. *(risky -- changes stored text; reversible)*
+
+**M-09 -- Wrapped keys, quoted passphrases and vendor tokens.** The credential-assignment rule stopped at the first space, so
+`password = 'correct horse battery staple'` kept three words; a key broken by one newline or space kept its tail. Quoted values are
+now taken whole and one wrapping break inside a key-shaped run is treated as part of the key. GitLab, Hugging Face, npm,
+Shopify, DigitalOcean and SendGrid prefixes were added to the shared rules in `secrets.ts` (project memory gets them too).
+*(safe -- only adds detection)*
+
+**M-10 -- A commit or digest hash is kept when its name precedes it.** A 40- or 64-character hex string after `commit`, `sha`,
+`sha256`, `digest`, `hash`, `rev` or `revision` is no longer redacted as a key (a note such as "fixed in commit <sha>" used to be
+refused as a husk). Anywhere else it is still a key: a Datadog application key is 40 hex characters. *(risky -- a key written
+right after the word "hash" would be stored; judged rarer than losing every commit reference)*
+
+**M-11 -- Concurrency and the dedup index.** `journal_mode=WAL` ran before `busy_timeout`, so a second process opening at the same
+moment failed (6 of 48 opens in the reviewer's run) and the error blamed corruption. The timeout now comes first, the error says
+"locked" when it is, and the half-open handle is closed. Dedup is a unique index on `(project, dedup_key)` (schema version 2,
+existing rows back-filled) and the check-then-insert runs under `BEGIN IMMEDIATE`: 40 of 40 parallel saves of one fact succeeded
+and left exactly one row each time. *(safe)*
+
+## Added during memory phase 2 (capture each run into the global store)
+
+**M-13 -- The run-summary note's content.** PRD step 2 lists what the one note must carry (outcome and why, the locked
+goal in one line, the architecture chosen, phases passed, unmet count). `summaryNote` renders exactly those, reusing
+`deriveFacts`' `clip` (run ids and absolute paths scrubbed) and clipping to 300 characters. The goal is the locked PRD's
+`tldr` lines joined. *(safe)*
+
+**M-14 -- `captureRun` loads the store by `await import("./memory.ts")`, and the pipeline loads `capture.ts` by
+`await import(...)`.** Both are dynamic, so no entry point's static import graph reaches `src/memory/global/**` or
+`node:sqlite` with the feature unused (FM-I; the existing `import-graph.test.ts` and `modular-features.test.ts` both pass
+unchanged). The capture hook in `recordMemory` is wrapped so even a failed dynamic import becomes `global_memory_failed`,
+never a thrown run. *(safe)*
+
+**M-15 -- The FM-H guard keys on the PASSED env, not only `process.env`.** `resolveMemoryDbPath` throws a `MemoryDbError`
+when `NODE_TEST_CONTEXT` is set in the env it was given and the path would resolve to the real home default with no
+explicit path / `OSA_MEMORY_DB`. Keying on the passed env keeps the existing pure resolution test (which passes its own
+`{}` env) green while protecting every real pipeline/capture call under the runner (whose env is `process.env`). *(safe)*
+
+**M-16 -- Existing pipeline tests are kept safe by the guard + fail-soft, not individually rewired.** With capture on by
+default, every test that runs the full pipeline now reaches the global capture; under the runner the FM-H guard refuses
+the real-home database, the capture is fail-soft, so those runs emit a harmless `global_memory_failed` and nothing is
+written to the real `~/.osa`. No existing assertion was weakened (they filter events by name and assert git/warnings,
+which are unaffected). The new pipeline-level test (`src/osa/global-capture.test.ts`) points `OSA_MEMORY_DB` at a temp
+file to exercise a real successful capture, the off-switch (no file created) and the corrupt-database failure. *(safe)*
+
+**M-17 -- Refusal reason classes vs. failure reason classes.** `global_memory_failed` uses the four fixed database-level
+classes the PRD names (`locked`, `corrupt`, `fts-unavailable`, `other`). The per-fact refusals counted in
+`global_memory_written.reasons` are a separate, finer vocabulary derived from the store's `UsageError` messages
+(`hidden`, `instruction`, `secret`, `empty`, `too-long`, `other`); none of them carry any fact text. *(safe)*
+
+### Added after the independent review of the run capture (commit 6c4bf3d)
+
+A fresh reviewer attacked the capture path. Where this section says "reproduced", the failure was shown on the unfixed code first
+(for the clip fragment: 40 of 46 padding lengths stored a fragment of the token, such as `ghp_aB3dE5gH7jK9mN1pQ3s`, which is more than
+half of it) and a test now holds the fix: `src/memory/global/capture-review.test.ts` and two more in `src/osa/global-capture.test.ts`.
+
+**M-18 -- Secrets are redacted before anything is clipped, and the clip never cuts inside a word.** `clip` cut at 280/300 characters and
+only then did the store look for secrets, so a token that straddled the cut became a fragment too short for any rule to match.
+The summary note now redacts its goal and reason first, and `clip` cuts at the last space. This changes `clip` for the project
+memory files as well: a long line now ends at a word boundary instead of mid-word. *(safe -- reproduced)*
+
+**M-19 -- The folder name is validated with the store's own label rules.** The name was cleaned, then folded with NFKC, and the
+store scrubbed it again: a legal Windows folder named with fullwidth `<!--` characters became hidden text after the fold, and
+every fact was refused with no failure event. `captureRun` now runs the real label check and falls back to `default`. The
+repository path is also resolved first, so `.` is no longer a project name. Two repositories with the same folder name still
+share one project (documented; a hash suffix was rejected as it would make names unreadable and change if a folder moves). *(safe -- reproduced)*
+
+**M-20 -- The summary note puts the counts first and tells the truth about what ran.** The goal came before the counts and the
+300-character clip cut the tail, and a spec-only run reported `Phases passed: 0/0. Unmet requirements: 0`. Now: outcome, counts,
+architecture, then the goal with the room left; spec-only says so and reports no counts; a final check that could not run or was
+switched off says that instead of "0 unmet". A goal that quotes an instruction no longer costs the run its note (retried without
+the goal). `RunRecord` gained two optional fields (`built`, `applicationChecked`). An existing pipeline assertion changed from
+`^Run finished\.` to the spec-only wording; it still asserts the outcome and now also asserts the absence of fake counts. *(safe)*
+
+**M-21 -- The test guard no longer depends only on `NODE_TEST_CONTEXT`.** A test file run directly (`node x.test.ts`) or with
+`--test-isolation=none` has no such variable, and the reviewer showed the default capture creating `.osa/memory.db` under a fake
+home. The guard now also reads `--test*` flags and a `*.test.*` entry file (`underTestRunner`), only when the real environment
+is passed, and the dead `isInsideHome` check is gone. M-15's rule about the passed env stands. *(safe -- reproduced)*
+
+**M-22 -- A run that stops by exception after the lock is captured.** Only driver-reported stops were; a changed PRD (exit 20) or a
+failed research or spec stage left no memory although the documentation said stopped runs were the most useful. `runOsaCommand`
+is now a thin wrapper that, on an exception after the lock, records a stopped run using fixed words only (no error message, no
+text from the failure) and rethrows the original error. Before the lock nothing is captured. *(safe -- tested at pipeline level)*
+
+**M-23 -- One connection per capture, a short lock wait, and typed failure classes.** Saving 40 facts opened, probed and migrated
+the database 40 times (about 0.7 s of blocked event loop) and a locked database froze the process for about 6 s. `saveFacts`
+opens once; capture waits at most 1.5 s for a lock. The failure class now comes from a typed `reason` on `MemoryDbError`, set from
+the SQLite result code, not from the error message (which names the database path: a folder called `busy` was reported as
+`locked`, an unwritable path as `corrupt`). A fifth class, `unwritable`, was added to the four in M-17, and the pipeline uses the
+one classifier instead of its own copy. *(safe -- reproduced)*
+
+**M-24 -- Smaller changes.** `global_memory_written` carries `truncated` (facts left out by the 40-fact cap); the documentation no
+longer claims facts never come from a model's text (the goal, assumptions and spec decisions do; the checks are the only gate).
+*(safe)*
+
+## Step 3 -- reuse documentation research across runs (memory-phase3)
+
+**M-25 -- The reuse seam is keyed by item SLUG, not by the documentation key.** The SPEC puts `docsKey` in
+`src/memory/global/research.ts`, but `src/research/agent.ts` (which consults the seam) and `src/research/stage.ts` are both
+reachable from the entry points, and the import-graph invariant (CONTEXT, `import-graph.test.ts`) forbids them from
+statically importing any `src/memory/global/` module. *Resolution:* the stage computes the keys inside its dynamic
+`import()` of `research.ts`, builds a `slug -> candidate` map there, and hands `agent.ts` a `ReuseSeam.lookup(slug)`. The
+key format still has one source (`docsKey`); `agent.ts` never sees it and imports nothing from the store. Two docs items
+with the same key both resolve to the same candidate (FM-G). *(safe)*
+
+**M-26 -- The documentation-title format lives in `outline.ts`, the key normalisation in `research.ts`.** The SPEC asks for
+"one source of that format" next to `buildOutline` and also places `docsKey` in the memory module. *Resolution:* both
+exist and are distinct concerns -- `outline.ts` owns the title wording (`docsItemTitle` / `docsTargetOf`, round-trippable and
+statically importable by the research side), and `research.ts` owns the reuse-key normalisation (`docsKey`). The stage
+derives a target from a title with the former, then keys it with the latter. *(safe)*
+
+**M-27 -- A reused result is screened but not re-validated after screening.** A fresh result is validated, then
+`screenDeep`-ed, then written; screening can neutralise a line. Reuse mirrors that order exactly (validate the stored
+result for THIS item, then screen, then write), so a reused result gets precisely a fresh result's treatment and no more
+(FM-C). A planted instruction is neutralised to a `[removed by OSA …]` marker just as in a fresh result; it is not grounds
+to refuse the whole result, matching the fresh path. *(safe)*
+
+**M-28 -- Capture-off does not imply reuse-off.** The step-2 pipeline test "FM-E: capture off -- … the database file is
+never created" left reuse at its default (on), so the research stage would now open the store and create the file.
+*Resolution:* that test is scoped to capture; reuse is a separate switch, so the test now also sets `reuse.enabled: false`.
+The assertion is unchanged, matching the CONTEXT instruction to turn reuse off in tests that assert no store access rather
+than weaken the assertion. The feature-off behaviour (no store module imported, no database created) is covered by the new
+`src/research/reuse.test.ts` FM-F case and the unchanged static import-graph invariant. *(safe)*
+
+**M-29 -- The origin project stored with a remembered result reuses capture's own project derivation.** So that `forget
+--project P` removes a project's facts and its remembered research together, the remember path derives the project exactly
+as capture does (`projectNameFor` + `validateLabel`, falling back to `default`), via a dynamic import inside the stage.
+Reuse LOOKUP ignores the project (it keys by technology, so any project's run benefits); only forgetting and the report's
+provenance line use it, and the report re-cleans the stored name before printing it. *(safe)*
+
+**M-30 -- `research_reuse_failed` carries the typed reason class, duck-typed.** The event reason reuses the
+`MemoryDbReason` value set (`locked` / `corrupt` / `unwritable` / `fts-unavailable` / `other`), read from the thrown error's
+`reason` field by a local helper in `stage.ts` so the stage still imports nothing from the sqlite-backed store. It also
+carries a `phase` (`lookup` / `remember`) so the two call sites are distinguishable; neither carries any target, project or
+stored text. *(safe)*
+
+### Added after the independent review of research reuse (commit f4a43d5)
+
+A fresh reviewer attacked the reuse path. Every item below is covered by a test in `src/research/reuse-review.test.ts` that failed against the unfixed commit first. The executor's own 1,163 passing tests did not cover any of them.
+
+**M-31 -- The key no longer trims `#` or `+`.** `docsKey` trimmed every trailing punctuation character, and `#` is punctuation, so "C#" and "C" (and "F#" and "F") shared a key and one language's documentation was served for the other (confirmed end to end). Only sentence punctuation (`. , ; : ! ?`) and spaces are trimmed now. *(safe -- reproduced)*
+
+**M-32 -- Only fully checked, fully certain research is remembered. This reverses part of the SPEC.** The SPEC stored consistency-only results with a `check_level` tag that nothing ever read, so unverified research was later served as if checked. The gate is now: a full (not degraded) check, a verdict of `pass`, at least one examined claim, no flagged claim, and no item whose own `uncertain` list is non-empty. `check_level` stays in the table for a later use but is always "full" for new rows. This remembers less, on purpose: the feature's promise is accuracy first. *(risky -- fewer reuses; reversible)*
+
+**M-33 -- A stored result is checked again on the way OUT.** The secret filter and the 64 KB cap ran only when remembering, so a row edited afterwards could put a secret into a report. `findReusable` now applies both, and a row dated more than a day in the future is never fresh. The count of stored items is what survived the 500-row cap. *(safe -- reproduced)*
+
+**M-34 -- The origin project name is shown only if it is a plain label.** The reader scrubbed hidden characters but accepted any text, and the report reaches later model prompts. Only letters, digits, dot, underscore, space and hyphen (60 characters at most) are shown; anything else prints "another project". *(safe -- reproduced)*
+
+**M-35 -- The schema upgrade is safe to race.** A process that waited for the upgrade lock re-ran it and failed with "table already exists" (4 of 16 opens in the reviewer's run). The version is re-read after taking the write lock, and the migrations use `IF NOT EXISTS` and check for the column. *(safe -- reproduced)*
+
+**M-36 -- A locked lookup skips the remember.** A locked version-2 database cost a run two lock waits (3.5 s) instead of one. A corrupt database still reports both phases, because it fails instantly and the existing test requires it. *(safe)*
+
+**M-37 -- Left open.** `forget` ignores the result of the WAL checkpoint: if another connection is reading at that moment, the text can remain in the main file until that reader closes. The test that reads the `-wal` after the connection closes is therefore weaker than it looks. Both are narrow and unchanged. A live-provider test in `src/adapters/codex-cli.test.ts` (two real Codex probes compared with each other) failed once in a loaded full-suite run and passes alone; it depends on the developer machine's Codex state and touches nothing here. *(open)*
+
+**M-12 -- Left as they are, on purpose.** Plain-word passwords with no digit, letters-only 32-character tokens and short bearer
+values are not detected; closing them refuses ordinary notes. The limits are listed in MEMORY.md. `forget` and `search` match
+project names case-sensitively, as before. File modes on POSIX could not be tested on this Windows machine: the directory is
+now created `0700` and the database and its sidecars are `chmod 600`, by code reading only. *(open)*
+
 **S-09 -- The CBM engine runs ranked, with a query rewrite, instead of abstaining.** Requested: optimise codebase-memory-mcp rather than accept the earlier
 negative result. Findings (docs/osa/CBM_NOTES.md section 6): the earlier tuning optimised "confident-wrong <= 2%" by abstaining on 65% of questions;
 CBM's text-search channel alone beat the fused engine; and the question was never translated into code vocabulary. The engine now defaults to
@@ -404,3 +609,11 @@ CBM's text-search channel alone beat the fused engine; and the question was neve
 `index.cbm.abstain: true` restores the previous mode. `index.engine` still defaults to `lexical`. The gain is measured on retrieval only (79% vs 64% right file in
 the top 5 on 70 queries, 30 of them held out); token savings and answer quality are not yet measured, and for greenfield builds the ceiling is low.
 *(risky -- changes what CBM returns for anyone who had enabled it; reversible with index.cbm.abstain)*
+
+### Added with the memory dashboard, export and import (branch feat/memory-dashboard)
+
+**D-01 -- The dashboard is a static snapshot file, not a server or a hosted page.** The request was a dashboard to browse and migrate memory, and a cloud copy was discussed. A hosted copy puts scrubbed-but-imperfect chat-derived text on someone's server and needs accounts, per-user isolation and encrypted sync; none of that is built. `osa memory dashboard` writes one HTML file with no network access (a Content-Security-Policy of `default-src 'none'`), and `export`/`import` move the data between machines. *(safe)*
+
+**D-02 -- Import trusts nothing in the file.** Facts go through `saveFacts`, so import accepts and refuses exactly what `osa memory save` would (a test uses `save` itself as the oracle). Ids and dates in the file are ignored: a fresh id and the import time are used, so a file cannot overwrite or back-date a row. The cost is that a round trip does not preserve original dates. *(safe)*
+
+**D-03 -- The page is attacked, not assumed safe.** Stored facts are untrusted. The data is JSON in a non-executing script element with `<`, `>`, `&`, U+2028 and U+2029 escaped, written to the page with `textContent` only. Tests check that hostile text appears only inside the data block, that the block holds no raw angle bracket, that the page contains no network call and no `innerHTML`, and run the page's script against a stand-in DOM. The page could not be opened in a real browser while this was written (the Chrome extension was not connected), so its look is unchecked. *(open: a human glance at the layout)*

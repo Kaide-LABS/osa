@@ -158,6 +158,22 @@ const MemoryConfig = z.strictObject({
   maxFactsPerFile: z.number().int().min(10).max(2000).default(200),
   /** Cap on the memory block handed to intake / the spec author. */
   readBudgetChars: z.number().int().min(200).max(20000).default(3000),
+  /** The ONE global memory store (docs/osa/memory-phase2). */
+  global: z
+    .strictObject({
+      /** Capture each finished or stopped run's facts into the global store. Fail-soft; never affects the run. */
+      capture: z.boolean().default(true),
+      /** Reuse documentation research across runs (docs/osa/memory-phase3). Fail-soft; a stale or unverified result is never served. */
+      reuse: z
+        .strictObject({
+          /** Read a prior run's documentation research back into this run. With it off, the store is never read and no database is created by the research stage. */
+          enabled: z.boolean().default(true),
+          /** A remembered result older than this many days is not served; the agent researches afresh. */
+          maxAgeDays: z.number().int().min(1).max(365).default(30),
+        })
+        .prefault({}),
+    })
+    .prefault({}),
 });
 
 const ProvidersConfig = z.strictObject({

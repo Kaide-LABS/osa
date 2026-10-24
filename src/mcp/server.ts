@@ -14,11 +14,14 @@ import { registerDoctorTool } from "./tools/doctor.ts";
 import { registerEvidenceTool } from "./tools/evidence.ts";
 import { registerCodeSearchTool } from "./tools/code-search.ts";
 import { registerMemoryTools } from "./tools/memory.ts";
+import { registerGlobalMemoryTools } from "./tools/memory-global.ts";
 import { registerOsaTools } from "./tools/osa.ts";
 
 /**
  * Constructs an `McpServer` and registers all of OSA's tools on it (the one-shot flow osa_plan / osa_build / osa_status, and run, drive, doctor, evidence, code_search, memory_read, memory_append). Pure construction --
- * performs no I/O and does not connect a transport; `runMcpServer()` is the only caller that does.
+ * performs no I/O and does not connect a transport; `runMcpServer()` is the only caller that does. The global-memory
+ * tools (memory_save / memory_search) load their `node:sqlite`-backed store lazily inside their own handlers, so
+ * registering them here adds no static import of the store to the server's import graph.
  * Exported separately from `runMcpServer()` so a test can register tools and drive `tools/call`
  * requests against the server in-process, without a real stdio transport or child process -- the
  * same "separate pure construction from I/O" discipline `src/cli/doctor.ts`'s own `runDoctor()`/
@@ -34,6 +37,7 @@ export function buildMcpServer(): McpServer {
   registerEvidenceTool(server);
   registerCodeSearchTool(server);
   registerMemoryTools(server);
+  registerGlobalMemoryTools(server);
   registerOsaTools(server);
   return server;
 }

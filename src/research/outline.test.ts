@@ -4,7 +4,18 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { defaultOsaConfig, OsaConfig } from "../domain/osa-config.ts";
 import { samplePrd } from "../osa/fixtures.test.ts";
-import { COMMON_FIELDS, buildFields, buildOutline, fieldsFor, readOutlineFiles, slugify, writeOutlineFiles } from "./outline.ts";
+import { COMMON_FIELDS, buildFields, buildOutline, docsItemTitle, docsTargetOf, fieldsFor, readOutlineFiles, slugify, writeOutlineFiles } from "./outline.ts";
+
+test("docsItemTitle / docsTargetOf are one round-trippable source of the docs title format (the reuse key derives from it)", () => {
+  assert.equal(docsItemTitle("Node.js"), "Official documentation: Node.js");
+  assert.equal(docsTargetOf(docsItemTitle("React Native")), "React Native");
+  assert.equal(docsTargetOf("A free-form research question"), null, "a non-docs title yields no target");
+  assert.equal(docsTargetOf("Official documentation:    "), null, "an empty target is null");
+  // The outline builder uses it, so every docs item title round-trips to its target.
+  const outline = buildOutline({ ...samplePrd(), researchPlan: { ...samplePrd().researchPlan, docsTargets: ["Node.js", "Express"] } }, defaultOsaConfig());
+  const docsTitles = outline.items.filter((i) => i.kind === "docs").map((i) => docsTargetOf(i.title));
+  assert.deepEqual(docsTitles, ["Node.js", "Express"]);
+});
 
 test("outline + fields are generated from a locked PRD alone: pure, deterministic, no prompts (WS3.5 test 1)", () => {
   const prd = samplePrd();

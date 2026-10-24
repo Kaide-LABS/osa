@@ -36,15 +36,35 @@ export interface ResearchRunContext {
   /** Papers retrieved by the academic tool, offered to items that load the `academic-papers` module. */
   readonly academicLeads: readonly PaperRecord[];
   readonly modelOverride?: string | null;
+  /**
+   * Optional reuse seam (docs/osa/memory-phase3): a candidate prior-run result for a documentation item, keyed by slug.
+   * Present only when reuse is enabled; the stage loads every candidate through ONE database open and hands them in here,
+   * so this module never imports the global-memory store and the feature-off static import graph stays clean.
+   */
+  readonly reuse?: ReuseSeam;
+}
+
+/** A prior-run documentation result offered to {@link runItem}, with its provenance. */
+export interface ReuseCandidate {
+  readonly result: Record<string, unknown>;
+  readonly project: string;
+  readonly ageDays: number;
+}
+
+/** Looks up a reuse candidate for a documentation item by its slug. Returns `null` when nothing qualifies. */
+export interface ReuseSeam {
+  lookup(slug: string): ReuseCandidate | null;
 }
 
 /** What happened to one item. */
 export interface ItemOutcome {
   readonly slug: string;
-  readonly status: "done" | "resumed" | "failed";
+  readonly status: "done" | "resumed" | "reused" | "failed";
   readonly problems: readonly string[];
-  /** The validated result object (for `done` / `resumed`). */
+  /** The validated result object (for `done` / `resumed` / `reused`). */
   readonly result: Record<string, unknown> | null;
+  /** For `reused`: the run this result came from (origin project and how old it is in whole days). */
+  readonly reusedFrom?: { readonly project: string; readonly ageDays: number };
 }
 
 /** Absolute path of an item's result file. */
@@ -118,13 +138,36 @@ async function readValidExisting(ctx: ResearchRunContext, item: OutlineItem): Pr
   }
 }
 
-/** Runs (or resumes) one item. Never throws for a modelled failure. */
+/**
+ * Tries to reuse a prior run's documentation result for `item` (docs/osa/memory-phase3). The candidate must pass THIS
+ * item's validator (a docs item requires an official-docs source) and the same untrusted-data screening a fresh result
+ * gets, then it is written to the result file exactly like a fresh one. Any failure at any step is a miss (returns null);
+ * the caller then runs the agent. A stored result is third-party text; validating and screening it here is what keeps a
+ * planted secret or injection from reaching a prompt, exactly as for a fresh result.
+ */
+async function tryReuse(ctx: ResearchRunContext, item: OutlineItem): Promise<ItemOutcome | null> {
+  if (item.kind !== "docs" || ctx.reuse === undefined) return null;
+  const candidate = ctx.reuse.lookup(item.slug);
+  if (candidate === null) return null;
+  const verdict = validateItemResult(candidate.result, fieldsFor(ctx.fields, item.slug), { requireOfficialDocs: true });
+  if (!verdict.valid) return null;
+  await mkdir(ctx.resultsDir, { recursive: true });
+  const clean = await screenDeep(candidate.result, { kind: "research result (reused from an earlier run, derived from web pages)", source: `research:${item.slug}`, events: ctx.events });
+  await writeFile(resultFile(ctx.resultsDir, item.slug), JSON.stringify(clean, null, 2) + "\n", "utf8");
+  await ctx.events.emit("research_item_done", { slug: item.slug, status: "reused", provider: ctx.researcher });
+  return { slug: item.slug, status: "reused", problems: [], result: clean as Record<string, unknown>, reusedFrom: { project: candidate.project, ageDays: candidate.ageDays } };
+}
+
+/** Runs (or resumes, or reuses) one item. Never throws for a modelled failure. */
 export async function runItem(ctx: ResearchRunContext, item: OutlineItem): Promise<ItemOutcome> {
   const existing = ctx.outline.execution.resume ? await readValidExisting(ctx, item) : null;
   if (existing !== null) {
     await ctx.events.emit("research_item_done", { slug: item.slug, status: "resumed", provider: ctx.researcher });
     return { slug: item.slug, status: "resumed", problems: [], result: existing };
   }
+
+  const reused = await tryReuse(ctx, item);
+  if (reused !== null) return reused;
 
   let repairNote: string | null = null;
   let lastProblems: string[] = ["no attempt was made"];
