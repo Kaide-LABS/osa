@@ -163,18 +163,13 @@ test("PIPELINE: a build turn that rewrites the locked PRD AND its lock record en
 
 // ---- no run asks a mid-run question ----
 
-test("NO MID-RUN QUESTIONS: exactly one lock prompt per run, no I/O after the lock, and every model prompt tells the model it cannot ask anything", async () => {
+test("NO MID-RUN QUESTIONS: exactly one confirmation per run (after the spec, before the build), nothing shown after it, and every model prompt tells the model it cannot ask anything", async () => {
   const repoDir = await tempGitRepo();
   const model = fakeModel();
   const calls = { choose: 0, edit: 0, show: 0 };
-  let locked = false;
+  let approved = false;
   const events = new MemoryEventSink(RUN);
-  const origEmit = events.emit.bind(events);
-  events.emit = async (event, data) => {
-    if (event === "prd_locked") locked = true;
-    await origEmit(event, data);
-  };
-  const showsAfterLock: string[] = [];
+  const showsAfterApproval: string[] = [];
   const report = await runOsaCommand(
     { prompt: "make a word counter", files: [], repoDir, yes: false, json: false },
     {
@@ -182,10 +177,11 @@ test("NO MID-RUN QUESTIONS: exactly one lock prompt per run, no I/O after the lo
       io: {
         show: (t) => {
           calls.show += 1;
-          if (locked) showsAfterLock.push(t);
+          if (approved) showsAfterApproval.push(t);
         },
         choose: () => {
           calls.choose += 1;
+          approved = true;
           return Promise.resolve("lock" as const);
         },
         edit: () => {
@@ -210,8 +206,8 @@ test("NO MID-RUN QUESTIONS: exactly one lock prompt per run, no I/O after the lo
     },
   );
   assert.equal(report.ok, true);
-  assert.deepEqual(calls, { choose: 1, edit: 0, show: calls.show }, "one Lock confirmation, never an Edit");
-  assert.deepEqual(showsAfterLock, [], "nothing is shown to the user for a decision after the lock");
+  assert.deepEqual(calls, { choose: 1, edit: 0, show: calls.show }, "one confirmation (the post-spec approval), never an Edit");
+  assert.deepEqual(showsAfterApproval, [], "nothing is shown to the user for a decision after they approve");
   // every prompt after intake carries a no-questions directive
   const NO_ASK = /NEVER ask|never ask|NO human to ask|no human|do not ask|will NOT answer questions|cannot ask|You cannot|nobody (?:is|will be) (?:asked|available)|do not question it/i;
   const missing = model.log.filter((l) => l.purpose !== "intake" && !NO_ASK.test(l.req.prompt)).map((l) => l.purpose);

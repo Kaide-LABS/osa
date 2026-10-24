@@ -27,9 +27,9 @@ import { TOKEN_CATEGORIES, TokenAccountant, accountedRunProcess, accountedTextCa
 import { screenHits } from "../code-index/guard.ts";
 import { runIntake } from "./intake.ts";
 import type { IntakeFile } from "./intake.ts";
-import { assertPrdUnchanged, exitCodeForLockOutcome, lockBabyPrd, runGate, exitCodeForGateOutcome } from "./lock.ts";
+import { assertPrdUnchanged, autoLockBabyPrd, exitCodeForLockOutcome, gateIoFromLockIo, runGate, exitCodeForGateOutcome } from "./lock.ts";
 import type { LockIO, LockOutcome, GateIO, GateMode } from "./lock.ts";
-import { makeTerminalLockIO, makeTerminalGateIO } from "./terminal.ts";
+import { makeTerminalGateIO } from "./terminal.ts";
 import { writeSpecGate, verifySpecGate } from "./spec-gate.ts";
 import { buildApprovalTldr } from "./tldr.ts";
 import { runDrive } from "../dispatch/driver-loop.ts";
@@ -331,15 +331,7 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
 
   // ---- lock (now auto-lock before research, no prompt; risky gate moves to post-spec) ----
   // Auto-lock the PRD with no prompt; the gate moved the risky-refusal to the post-spec gate.
-  const outcome = await lockBabyPrd({
-    repoDir: opts.repoDir,
-    runId,
-    prdPath,
-    io: deps.io ?? makeTerminalLockIO(opts.repoDir),
-    events,
-    unattended: true, // Always unattended for auto-lock; no human interaction.
-    autoLockWhenNoRisky: true, // Always lock (the gate never refuses here).
-  });
+  const outcome = await autoLockBabyPrd({ repoDir: opts.repoDir, runId, prdPath, events, unattended: opts.yes });
 
   if (outcome.kind !== "locked") {
     // This should never happen in auto-lock mode (unattended always locks), but handle it for safety.
@@ -678,7 +670,8 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
     : { kind: "interactive" };
 
   // Prepare the gate IO (real terminal, or test fake injected via deps).
-  const gateIo: GateIO = deps.gateIo ?? makeTerminalGateIO();
+  // A caller that supplies only the older lock IO (tests, scripted runs): its "lock" choice is the approval, "cancel" the refusal.
+  const gateIo: GateIO = deps.gateIo ?? (deps.io !== undefined ? gateIoFromLockIo(deps.io) : makeTerminalGateIO());
 
   // Show the TL;DR to the person first.
   gateIo.show(tldrLines.join("\n"));

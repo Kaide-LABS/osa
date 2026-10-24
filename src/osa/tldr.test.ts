@@ -200,8 +200,8 @@ test("buildApprovalTldr: spec decisions with no risk tag noted", () => {
   const result = buildApprovalTldr(input);
   assert(!("stop" in result), "Should return lines");
   const text = (result.lines as readonly string[]).join("\n");
-  assert(text.includes("2 decision"), "Should mention decision count");
-  assert(text.includes("without an explicit risk tag"), "Should note untagged decisions");
+  assert(text.includes("3 decision(s) logged"), "Should mention the decision count (3 logged)");
+  assert(text.includes("(2 without an explicit risk tag)"), "Should note the 2 untagged decisions");
 });
 
 test("buildApprovalTldr: research skipped mentioned", () => {
@@ -238,5 +238,5 @@ test("buildApprovalTldr: research skipped mentioned", () => {
   const result = buildApprovalTldr(input);
   assert(!("stop" in result), "Should return lines");
   const text = (result.lines as readonly string[]).join("\n");
-  assert(text.includes("Research.*skipped"), "Should mention research skipped");
+  assert.match(text, /Research:\*\* skipped/, "Should mention research skipped");
 });

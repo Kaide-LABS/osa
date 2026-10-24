@@ -87,6 +87,15 @@ async function lockNow(opts: LockOptions, prd: BabyPrd): Promise<LockOutcome> {
 }
 
 /**
+ * Locks the PRD already written at `opts.prdPath` with no prompt and no refusal: the lock before research is automatic, and the person's one
+ * confirmation (which also decides on the risky assumptions) comes after the spec. The PRD hash, the lock record and `prd_locked` are the same.
+ */
+export async function autoLockBabyPrd(opts: Omit<LockOptions, "io" | "autoLockWhenNoRisky">): Promise<LockOutcome> {
+  const markdown = await readFile(repoRelToAbs(opts.repoDir, opts.prdPath), "utf8");
+  return lockNow({ ...opts, io: { show: () => undefined, choose: () => Promise.resolve("lock"), edit: () => Promise.resolve() }, autoLockWhenNoRisky: true }, parseBabyPrd(markdown));
+}
+
+/**
  * Runs the lock flow against the PRD already written at `opts.prdPath`.
  *
  * - Interactive: shows the PRD, then loops on Lock / Edit / Cancel. Edit opens the file, re-parses it
@@ -154,6 +163,11 @@ export interface PinnedLock {
 export interface GateIO {
   show(text: string): void;
   confirm(): Promise<boolean>; // y/N, default false on empty/EOF
+}
+
+/** A {@link GateIO} backed by the older {@link LockIO}: showing is the same, and choosing "lock" is approval (anything else, including "edit", is not). */
+export function gateIoFromLockIo(io: LockIO): GateIO {
+  return { show: (text) => io.show(text), confirm: async () => (await io.choose()) === "lock" };
 }
 
 /** How the gate should behave. */

@@ -404,3 +404,17 @@ CBM's text-search channel alone beat the fused engine; and the question was neve
 `index.cbm.abstain: true` restores the previous mode. `index.engine` still defaults to `lexical`. The gain is measured on retrieval only (79% vs 64% right file in
 the top 5 on 70 queries, 30 of them held out); token savings and answer quality are not yet measured, and for greenfield builds the ceiling is low.
 *(risky -- changes what CBM returns for anyone who had enabled it; reversible with index.cbm.abstain)*
+
+**S-11 -- The one human decision moves from the lock (before research) to a confirmation after the spec, before the build.** Requested and agreed by the
+user, 2026-10-24: the lock reasoned from the raw one-shot prompt alone, so for a vague prompt ("build the next Instagram") the plan the person was asked to
+lock was generic, and a blocking gate before any work sits badly with one-shot. New rule: (1) the baby PRD is locked AUTOMATICALLY before research (same
+SHA-256, lock record, `prd_locked` event and integrity checks; it never refuses and asks nothing); (2) intake classifies the prompt `narrow` or `broad` and,
+when broad, offers up to 3 recommended questions with best-guess defaults (a nudge, not a gate); defaults the person did not answer carry the new assumption
+tag `defaulted`; (3) after research and spec the person sees a TL;DR assembled deterministically from existing artifacts (no extra model call) and approves
+once; (4) `--yes` proceeds only when no assumption is `risky` (`defaulted` ones are accepted, and always listed), otherwise exits 19 at that gate; with
+`--accept-risky` (only valid with `--yes`) it proceeds and every risky and defaulted item is recorded. Old rule, replaced: exit 19 / Cancel (22) AT THE LOCK with
+nothing researched or committed, and "no I/O after the lock". Tests replaced (the rule they pinned was reversed, not weakened): `pipeline.test.ts` "osa --yes
+with a risky assumption" and "interactive: Cancel ...", and `lock-hardening.test.ts` "NO MID-RUN QUESTIONS" (still exactly one human prompt per run and every
+model prompt still forbids questions; the prompt is now after the spec). Not changed: the PRD hash is still checked before research, around every build phase and
+at the end. Cost of the new order: a refusal or a cancel now happens after about 20 minutes of research and spec, not before them; the broad-prompt nudge exists
+to make that rare. *(risky -- changes when the person decides; reversible by restoring `lockBabyPrd` in the pipeline)*
