@@ -190,6 +190,15 @@ export function buildProtocolInstructions(p: ProtocolInstructionParams): string 
     "These value shapes are validated mechanically and a mismatch refuses the whole turn, so " +
       "follow them literally rather than substituting a conventional-looking equivalent.",
     "",
+    "Your turn is not finished until the hand-over record exists at the path above. Write it before you " +
+      "stop, even when the previous turn already did the work or you changed nothing. This session is " +
+      "headless: nobody can message you after you stop and no background job can wake you, so never start a " +
+      "command in the background and then end your turn to wait for it. If a command may take longer than " +
+      "about two minutes (a whole test suite, a long build), run a narrower one instead (the tests of the " +
+      "files you changed), or run it in the foreground with an explicit timeout, and write the record from " +
+      "what you have actually seen. A turn that ends with only a note that it is waiting for something, and " +
+      "no record, is refused.",
+    "",
     "You must commit your work to git before your turn ends. Stage and commit every file you " +
       "created or modified this turn (git add, then git commit), so that at least one new commit " +
       "exists on the branch when you finish. This is a real action you have to perform, not " +
