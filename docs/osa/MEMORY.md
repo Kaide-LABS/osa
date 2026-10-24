@@ -1,8 +1,61 @@
 # OSA global memory
 
-OSA keeps **one** global memory database that survives across projects and runs. This is step 1 of persistent memory:
-the store and its read/write surfaces only. Auto-capture of run chats, research reuse, ingestion of outside sources,
-and any dashboard/sync are later steps and are **not** built yet.
+OSA keeps **one** global memory database that survives across projects and runs. Step 1 built the store and its
+read/write surfaces; step 2 (this one) makes every finished or stopped run capture what it learned into that store.
+Research reuse (reading memory back into prompts), ingestion of outside sources, and any dashboard/sync are later steps
+and are **not** built yet.
+
+## What a run captures
+
+At the end of a run that got past the lock (finished **or** stopped early -- a stopped run's failures are the most
+useful facts), the same facts OSA already derives for the project's `.osa/memory` files are **also** saved to the global
+store, plus one run-summary note. The facts come only from the run's RECORD (what the person locked, the spec and
+architecture decisions, per-phase outcomes, the application check, research outcomes) via `deriveFacts`, which is
+deterministic and makes no model call -- never from the raw chat log, which stays write-only. Be aware that the record
+itself holds text a model or a web page wrote (the goal summary, assumptions, spec decisions, the architecture reason,
+flagged research claims): the store's secret, hidden-text and instruction checks are the only gate on those, and they
+are pattern-based (see the known limits above).
+
+A run that stops by an **exception** after the lock (the locked PRD was changed, or research or the spec stage failed) is
+captured too, as a stopped run. Its note uses fixed words only: no error message and no text from the failure is stored.
+A run that stops before the lock has nothing locked to remember and is not captured.
+
+- **The run-summary note** (kind `note`, always first): the outcome and why, then the phase and requirement counts, the
+  architecture chosen, and the locked goal in whatever room is left (the counts can never be pushed out by a long goal).
+  A spec-only run says "spec only, nothing built" and reports no counts; if the final check could not run or was not
+  run, the note says so instead of reporting "0 unmet requirements". If the goal itself would be refused (for example
+  it quotes an instruction), the note is still stored, without the goal.
+- **Decisions** (risky assumptions accepted, the architecture decision, spec decisions, out-of-scope choices) as kind
+  `decision`; **failures**, **preferences** and **conventions** as kind `fact`.
+- At most **40** facts per run (the summary note first), each cleaned and clipped to 300 characters. Secrets, hidden
+  text and instructions are redacted or refused by the store exactly as for a manual `osa memory save`.
+
+The project is derived from the repository folder's name (its basename), cleaned the same way a label is; an empty,
+over-long or secret-shaped folder name falls back to `default`. The source label is `osa run <first 8 chars of the run
+id>`. A second run of the same project does **not** duplicate identical facts (the store de-duplicates per project); only
+genuinely new facts are added.
+
+Capture is **fail-soft**: it runs after the run's own outcome is already decided and can never change the run's outcome,
+exit code or timing. An unreachable, locked or corrupt database becomes a single `global_memory_failed` event (reason
+class only: `locked`, `corrupt`, `unwritable`, `fts-unavailable`, `other`, taken from the error's type, not from its
+text) and nothing else. A capture saves all of a run's facts through one open connection and waits at most 1.5 seconds
+for another process's lock, so a busy database costs a run about a second and a half, not the full five. A successful
+capture emits `global_memory_written` with counts (saved, deduped, refused, redacted spans, and `truncated`: facts left
+out by the 40-fact cap) and the reason classes of any refusals -- **never** any fact text, the goal, or any user text.
+
+Two repositories with the same folder name share one project name, and so share de-duplication; the name is the folder's
+basename and nothing more.
+
+## Turning capture off, and forgetting a run
+
+- **Off:** set `"memory": { "global": { "capture": false } }` in `osa.config.json`. With it off, nothing is written, the
+  store module is never loaded, and the database file is not even created. (`"memory": { "enabled": false }` turns off
+  both project memory and global capture.)
+- **Forget:** `osa memory forget --project <folder-name>` wipes everything a project captured, or
+  `osa memory forget --all --yes` wipes the whole store. See "How to forget" below.
+
+> **Step 1 note (below):** the step-1 sections said "nothing writes to it automatically yet". Step 2 is that automatic
+> writer; the store guarantees, limits and the forget semantics it describes are unchanged.
 
 ## Where it lives
 

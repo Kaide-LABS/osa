@@ -35,6 +35,10 @@ export interface RunRecord {
   /** Unmet requirements from the application check, and a could-not-run reason. */
   readonly applicationUnmet: readonly { readonly text: string; readonly reason: string | null }[];
   readonly applicationCouldNotRun: string | null;
+  /** False for a spec-only run (nothing was built, so phase and requirement counts mean nothing). Absent = built. */
+  readonly built?: boolean;
+  /** False when the final application check did not run at all (switched off, or the build stopped first). Absent = it ran. */
+  readonly applicationChecked?: boolean;
 }
 
 /** Facts per category. */
@@ -49,9 +53,13 @@ const ABS_PATH_RE = /(?:[A-Za-z]:[\\/]|(?<![\w.])\/(?:home|tmp|var|Users|private
  * "Failed to parse C:\Users\x\...\84ef52b0-....json" is junk the next run cannot use), byte-order marks dropped,
  * whitespace collapsed, length bounded. Pure.
  */
-function clip(s: string, max = 280): string {
+export function clip(s: string, max = 280): string {
   const one = s.replace(/\uFEFF/g, "").replace(UUID_RE, "<id>").replace(ABS_PATH_RE, "<path>").replace(/\s+/g, " ").trim();
-  return one.length > max ? `${one.slice(0, max - 3)}...` : one;
+  if (one.length <= max) return one;
+  // Cut at a word boundary, never inside a token: a key cut in half is too short for any secret rule to recognise and would be stored as a fragment.
+  const window = one.slice(0, max - 3);
+  const space = window.lastIndexOf(" ");
+  return `${(space >= Math.floor(max / 2) ? window.slice(0, space) : window).trimEnd()}...`;
 }
 
 function added(before: readonly string[], after: readonly string[]): string[] {
