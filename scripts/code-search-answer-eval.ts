@@ -10,6 +10,9 @@
 //   cbm-trim       the same text through trim-1 with the question as the query
 //   cbm-wide       the same top 5 hits but each shows up to 60 lines of its live range (more context per hit)
 //   cbm-wide-trim  that, through trim-1 (budget 1500 tokens)
+//   lexical        OSA's own default index: its top 5 hits (12-line snippets)
+//   ranked         the shipped CBM setting (ranked, no abstaining, query rewrite from --rewrites): top 5 hits, 12-line snippets
+//   ranked-wide    the same with up to 60 lines per hit
 // Token numbers: `context` is the estimated tokens of the retrieved text (chars/4); `billed` is what the provider reported (includes a ~1.3k fixed
 // system overhead that is identical for every arm). Results are cached per (arm, question) so an interrupted run resumes.
 
@@ -19,7 +22,9 @@ import { tmpdir } from "node:os";
 import { runProcess } from "../src/util/exec.ts";
 import { CbmEngine } from "../src/code-index/cbm/engine.ts";
 import { GrepEngine, LexicalEngine } from "../src/code-index/engine.ts";
-import { TUNED_PER_CHANNEL, TUNED_TUNING } from "../src/code-index/fusion.ts";
+import { RANKED_PER_CHANNEL, RANKED_TUNING, TUNED_PER_CHANNEL, TUNED_TUNING } from "../src/code-index/fusion.ts";
+import { tableRewriter } from "../src/code-index/rewrite.ts";
+import type { QueryRewrite } from "../src/code-index/rewrite.ts";
 import type { Label } from "../src/code-index/eval-score.ts";
 import { OsaConfig } from "../src/domain/osa-config.ts";
 import { estimateTokens } from "../src/trim/trimmer.ts";
@@ -51,11 +56,15 @@ interface Answer {
   readonly ms: number;
 }
 
-const doc = JSON.parse(readFileSync("evals/code-search/queries.json", "utf8")) as { queries: (Label & { repo: string })[] };
-const labels = doc.queries.filter((q) => idFilter === null || idFilter.has(q.id));
+// --queries a.json,b.json (default: the 40-query set); --rewrites file.json is the table the "ranked" arms use (src/code-index/rewrite.ts).
+const labels = arg("queries", "evals/code-search/queries.json")
+  .split(",")
+  .flatMap((f) => (JSON.parse(readFileSync(f, "utf8")) as { queries: (Label & { repo: string })[] }).queries)
+  .filter((q) => idFilter === null || idFilter.has(q.id));
+const rewriteTable = arg("rewrites", "") === "" ? {} : (JSON.parse(readFileSync(arg("rewrites", ""), "utf8")) as Record<string, QueryRewrite>);
 
-const { trimmer } = await resolveTrimmer(OsaConfig.parse({ trim: { binaryPath: "C:/Users/hp/go/bin/trim.exe" } }).trim);
-if (trimmer.engine !== "trim1") throw new Error("trim-1 is not available: this experiment needs the real binary");
+const { trimmer } = await resolveTrimmer(OsaConfig.parse({ trim: { enabled: true, binaryPath: "C:/Users/hp/go/bin/trim.exe" } }).trim);
+if (ARMS.some((x) => x.endsWith("-trim")) && trimmer.engine !== "trim1") throw new Error("trim-1 is not available: the -trim arms need the real binary");
 
 async function lines(root: string, file: string, start: number, end: number): Promise<string> {
   const text = readFileSync(`${root}/${file}`, "utf8").replace(/\r\n/g, "\n").split("\n");
@@ -94,7 +103,7 @@ for (const repo of [...new Set(labels.map((l) => l.repo))]) {
   const root = `${snapshots}/${repo}`;
   const lexical = new LexicalEngine(root);
   const grep = new GrepEngine(root);
-  const cbm = ARMS.some((a) => a.startsWith("cbm")) ? await CbmEngine.open({ repoDir: root, paths: { binaryPath: "C:/osa-cbm/bin/codebase-memory-mcp.exe", workDir: "C:/osa-cbm" }, lexical, tuning: TUNED_TUNING, perChannel: TUNED_PER_CHANNEL }) : null;
+  const cbm = ARMS.some((a) => a.startsWith("cbm") || a.startsWith("ranked")) ? await CbmEngine.open({ repoDir: root, paths: { binaryPath: "C:/osa-cbm/bin/codebase-memory-mcp.exe", workDir: "C:/osa-cbm" }, lexical, tuning: TUNED_TUNING, perChannel: TUNED_PER_CHANNEL }) : null;
   for (const label of labels.filter((l) => l.repo === repo)) {
     // Build every arm's context sequentially (the CBM session is single-threaded); the provider calls then run in parallel.
     const contexts = new Map<string, { text: string; engine: string }>();
@@ -108,8 +117,18 @@ for (const repo of [...new Set(labels.map((l) => l.repo))]) {
         contexts.set(arm, { text: parts.join("\n"), engine: "grep" });
         continue;
       }
-      const a = await (cbm as CbmEngine).search(label.query, { k: 5 });
-      const wide = arm.startsWith("cbm-wide");
+      let a;
+      if (arm === "lexical") {
+        a = await lexical.search(label.query, { k: 5 });
+      } else if (arm.startsWith("ranked")) {
+        // the shipped CBM setting: ranked list (no abstaining), RANKED_TUNING, plus the query rewrite
+        (cbm as CbmEngine).configure({ tuning: RANKED_TUNING, perChannel: RANKED_PER_CHANNEL, guard: false, channels: {}, rewrite: tableRewriter(rewriteTable) });
+        a = await (cbm as CbmEngine).search(label.query, { k: 5 });
+      } else {
+        (cbm as CbmEngine).configure({ tuning: TUNED_TUNING, perChannel: TUNED_PER_CHANNEL, guard: true, channels: {}, rewrite: undefined });
+        a = await (cbm as CbmEngine).search(label.query, { k: 5 });
+      }
+      const wide = arm.startsWith("cbm-wide") || arm === "ranked-wide";
       const parts: string[] = [];
       for (const h of a.hits) parts.push(block(h.path, h.startLine, wide ? Math.min(h.endLine, h.startLine + 59) : h.endLine, h.symbol, wide ? await lines(root, h.path, h.startLine, Math.min(h.endLine, h.startLine + 59)) : h.snippet));
       let text = parts.join("\n");

@@ -75,13 +75,36 @@ it is weighted 0. Real semantic ranking would come from OSA's `hybrid` engine (d
 **Still weak:** concept questions ("how does the system decide which tools are healthy") and spec/document questions (the right document ranks in the top
 five for 1 of 3). Top-1 is 40-54%: when it misses, the right file is usually second to fifth.
 
+**Answer quality and tokens (all 70 questions; claude-haiku-5-5 answers from the retrieved text only, graded by whether it names the labelled file).**
+
+| arm | correct | wrong | no answer | context tokens/question | tokens per correct answer |
+|---|---:|---:|---:|---:|---:|
+| grep, then read the top 3 files whole | 62.9% | 10.0% | 27.1% | 11,980 | 19,058 |
+| OSA lexical index (the current default) | 31.4% | 18.6% | 50.0% | 608 | 1,933 |
+| CBM ranked + rewrite, 12-line snippets | 58.6% | 7.1% | 34.3% | 644 | 1,099 |
+| CBM ranked + rewrite, 60-line snippets | 61.4% | 10.0% | 28.6% | 1,344 | 2,187 |
+
+The realistic agent falls back to grep + read when the search says NOT FOUND: **CBM ranked + grep fallback answers 75.7% correctly (80.0% on the old 40, 70.0% on the
+held-out 30) for 5,037 context tokens per question on average**, against 58.6% for lexical + the same fallback (7,090 tokens), and 62.9% for grep + read alone (11,980 tokens).
+So CBM does not beat reading whole files on its own, but it reaches a higher accuracy than either at less than half the tokens when it leads and grep follows. The wrong-answer
+rate stays near 8%. Tables: `evals/code-search/results/answer-3.md`. Caveats: one answering model, file-level grading, 70 questions, and a questions-only setting (no coding task).
+
 **Method and its limits.** `evals/code-search/queries.json` (40, tuned on) and `queries-heldout.json` (30, written before any engine was run on them over
 the OSA code at commit `4e2c517`, never tuned on); rewrites precomputed in `evals/code-search/rewrites/` with Claude Haiku so a run is repeatable; result
 tables in `evals/code-search/results/rewrite-*.md`. n=70: one query is 1.4 points, so differences under about 5 points mean nothing. The rewriting
 model ran with read tools in a directory containing the OSA code (the product now runs it in an empty directory); the rewrites name the exact target
-symbol in only 2 of 21 non-trivial held-out queries, both obvious guesses, so leakage looks unlikely but is not excluded. **Not measured:** whether better
-retrieval lowers a real run's token use or raises answer quality (the earlier answer eval had CBM at 42.5% against grep + read at 77.5%, with 12-line
-snippets against whole files), and anything on greenfield builds, where exploration was only about 10% of a run's tokens.
+symbol in only 2 of 21 non-trivial held-out queries, both obvious guesses, so leakage looks unlikely but is not excluded. **Not measured:** a real
+build run end to end with and without the engine (the answer test above is questions only, not a coding task), and anything on greenfield builds, where
+exploration was only about 10% of a run's tokens.
 
 **Defaults:** `index.engine` stays `lexical` (CBM is a 318 MB external binary). With `"engine": "cbm"` the engine now runs ranked (no abstaining, `index.cbm.abstain:
 false`) with the rewrite (`index.rewrite.enabled: true`). `"abstain": true` restores the old guarded behaviour.
+
+**Installing it: `osa cbm install`.** Replaces the by-hand steps of section 2. The pinned version (0.12.1) and the SHA-256 of every platform's archive are in
+`src/research/net/cbm-download.ts` (taken from the digests GitHub records for the release; the Windows one is the value verified by hand against
+`checksums.txt` and its sigstore bundle in section 2). The download follows redirects by hand, contacts only `github.com` and GitHub's release-asset
+hosts over https, caps the size, and discards the file unless its hash is the pinned one. It then unpacks with the system `tar`, requires `--version` to say 0.12.1, and
+starts a real session in the work directory: CBM refuses to run when a folder above its work directory lets another account write to it, so that is discovered
+at install time, with advice (`--dir`), instead of mid-build. (Found by running it for real on Windows: the `tar` first on PATH was Git's GNU tar, which reads `C:/x` as a remote host and cannot read zip archives at all, so the installer passes relative paths and, on Windows, calls the system's own `tar.exe` by full path.) CBM also needs its `cache`, `run` and `shadow` folders to exist before it starts, and a folder only the owner, SYSTEM and Administrators can write to: a fresh folder under `C:\\` inherits write access for every signed-in user and CBM then fails with "secure CLI coordination could not be created" (both conditions were tested separately; each alone fails). The installer creates the folders; `--harden` applies the permissions with `icacls` to the install folder only, and without it the failure message prints the exact command. It does not verify the sigstore signature (that needs a tool OSA does not bundle); the pinned hash is
+the control. `--write-config` merges the settings into `osa.config.json` and leaves every other key alone. Run for real on Windows x64 (download of the actual 49 MB archive, hash match, unpack, version, lock-down, start, config written, then a live `osa search` with the Haiku rewrite returning the right file);
+the other platforms' hashes come from the same release page and are unrun.

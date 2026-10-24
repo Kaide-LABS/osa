@@ -165,15 +165,17 @@ is always on** (`token_breakdown` per phase and per run).
 
 | Feature | Switch (`osa.config.json`) | Flag for one command | Why it is off |
 |---|---|---|---|
-| codebase-memory-mcp code index | `index.engine: "lexical" / "cbm"` (default `lexical`) | `--index-engine lexical / cbm` | missed its pass bar: best confident-wrong 10 % vs the 2 % target, ~2x fewer tokens than grep at a 10-15 point accuracy cost, ~0 saving on greenfield builds (`docs/osa/TEST_REPORT.md` Suite 7) |
+| codebase-memory-mcp code index | `index.engine: "lexical" / "cbm"` (default `lexical`) | `--index-engine lexical / cbm` | ranked search plus a model-written query rewrite: the right file is in the top 5 for 79 % of 70 labelled queries (lexical index: 37 % on the 30 held-out ones). Retrieval only: token savings and answer quality are measured in `docs/osa/CBM_NOTES.md` section 6; little to save on greenfield builds |
 | trim-1 context trimmer | `trim.enabled: true / false` (default `false`) | `--trim` / `--no-trim` | saved 0.3-2.8 % of a run (Suite 1, 9) |
 | quote the person's stated rules into the acceptance criteria | `intake.quoteStatedRules: true / false` (default `false`) | `--quote-stated-rules` / `--no-quote-stated-rules` | most quoted criteria were trivial noise (Suite 9) |
 
 `osa features` lists each switch with its state and **where it was set** (`flag`, `config` or `default`); precedence is
 **flag > config > default**. The flags are accepted by `osa "<prompt>"`, `osa search`, `osa doctor` and `osa features`, so you can
 opt in, run the eval, and turn it off again without touching code or config (`osa "<prompt>" --trim --index-engine cbm`).
-Each run logs one `feature_state` event per switch (`feature`, `state`, `value`, `source`). To use CBM at all, install it as
-`docs/osa/CBM_NOTES.md` describes and set `index.cbm.binaryPath` and `index.cbm.workDir`.
+Each run logs one `feature_state` event per switch (`feature`, `state`, `value`, `source`). To use CBM, run **`osa cbm install --write-config`**:
+it downloads the one pinned release (version and SHA-256 are in the code; a download that does not match is discarded; only GitHub's release hosts are contacted),
+unpacks it into `~/.osa/cbm`, checks the version, proves it can start there, and writes the settings into `osa.config.json`. `osa cbm status` re-checks it later.
+It never runs CBM's own installer or touches any other tool's configuration. See `docs/osa/CBM_NOTES.md` section 6 for what it does for search and what is not measured.
 
 ## Context trimming (trim-1, off by default)
 

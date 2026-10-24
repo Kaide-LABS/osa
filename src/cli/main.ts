@@ -22,6 +22,8 @@ import { runMcpServer } from "../mcp/server.ts";
 import { renderSetupHumanReport, runSetupCommand } from "./setup.ts";
 import type { OsaCommandOptions } from "../osa/pipeline.ts";
 import { runIndexCommand, runSearchCommand } from "./index-cmd.ts";
+import { runCbmCommand } from "./cbm-cmd.ts";
+import type { CbmCommandOptions } from "./cbm-cmd.ts";
 import type { IndexCommandOptions, SearchCommandOptions } from "./index-cmd.ts";
 import { runMemoryCommand } from "./memory-cmd.ts";
 import type { MemoryCommandOptions } from "./memory-cmd.ts";
@@ -51,6 +53,8 @@ Project memory:
   osa memory [--repo-dir <path>] [--json]   Show what OSA remembers about this project (.osa/memory).
 
 Optional plug-ins (each has one switch; OFF means none of its code runs):
+  osa cbm install [--dir <path>] [--harden] [--write-config]   Download, verify and test the pinned codebase-memory-mcp (opt-in code search);
+  osa cbm status [--repo-dir <path>] [--json]        check it is installed, the right version, and can start
   osa features [--repo-dir <path>] [--json] List the switches -- CBM code index, trim-1, quoted stated rules --
                                             with their state and where each was set (flag, config or default).
   Flags for one command (they win over osa.config.json): --index-engine lexical|cbm|hybrid, --trim / --no-trim,
@@ -114,6 +118,7 @@ type Command =
   | ({ readonly kind: "search" } & SearchCommandOptions)
   | ({ readonly kind: "memory" } & MemoryCommandOptions)
   | { readonly kind: "features"; readonly repoDir: string; readonly json: boolean; readonly features: FeatureFlags }
+  | ({ readonly kind: "cbm" } & CbmCommandOptions)
   | { readonly kind: "setup"; readonly json: boolean }
   | { readonly kind: "mcp-config" };
 
@@ -406,6 +411,35 @@ function parseSearchArgs(rest: readonly string[]): Command {
   return { kind: "search", repoDir: resolve(repoDir), query, k, json, refresh, ...(Object.keys(features).length > 0 ? { features } : {}) };
 }
 
+/** Parses `cbm install [--dir <path>] [--force] [--write-config] [--repo-dir <path>] [--json]` and `cbm status [--repo-dir <path>] [--json]`. */
+function parseCbmArgs(rest: readonly string[]): Command {
+  const action = rest[0];
+  if (action !== "install" && action !== "status") throw new UsageError("Usage: osa cbm install [--dir <path>] [--force] [--harden] [--write-config] [--repo-dir <path>] [--json]  |  osa cbm status [--repo-dir <path>] [--json]", { action: action ?? null });
+  let repoDir = process.cwd();
+  let dir: string | null = null;
+  let force = false;
+  let harden = false;
+  let writeConfig = false;
+  let json = false;
+  for (let i = 1; i < rest.length; i++) {
+    const arg = rest[i] as string;
+    const value = (flag: string): string => {
+      const v = rest[i + 1];
+      if (v === undefined) throw new UsageError(`cbm ${flag} requires a path argument.`, { flag });
+      i += 1;
+      return v;
+    };
+    if (arg === "--json") json = true;
+    else if (arg === "--repo-dir") repoDir = value(arg);
+    else if (action === "install" && arg === "--dir") dir = value(arg);
+    else if (action === "install" && arg === "--force") force = true;
+    else if (action === "install" && arg === "--harden") harden = true;
+    else if (action === "install" && arg === "--write-config") writeConfig = true;
+    else throw new UsageError(`Unknown flag for cbm ${action}: ${arg}`, { flag: arg });
+  }
+  return action === "install" ? { kind: "cbm", action, dir, force, harden, writeConfig, repoDir: resolve(repoDir), json } : { kind: "cbm", action, repoDir: resolve(repoDir), json };
+}
+
 /** Parses `features [--repo-dir <path>] [--json]` plus the feature flags. */
 function parseFeaturesArgs(rest: readonly string[]): Command {
   let repoDir = process.cwd();
@@ -476,6 +510,9 @@ export function parseArgs(argv: readonly string[]): Command {
   }
   if (first === "features") {
     return parseFeaturesArgs(args.slice(1));
+  }
+  if (first === "cbm") {
+    return parseCbmArgs(args.slice(1));
   }
 
   return parsePromptArgs(args, process.cwd());
@@ -701,6 +738,11 @@ export async function main(argv: readonly string[]): Promise<number> {
         const states = describeFeatures(applyFeatureFlags(loaded.config, command.features), loaded.explicit, command.features);
         await writeFlushed(process.stdout, command.json ? JSON.stringify({ schema_version: 1, repo_dir: command.repoDir, config_file: loaded.source, features: states }, null, 2) + "\n" : renderFeatures(states));
         return ExitCode.OK;
+      }
+      case "cbm": {
+        const r = await runCbmCommand(command);
+        await writeFlushed(process.stdout, r.text);
+        return r.exitCode;
       }
       case "memory": {
         const r = await runMemoryCommand(command);
