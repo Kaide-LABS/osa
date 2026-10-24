@@ -68,16 +68,19 @@ export function parseArxivFeed(xml: string): ArxivPaper[] {
 
 const STOPWORDS = new Set(["a", "an", "and", "the", "of", "for", "in", "on", "to", "with", "is", "are", "how", "what", "using", "use"]);
 
-/** Builds arXiv's `search_query` from free text: each content word ANDed on `all:`. Pure. */
-export function buildArxivQuery(text: string): string {
+/** Builds arXiv's `search_query` from free text: the first `maxWords` content words ANDed on `all:`. Pure. */
+export function buildArxivQuery(text: string, maxWords = 6): string {
   const words = text
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, " ")
     .split(/\s+/)
     .filter((w) => w.length > 1 && !STOPWORDS.has(w))
-    .slice(0, 6);
+    .slice(0, maxWords);
   return words.map((w) => `all:${w}`).join("+AND+");
 }
+
+/** How many words to AND, widest first. arXiv matches every word, so a model-written query of four or more words often finds nothing; the search narrows step by step. */
+const WORD_BUDGETS: readonly number[] = [6, 4, 3, 2];
 
 /** Options of {@link searchArxiv}. */
 export interface ArxivSearchOptions {
@@ -90,10 +93,17 @@ const sharedLimiter = new MinIntervalLimiter(ARXIV_MIN_INTERVAL_MS);
 
 /** Searches arXiv. Never throws; a failure is reported in `problem`. */
 export async function searchArxiv(query: string, opts: ArxivSearchOptions = {}, deps: HttpDeps = {}): Promise<SourceResult<ArxivPaper>> {
-  const q = buildArxivQuery(query);
-  if (q === "") return { source: "arxiv", query, records: [], problem: "query had no searchable words" };
-  const url = `https://export.arxiv.org/api/query?search_query=${q}&start=0&max_results=${String(opts.maxResults ?? 5)}&sortBy=relevance`;
-  const res = await httpGet(url, { limiter: opts.limiter ?? sharedLimiter, headers: { "User-Agent": "osa-research" } }, deps);
-  if (res.kind !== "ok") return { source: "arxiv", query, records: [], problem: res.message };
-  return { source: "arxiv", query, records: parseArxivFeed(res.text), problem: null };
+  if (buildArxivQuery(query) === "") return { source: "arxiv", query, records: [], problem: "query had no searchable words" };
+  const tried = new Set<string>();
+  for (const budget of WORD_BUDGETS) {
+    const q = buildArxivQuery(query, budget);
+    if (tried.has(q)) continue; // the query has fewer words than this budget: same request as the last one
+    tried.add(q);
+    const url = `https://export.arxiv.org/api/query?search_query=${q}&start=0&max_results=${String(opts.maxResults ?? 5)}&sortBy=relevance`;
+    const res = await httpGet(url, { limiter: opts.limiter ?? sharedLimiter, headers: { "User-Agent": "osa-research" } }, deps);
+    if (res.kind !== "ok") return { source: "arxiv", query, records: [], problem: res.message };
+    const records = parseArxivFeed(res.text);
+    if (records.length > 0) return { source: "arxiv", query, records, problem: null };
+  }
+  return { source: "arxiv", query, records: [], problem: null };
 }

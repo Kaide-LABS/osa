@@ -97,11 +97,20 @@ const SELECT = "id,doi,title,display_name,publication_year,cited_by_count,abstra
 export async function searchOpenAlex(query: string, opts: OpenAlexSearchOptions = {}, deps: HttpDeps = {}): Promise<SourceResult<OpenAlexWork>> {
   const params = new URLSearchParams({ search: squash(query), "per-page": String(opts.perPage ?? 5), select: SELECT });
   if (opts.mailto !== undefined && opts.mailto !== "") params.set("mailto", opts.mailto);
-  if (opts.apiKey !== undefined && opts.apiKey !== "") params.set("api_key", opts.apiKey);
-  const res = await httpGet(`https://api.openalex.org/works?${params.toString()}`, { headers: { "User-Agent": "osa-research" } }, deps);
+  const keyed = opts.apiKey !== undefined && opts.apiKey !== "";
+  if (keyed) params.set("api_key", opts.apiKey as string);
+  let res = await httpGet(`https://api.openalex.org/works?${params.toString()}`, { headers: { "User-Agent": "osa-research" } }, deps);
+  // A key OpenAlex rejects (a typo, or one that was requested but never activated by its email link) must not cost the whole search: answer from the
+  // keyless budget instead, and say so in `problem` (the records are still returned).
+  let keyNote: string | null = null;
+  if (keyed && res.kind === "error" && (res.status === 401 || res.status === 403)) {
+    keyNote = "OpenAlex rejected the API key (is it activated? OpenAlex emails an activation link); the keyless budget was used instead";
+    params.delete("api_key");
+    res = await httpGet(`https://api.openalex.org/works?${params.toString()}`, { headers: { "User-Agent": "osa-research" } }, deps);
+  }
   if (res.kind !== "ok") {
     const budget = res.kind === "rate_limited" || (res.kind === "error" && (res.status === 402 || res.status === 403));
-    return { source: "openalex", query, records: [], problem: budget ? `${res.message} -- OpenAlex's free budget may be exhausted; set OPENALEX_API_KEY` : res.message };
+    return { source: "openalex", query, records: [], problem: [keyNote, budget ? `${res.message} -- OpenAlex's free budget may be exhausted; set OPENALEX_API_KEY` : res.message].filter((x): x is string => x !== null).join("; ") };
   }
   let parsed: unknown;
   try {
@@ -111,5 +120,5 @@ export async function searchOpenAlex(query: string, opts: OpenAlexSearchOptions 
   }
   const results = typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>)["results"] : undefined;
   const works = (Array.isArray(results) ? results : []).map(parseOpenAlexWork).filter((x): x is OpenAlexWork => x !== null);
-  return { source: "openalex", query, records: works, problem: null };
+  return { source: "openalex", query, records: works, problem: keyNote };
 }

@@ -179,6 +179,25 @@ test("arXiv: consecutive searches are >= 3 s apart on one shared limiter (WS3.5 
   for (let i = 1; i < starts.length; i++) assert.ok((starts[i] ?? 0) - (starts[i - 1] ?? 0) >= ARXIV_MIN_INTERVAL_MS, `gap ${String(i)}`);
 });
 
+test("arXiv: arXiv ANDs every word, so a query that finds nothing is narrowed (6 -> 4 -> 3 -> 2 words) until something is found; a two-word query is asked once", async () => {
+  const empty = `<feed></feed>`;
+  const urls: string[] = [];
+  const { fetchFn } = fakeFetch((url) => {
+    urls.push(url);
+    return { body: url.includes("all:rate+AND+all:limiting") && !url.includes("all:algorithm") ? ARXIV_XML : empty };
+  });
+  const deps = { fetchFn };
+  const limiter = new MinIntervalLimiter(0);
+  const r = await searchArxiv("token bucket rate limiting algorithm analysis", { limiter }, deps);
+  assert.equal(r.records.length, 2, "found on a narrower query");
+  assert.equal(r.problem, null);
+  assert.deepEqual(urls.map((u) => (u.match(/all:/g) ?? []).length), [6, 4], "6 words found nothing, 4 words found papers, so it stopped");
+  urls.length = 0;
+  const none = await searchArxiv("zzqx qqzv", { limiter }, deps);
+  assert.deepEqual(none.records, []);
+  assert.equal(urls.length, 1, "a two-word query cannot be narrowed: one request");
+});
+
 test("arXiv: an empty query makes no request; an HTTP failure becomes a problem, not a throw", async () => {
   const { fetchFn, calls } = fakeFetch(() => ({ status: 500, body: "oops" }));
   const empty = await searchArxiv("a the", {}, { fetchFn });
