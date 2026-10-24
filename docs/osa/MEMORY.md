@@ -71,10 +71,13 @@ safe to key by that name. A *free-form* research item is worded per project, alm
 or reused — matching it by similarity would risk serving the wrong answer.
 
 - **What is remembered.** After the research stage, each documentation item that finished is stored in the global
-  database — but **only** when the independent cross-provider check ran and flagged nothing in the report. A run whose check
-  was disabled, failed, or flagged any claim stores nothing. The validated result JSON is stored exactly as it was written
-  to disk (already screened), keyed by the normalised technology name, with the origin project and the check level (full or
-  consistency-only). One row per key: a newer result replaces the older one. A result over 64 KB or on which the secret
+  database — but **only** when the independent cross-provider check was a **full** one (the reviewer could open the sources,
+  not a consistency-only read), ended in a **pass**, actually **examined** at least one claim, and flagged none. A run whose check
+  was disabled, failed, consistency-only, or flagged anything stores nothing, and an item whose own researcher marked some fields
+  uncertain is not stored either. The validated result JSON is stored exactly as it was written
+  to disk (already screened), keyed by the normalised technology name, with the origin project. One row per key: a newer result replaces the older one. A result over 64 KB or on which the secret
+  filter fires is refused when remembering AND again when reading it back (a row edited afterwards cannot put a secret into a
+  report), and a row dated in the future is never fresh. A result over 64 KB or on which the secret
   filter still fires is refused (counted, not stored), and the store keeps at most 500 rows, evicting the oldest.
 - **When it is reused.** Before a documentation item's agent is started, the store is asked for the same technology. A
   stored result is reused only when it is **no older than the freshness window** (default 30 days), still **passes the

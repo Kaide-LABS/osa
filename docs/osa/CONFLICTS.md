@@ -579,6 +579,24 @@ provenance line use it, and the report re-cleans the stored name before printing
 carries a `phase` (`lookup` / `remember`) so the two call sites are distinguishable; neither carries any target, project or
 stored text. *(safe)*
 
+### Added after the independent review of research reuse (commit f4a43d5)
+
+A fresh reviewer attacked the reuse path. Every item below is covered by a test in `src/research/reuse-review.test.ts` that failed against the unfixed commit first. The executor's own 1,163 passing tests did not cover any of them.
+
+**M-31 -- The key no longer trims `#` or `+`.** `docsKey` trimmed every trailing punctuation character, and `#` is punctuation, so "C#" and "C" (and "F#" and "F") shared a key and one language's documentation was served for the other (confirmed end to end). Only sentence punctuation (`. , ; : ! ?`) and spaces are trimmed now. *(safe -- reproduced)*
+
+**M-32 -- Only fully checked, fully certain research is remembered. This reverses part of the SPEC.** The SPEC stored consistency-only results with a `check_level` tag that nothing ever read, so unverified research was later served as if checked. The gate is now: a full (not degraded) check, a verdict of `pass`, at least one examined claim, no flagged claim, and no item whose own `uncertain` list is non-empty. `check_level` stays in the table for a later use but is always "full" for new rows. This remembers less, on purpose: the feature's promise is accuracy first. *(risky -- fewer reuses; reversible)*
+
+**M-33 -- A stored result is checked again on the way OUT.** The secret filter and the 64 KB cap ran only when remembering, so a row edited afterwards could put a secret into a report. `findReusable` now applies both, and a row dated more than a day in the future is never fresh. The count of stored items is what survived the 500-row cap. *(safe -- reproduced)*
+
+**M-34 -- The origin project name is shown only if it is a plain label.** The reader scrubbed hidden characters but accepted any text, and the report reaches later model prompts. Only letters, digits, dot, underscore, space and hyphen (60 characters at most) are shown; anything else prints "another project". *(safe -- reproduced)*
+
+**M-35 -- The schema upgrade is safe to race.** A process that waited for the upgrade lock re-ran it and failed with "table already exists" (4 of 16 opens in the reviewer's run). The version is re-read after taking the write lock, and the migrations use `IF NOT EXISTS` and check for the column. *(safe -- reproduced)*
+
+**M-36 -- A locked lookup skips the remember.** A locked version-2 database cost a run two lock waits (3.5 s) instead of one. A corrupt database still reports both phases, because it fails instantly and the existing test requires it. *(safe)*
+
+**M-37 -- Left open.** `forget` ignores the result of the WAL checkpoint: if another connection is reading at that moment, the text can remain in the main file until that reader closes. The test that reads the `-wal` after the connection closes is therefore weaker than it looks. Both are narrow and unchanged. A live-provider test in `src/adapters/codex-cli.test.ts` (two real Codex probes compared with each other) failed once in a loaded full-suite run and passes alone; it depends on the developer machine's Codex state and touches nothing here. *(open)*
+
 **M-12 -- Left as they are, on purpose.** Plain-word passwords with no digit, letters-only 32-character tokens and short bearer
 values are not detected; closing them refuses ordinary notes. The limits are listed in MEMORY.md. `forget` and `search` match
 project names case-sensitively, as before. File modes on POSIX could not be tested on this Windows machine: the directory is
