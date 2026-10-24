@@ -1,0 +1,73 @@
+{
+  "summary": "This build depends on the v1.x line of the official MCP TypeScript SDK, published on npm as @modelcontextprotocol/sdk (current stable 1.32.2, Node >=18, zod as a peer dependency). That line implements the MCP specification up to revision 2025-11-25. It is installed with `npm i @modelcontextprotocol/sdk` and used by instantiating the high-level `McpServer`, registering each tool (osa_plan/osa_spec/osa_build/osa_status) via `registerTool(name, {description, inputSchema}, handler)` with zod schemas, and connecting over `StdioServerTransport`. The major pitfall is that the SDK has forked into a new v2 line published under different package names (@modelcontextprotocol/server / @modelcontextprotocol/client) implementing the newer 2026-07-28 spec; the PRD constraint pins @modelcontextprotocol/sdk, so the build must stay on v1.x and not drift to v2 APIs.",
+  "key_findings": [
+    "Latest stable @modelcontextprotocol/sdk is 1.32.2 ('Model Context Protocol implementation for TypeScript'), engines node >=18, with zod ^3.25 || ^4.0 as a required peer dependency (per registry.npmjs.org/@modelcontextprotocol/sdk/latest).",
+    "The v1.x branch 'implements the MCP spec up to 2025-11-25'; v2 (@modelcontextprotocol/server, 2.3.1) implements the newer 2026-07-28 spec.",
+    "MCP spec revision history in range: 2025-06-18 (initial), 2025-11-25 (stable), and a 2026-07-28 release candidate (later/out of the v1 line).",
+    "High-level server imports: `import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'` and `import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'` (verified in v1.x docs/server.md).",
+    "registerTool signature in v1.x: server.registerTool(name, { title?, description, inputSchema, outputSchema? }, handler); inputSchema is a raw zod shape object e.g. `{ weightKg: z.number() }` (ZodRawShape), NOT a wrapping z.object().",
+    "Server lifecycle: `const server = new McpServer({ name, version }); const transport = new StdioServerTransport(); await server.connect(transport);` (verified).",
+    "A tool handler returns `{ content: [{ type: 'text', text: ... }], structuredContent? }`; structuredContent pairs with outputSchema.",
+    "The low-level Server class is reachable via `server.server` and supports setRequestHandler for custom request types; v1.x also keeps a standalone low-level `Server` class.",
+    "v1.x receives bug/security fixes for at least six months after v2's release (through 2026-07-27)."
+  ],
+  "recommendations": [
+    "Stay on the @modelcontextprotocol/sdk v1.x line (1.32.x) as the PRD constrains; do NOT migrate to @modelcontextprotocol/server / @modelcontextprotocol/client v2 packages or 2026-07-28 spec APIs — that would add/rename a dependency and break the pin.",
+    "Register the four tools (osa_plan, osa_spec, osa_build, osa_status) through McpServer.registerTool with zod ZodRawShape inputSchema objects, not z.object(...) wrappers, matching the v1.x high-level API.",
+    "Connect over StdioServerTransport via server.connect(transport); use the documented subpath imports ('.../server/mcp.js', '.../server/stdio.js') since the package ships ESM subpath exports and bare 'index' imports will not resolve the server/stdio classes.",
+    "Keep concrete transport/network usage inside the allowed boundary (src/research/net/**) and model names in src/adapters/**; the SDK's own transport is stdio local IPC, not outbound network, so it is fine in the MCP surface layer.",
+    "Put tool-relay guidance (relay recommended questions as highly recommended, show TL;DR before osa_build, never set accept_risky_assumptions) in the registerTool `description` strings, which are the client-visible surface.",
+    "Pin zod to the version already in the repo within the ^3.25 || ^4.0 peer range; do not bump it independently of the SDK to avoid peer-dep mismatch."
+  ],
+  "as_of": "@modelcontextprotocol/sdk 1.32.2; MCP spec 2025-11-25; checked 2026-10-24",
+  "sources": [
+    {
+      "title": "@modelcontextprotocol/sdk latest package metadata (npm registry)",
+      "url": "https://registry.npmjs.org/@modelcontextprotocol/sdk/latest",
+      "type": "official-docs",
+      "quote": "\"version\": 1.32.2 ... Engines Node >=18 ... Peer Dependencies zod: ^3.25 || ^4.0 (required)"
+    },
+    {
+      "title": "modelcontextprotocol/typescript-sdk (official repo, main/v2 overview)",
+      "url": "https://github.com/modelcontextprotocol/typescript-sdk",
+      "type": "repo",
+      "quote": "v1.x: @modelcontextprotocol/sdk (legacy) ... v2 implements the newer 2026-07-28 specification ... Package names changed from @modelcontextprotocol/sdk to split packages"
+    },
+    {
+      "title": "MCP TypeScript SDK v1.x docs/server.md",
+      "url": "https://raw.githubusercontent.com/modelcontextprotocol/typescript-sdk/v1.x/docs/server.md",
+      "type": "official-docs",
+      "quote": "import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'; import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'; ... server.registerTool('calculate-bmi', { ... inputSchema: { weightKg: z.number() } }, async ... ) ... await server.connect(transport)"
+    },
+    {
+      "title": "MCP TypeScript SDK v1.x branch overview",
+      "url": "https://github.com/modelcontextprotocol/typescript-sdk/tree/v1.x",
+      "type": "repo",
+      "quote": "implements the MCP spec up to 2025-11-25 ... High-level McpServer class ... Low-level Server class ... via setRequestHandler ... requires zod as a peer dependency (v3.25+)"
+    },
+    {
+      "title": "Releases / spec version timeline (modelcontextprotocol)",
+      "url": "https://github.com/modelcontextprotocol/modelcontextprotocol/releases",
+      "type": "official-docs",
+      "quote": "2025-06-18 initial revision; 2025-11-25 stable; 2026-07-28 release candidate"
+    }
+  ],
+  "current_version": "@modelcontextprotocol/sdk 1.32.2 (v1.x line, implementing MCP spec 2025-11-25)",
+  "api_surface": [
+    "new McpServer({ name, version }) — from '@modelcontextprotocol/sdk/server/mcp.js'",
+    "server.registerTool(name, { title?, description, inputSchema, outputSchema? }, async handler) — inputSchema is a zod ZodRawShape object",
+    "handler return shape { content: [{ type: 'text', text }], structuredContent? }",
+    "new StdioServerTransport() — from '@modelcontextprotocol/sdk/server/stdio.js'",
+    "await server.connect(transport)",
+    "Low-level: server.server / Server class with setRequestHandler(RequestSchema, handler) for custom protocol handling"
+  ],
+  "pitfalls": [
+    "Package fork: v2 is published as @modelcontextprotocol/server and @modelcontextprotocol/client (2026-07-28 spec); accidentally depending on these breaks the PRD pin to @modelcontextprotocol/sdk.",
+    "v1.x registerTool inputSchema expects a raw zod shape ({ field: z.number() }) — passing a wrapping z.object(...) is a common mistake and differs from some v2/third-party examples that use z.object.",
+    "ESM subpath imports required: McpServer and StdioServerTransport live at '/server/mcp.js' and '/server/stdio.js'; importing from the package root does not expose them.",
+    "zod is a peer dependency, not bundled — version must satisfy ^3.25 || ^4.0; a mismatched local zod causes schema validation/type errors.",
+    "v1.x is maintenance-only with security fixes for ~6 months after v2 (through ~2026-07-27); long-term it is a legacy line, though acceptable for this pinned build.",
+    "The SDK pulls many transitive deps (express, hono, jose, ajv, etc.) for HTTP/auth transports; the build only needs the stdio path, so avoid importing HTTP transport modules to keep boundary rules clean."
+  ],
+  "uncertain": []
+}

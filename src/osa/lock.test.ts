@@ -5,8 +5,8 @@ import { randomUUID } from "node:crypto";
 import { ExitCode, PrdLockViolationError } from "../domain/errors.ts";
 import { renderBabyPrd } from "./baby-prd.ts";
 import { MemoryEventSink } from "./events.ts";
-import { assertPrdUnchanged, exitCodeForLockOutcome, lockBabyPrd, prdLockRecordPath } from "./lock.ts";
-import type { LockChoice, LockIO } from "./lock.ts";
+import { assertPrdUnchanged, exitCodeForLockOutcome, lockBabyPrd, prdLockRecordPath, runGate, exitCodeForGateOutcome } from "./lock.ts";
+import type { LockChoice, LockIO, GateIO } from "./lock.ts";
 import { samplePrd, tempGitRepo } from "./fixtures.test.ts";
 import { sha256String } from "../util/hash.ts";
 
@@ -129,4 +129,130 @@ test("assertPrdUnchanged hard-fails when the PRD was deleted or no lock record e
   await lockBabyPrd({ ...s, io: fakeIO(["lock"]).io, unattended: false, autoLockWhenNoRisky: true });
   await rm(`${s.repoDir}/${s.prdPath}`);
   await assert.rejects(assertPrdUnchanged(s.repoDir, s.runId, "x"), PrdLockViolationError);
+});
+
+// ---- runGate tests ----
+
+function fakeGateIO(confirm: boolean): GateIO {
+  const shown: string[] = [];
+  return {
+    show: (text) => void shown.push(text),
+    confirm: () => Promise.resolve(confirm),
+  };
+}
+
+test("runGate in auto-lock mode always locks, even with risky assumptions", async () => {
+  const s = await setup(true); // risky=true
+  const artifact = `${s.repoDir}/runs/${s.runId}/test-artifact.md`;
+  await writeFile(artifact, "Test artifact content", "utf8");
+
+  const outcome = await runGate({
+    repoDir: s.repoDir,
+    runId: s.runId,
+    artifactPath: `runs/${s.runId}/test-artifact.md`,
+    risky: [{ text: "Test risky assumption", risk: "risky" }],
+    io: fakeGateIO(false),
+    events: s.events,
+    mode: { kind: "auto-lock" },
+  });
+
+  assert.equal(outcome.kind, "locked");
+  assert.match(outcome.sha256, /^[0-9a-f]{64}$/);
+  assert.ok(s.events.names().includes("prd_locked"));
+});
+
+test("runGate in unattended mode with acceptRisky=false refuses when risky assumptions exist", async () => {
+  const s = await setup(true); // risky=true
+  const artifact = `${s.repoDir}/runs/${s.runId}/test-artifact.md`;
+  await writeFile(artifact, "Test artifact content", "utf8");
+
+  const outcome = await runGate({
+    repoDir: s.repoDir,
+    runId: s.runId,
+    artifactPath: `runs/${s.runId}/test-artifact.md`,
+    risky: [{ text: "Test risky assumption", risk: "risky" }],
+    io: fakeGateIO(false),
+    events: s.events,
+    mode: { kind: "unattended", acceptRisky: false },
+  });
+
+  assert.equal(outcome.kind, "refused");
+  assert.equal(exitCodeForGateOutcome(outcome), ExitCode.PRD_LOCK_REFUSED);
+  assert.ok(s.events.names().includes("prd_lock_refused"));
+});
+
+test("runGate in unattended mode with acceptRisky=true locks even with risky assumptions", async () => {
+  const s = await setup(true); // risky=true
+  const artifact = `${s.repoDir}/runs/${s.runId}/test-artifact.md`;
+  await writeFile(artifact, "Test artifact content", "utf8");
+
+  const outcome = await runGate({
+    repoDir: s.repoDir,
+    runId: s.runId,
+    artifactPath: `runs/${s.runId}/test-artifact.md`,
+    risky: [{ text: "Test risky assumption", risk: "risky" }],
+    io: fakeGateIO(false),
+    events: s.events,
+    mode: { kind: "unattended", acceptRisky: true },
+  });
+
+  assert.equal(outcome.kind, "locked");
+  assert.ok(s.events.names().includes("prd_locked"));
+});
+
+test("runGate in unattended mode locks when there are no risky assumptions", async () => {
+  const s = await setup(false); // risky=false
+  const artifact = `${s.repoDir}/runs/${s.runId}/test-artifact.md`;
+  await writeFile(artifact, "Test artifact content", "utf8");
+
+  const outcome = await runGate({
+    repoDir: s.repoDir,
+    runId: s.runId,
+    artifactPath: `runs/${s.runId}/test-artifact.md`,
+    risky: [],
+    io: fakeGateIO(false),
+    events: s.events,
+    mode: { kind: "unattended", acceptRisky: false },
+  });
+
+  assert.equal(outcome.kind, "locked");
+});
+
+test("runGate in interactive mode locks on confirm=true", async () => {
+  const s = await setup(false);
+  const artifact = `${s.repoDir}/runs/${s.runId}/test-artifact.md`;
+  await writeFile(artifact, "Test artifact content", "utf8");
+
+  const outcome = await runGate({
+    repoDir: s.repoDir,
+    runId: s.runId,
+    artifactPath: `runs/${s.runId}/test-artifact.md`,
+    risky: [],
+    io: fakeGateIO(true),
+    events: s.events,
+    mode: { kind: "interactive" },
+  });
+
+  assert.equal(outcome.kind, "locked");
+  assert.equal(exitCodeForGateOutcome(outcome), ExitCode.OK);
+});
+
+test("runGate in interactive mode cancels on confirm=false", async () => {
+  const s = await setup(false);
+  const artifact = `${s.repoDir}/runs/${s.runId}/test-artifact.md`;
+  await writeFile(artifact, "Test artifact content", "utf8");
+
+  const outcome = await runGate({
+    repoDir: s.repoDir,
+    runId: s.runId,
+    artifactPath: `runs/${s.runId}/test-artifact.md`,
+    risky: [],
+    io: fakeGateIO(false),
+    events: s.events,
+    mode: { kind: "interactive" },
+  });
+
+  assert.equal(outcome.kind, "cancelled");
+  assert.equal(exitCodeForGateOutcome(outcome), ExitCode.LOCK_CANCELLED);
+  assert.ok(s.events.names().includes("prd_lock_cancelled"));
 });

@@ -8,7 +8,7 @@
 import { z } from "zod";
 import { IntakeError } from "../domain/errors.ts";
 import { BabyPrdSchema, RESEARCH_MODULES } from "../domain/intake.ts";
-import type { Assumption, BabyPrd, ResearchItem, ResearchModule, ResearchPlan } from "../domain/intake.ts";
+import type { Assumption, BabyPrd, RecommendedQuestion, ResearchItem, ResearchModule, ResearchPlan } from "../domain/intake.ts";
 
 const NONE = "(none)";
 
@@ -29,12 +29,16 @@ function noPipe(s: string): string {
 export function renderBabyPrd(prd: BabyPrd): string {
   const plan = prd.researchPlan;
   const risky = prd.assumptions.filter((a) => a.risk === "risky");
+  const defaulted = prd.assumptions.filter((a) => a.risk === "defaulted");
   const safe = prd.assumptions.filter((a) => a.risk === "safe");
   const lines: string[] = [
     `# Baby PRD -- ${oneLine(plan.topic)}`,
     "",
     "## TL;DR",
     ...prd.tldr.map((l) => `- ${oneLine(l)}`),
+    "",
+    "## Scope",
+    prd.scope,
     "",
     "## Baby PRD",
     "",
@@ -71,7 +75,12 @@ export function renderBabyPrd(prd: BabyPrd): string {
     ...(plan.priorArtQueries.length === 0 ? [`  - ${NONE}`] : plan.priorArtQueries.map((d) => `  - ${oneLine(d)}`)),
     "",
     "## Assumptions",
-    ...(prd.assumptions.length === 0 ? [`- ${NONE}`] : [...risky, ...safe].map((a) => `- [${a.risk}] ${oneLine(a.text)}`)),
+    ...(prd.assumptions.length === 0 ? [`- ${NONE}`] : [...risky, ...defaulted, ...safe].map((a) => `- [${a.risk}] ${oneLine(a.text)}`)),
+    "",
+    "## Recommended questions",
+    ...(prd.recommendedQuestions.length === 0
+      ? [`- ${NONE}`]
+      : prd.recommendedQuestions.map((q) => `- ${noPipe(q.question)} | ${noPipe(q.default)}`)),
     "",
     ...(prd.request === undefined || prd.request.trim() === ""
       ? []
@@ -184,14 +193,30 @@ function parseResearchPlan(lines: readonly string[]): ResearchPlan {
 export function parseBabyPrd(markdown: string): BabyPrd {
   const top = sectionsAt(markdown, "## ");
   const tldr = listItems(top.get("TL;DR") ?? []);
+  const scopeLines = top.get("Scope") ?? [];
+  const scopeValue = scopeLines.length > 0 ? scopeLines[0]?.trim() : undefined;
   const body = sectionsAt((top.get("Baby PRD") ?? []).join("\n"), "### ");
   const assumptions: Assumption[] = [];
   for (const item of listItems(top.get("Assumptions") ?? [])) {
-    const m = item.match(/^\[(risky|safe)\]\s+(.*\S)$/i);
+    const m = item.match(/^\[(risky|safe|defaulted)\]\s+(.*\S)$/i);
     if (m?.[1] === undefined || m[2] === undefined) {
-      throw new IntakeError(`Assumption must start with [risky] or [safe]: "${item}"`);
+      throw new IntakeError(`Assumption must start with [risky], [safe] or [defaulted]: "${item}"`);
     }
-    assumptions.push({ risk: m[1].toLowerCase() === "risky" ? "risky" : "safe", text: m[2] });
+    const riskTag = m[1].toLowerCase();
+    const risk = riskTag === "risky" ? "risky" : riskTag === "defaulted" ? "defaulted" : "safe";
+    assumptions.push({ risk, text: m[2] });
+  }
+  const recommendedQuestions: RecommendedQuestion[] = [];
+  for (const item of listItems(top.get("Recommended questions") ?? [])) {
+    const parts = item.split("|");
+    if (parts.length !== 2) {
+      throw new IntakeError(`Recommended question must have format "question | default": "${item}"`);
+    }
+    const [question, defaultText] = parts.map((p) => p.trim());
+    if (!question || !defaultText) {
+      throw new IntakeError(`Recommended question parts cannot be empty: "${item}"`);
+    }
+    recommendedQuestions.push({ question, default: defaultText });
   }
   const candidate = {
     tldr,
@@ -203,6 +228,8 @@ export function parseBabyPrd(markdown: string): BabyPrd {
     constraints: listItems(body.get("Constraints") ?? []),
     researchPlan: parseResearchPlan(body.get("Research plan") ?? []),
     assumptions,
+    ...(scopeValue !== undefined && scopeValue !== "" ? { scope: scopeValue } : {}),
+    ...(recommendedQuestions.length > 0 ? { recommendedQuestions } : {}),
     ...(parseRequest(top.get(REQUEST_HEADING.slice(3))) !== undefined ? { request: parseRequest(top.get(REQUEST_HEADING.slice(3))) as string } : {}),
   };
   const result = BabyPrdSchema.safeParse(candidate);
@@ -229,7 +256,7 @@ export interface BackstopResult {
   readonly upgraded: readonly string[];
 }
 
-/** Upgrades (never downgrades) `safe` assumptions whose text matches {@link RISK_SIGNALS}. */
+/** Upgrades (never downgrades) `safe` assumptions whose text matches {@link RISK_SIGNALS}. The backstop must never upgrade `defaulted`. */
 export function applyRiskBackstop(prd: BabyPrd): BackstopResult {
   const upgraded: string[] = [];
   const assumptions = prd.assumptions.map((a): Assumption => {

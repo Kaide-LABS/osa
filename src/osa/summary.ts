@@ -23,6 +23,8 @@ export interface RunSummaryInput {
   readonly stages: readonly StageNote[];
   /** Assumptions the person locked (risky first), as written in the PRD. */
   readonly lockedRiskyAssumptions: readonly string[];
+  /** Defaulted assumptions (when --yes --accept-risky is used). */
+  readonly lockedDefaultedAssumptions?: readonly string[];
   readonly specDecisions: readonly string[];
   readonly research: { readonly skipped: boolean; readonly docSources: number; readonly papers: number; readonly repos: number; readonly crossChecked: boolean; readonly degradedCheck: boolean } | null;
   /** Warnings, already phrased for people. */
@@ -50,7 +52,11 @@ export function renderRunSummary(i: RunSummaryInput): string {
     L.push("", `### Stage ${String(s.phase)}${s.ok ? "" : " (did not complete)"}`, s.summary.replace(/^## /gm, "#### ").trim());
   }
   L.push("", "## Choices made for you");
-  const choices = [...i.lockedRiskyAssumptions.map((a) => `- (you confirmed this risky one) ${a}`), ...i.specDecisions.map((d) => `- ${d}`)];
+  const choices = [
+    ...i.lockedRiskyAssumptions.map((a) => `- (you confirmed this risky one) ${a}`),
+    ...(i.lockedDefaultedAssumptions ?? []).map((a) => `- (you accepted this as-is) ${a}`),
+    ...i.specDecisions.map((d) => `- ${d}`)
+  ];
   L.push(...(choices.length === 0 ? ["- None beyond what was in the plan you locked."] : choices));
   if (i.research !== null) {
     L.push("", "## How it was checked");

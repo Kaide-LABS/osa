@@ -87,6 +87,15 @@ async function lockNow(opts: LockOptions, prd: BabyPrd): Promise<LockOutcome> {
 }
 
 /**
+ * Locks the PRD already written at `opts.prdPath` with no prompt and no refusal: the lock before research is automatic, and the person's one
+ * confirmation (which also decides on the risky assumptions) comes after the spec. The PRD hash, the lock record and `prd_locked` are the same.
+ */
+export async function autoLockBabyPrd(opts: Omit<LockOptions, "io" | "autoLockWhenNoRisky">): Promise<LockOutcome> {
+  const markdown = await readFile(repoRelToAbs(opts.repoDir, opts.prdPath), "utf8");
+  return lockNow({ ...opts, io: { show: () => undefined, choose: () => Promise.resolve("lock"), edit: () => Promise.resolve() }, autoLockWhenNoRisky: true }, parseBabyPrd(markdown));
+}
+
+/**
  * Runs the lock flow against the PRD already written at `opts.prdPath`.
  *
  * - Interactive: shows the PRD, then loops on Lock / Edit / Cancel. Edit opens the file, re-parses it
@@ -148,6 +157,84 @@ export async function lockBabyPrd(opts: LockOptions): Promise<LockOutcome> {
 export interface PinnedLock {
   readonly sha256: string;
   readonly prd_path: string;
+}
+
+/** The terminal side of the gate (show text, ask y/N). Simpler than LockIO: no edit loop. */
+export interface GateIO {
+  show(text: string): void;
+  confirm(): Promise<boolean>; // y/N, default false on empty/EOF
+}
+
+/** A {@link GateIO} backed by the older {@link LockIO}: showing is the same, and choosing "lock" is approval (anything else, including "edit", is not). */
+export function gateIoFromLockIo(io: LockIO): GateIO {
+  return { show: (text) => io.show(text), confirm: async () => (await io.choose()) === "lock" };
+}
+
+/** How the gate should behave. */
+export type GateMode =
+  | { readonly kind: "auto-lock" }
+  | { readonly kind: "unattended"; readonly acceptRisky: boolean }
+  | { readonly kind: "interactive" };
+
+/** Input of {@link runGate}. */
+export interface GateInput {
+  readonly repoDir: string;
+  readonly runId: string;
+  /** Repo-relative path of the artifact being gated (e.g., `runs/<id>/baby-prd.md`). */
+  readonly artifactPath: string;
+  /** The risky assumptions that force a human (empty = nothing risky). */
+  readonly risky: readonly Assumption[];
+  readonly io: GateIO;
+  readonly events: EventSink;
+  readonly mode: GateMode;
+}
+
+/** The three ways the gate can end. */
+export type GateOutcome =
+  | { readonly kind: "locked"; readonly sha256: string }
+  | { readonly kind: "cancelled" }
+  | { readonly kind: "refused"; readonly message: string };
+
+/** Exit code for a gate outcome (mirrors LockOutcome). */
+export function exitCodeForGateOutcome(outcome: GateOutcome): number {
+  if (outcome.kind === "locked") return ExitCode.OK;
+  return outcome.kind === "cancelled" ? ExitCode.LOCK_CANCELLED : ExitCode.PRD_LOCK_REFUSED;
+}
+
+/** Runs the generalised gate logic. */
+export async function runGate(input: GateInput): Promise<GateOutcome> {
+  const abs = repoRelToAbs(input.repoDir, input.artifactPath);
+  const content = await readFile(abs, "utf8");
+  const artifactHash = await sha256File(abs);
+
+  if (input.mode.kind === "auto-lock") {
+    // auto-lock: always lock, never refuse (risky gate moves to spec gate).
+    await input.events.emit("prd_locked", { path: input.artifactPath, sha256: artifactHash, unattended: false });
+    return { kind: "locked", sha256: artifactHash };
+  }
+
+  if (input.mode.kind === "unattended") {
+    // unattended: lock only when zero risky, otherwise refuse.
+    if (input.mode.acceptRisky === false && input.risky.length > 0) {
+      const message = `Stopped at the gate: ${String(input.risky.length)} risky assumption(s) need review. ` +
+        `Rerun with \`--accept-risky\` to proceed, or refine your prompt and try again.`;
+      await input.events.emit("prd_lock_refused", { risky: input.risky.map((a) => a.text), reason: message });
+      return { kind: "refused", message };
+    }
+    // acceptRisky===true or no risky: lock now (hands-off).
+    await input.events.emit("prd_locked", { path: input.artifactPath, sha256: artifactHash, unattended: true });
+    return { kind: "locked", sha256: artifactHash };
+  }
+
+  // interactive: show TL;DR, ask y/N.
+  input.io.show(content);
+  const confirmed = await input.io.confirm();
+  if (confirmed) {
+    await input.events.emit("prd_locked", { path: input.artifactPath, sha256: artifactHash, unattended: false });
+    return { kind: "locked", sha256: artifactHash };
+  }
+  await input.events.emit("prd_lock_cancelled", {});
+  return { kind: "cancelled" };
 }
 
 /**

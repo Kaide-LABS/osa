@@ -52,7 +52,7 @@ test("code_search over a real MCP client/server round trip returns structured co
   await client.connect(clientT);
   try {
     const tools = (await client.listTools()).tools.map((t) => t.name).sort();
-    assert.deepEqual(tools, ["code_search", "doctor", "drive", "evidence", "memory_append", "memory_read", "memory_save", "memory_search", "osa_build", "osa_plan", "osa_status", "run"]);
+    assert.deepEqual(tools, ["code_search", "doctor", "drive", "evidence", "memory_append", "memory_read", "memory_save", "memory_search", "osa_build", "osa_plan", "osa_spec", "osa_status", "run"]);
     const res = await client.callTool({ name: "code_search", arguments: { repo_dir: repoDir, query: "revoke a session", k: 2 } });
     assert.ok(res.isError !== true);
     const structured = CodeSearchToolOutput.parse(res.structuredContent);

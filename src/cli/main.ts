@@ -87,7 +87,7 @@ Commands:
                                             runDispatch() call per phase, halting on the first
                                             ambiguous or incoherent filesystem read.
   osa mcp                                   Start a local, stdio-only Model Context Protocol server
-                                            exposing osa_plan / osa_build / osa_status (the one-shot
+                                            exposing osa_plan / osa_spec / osa_build / osa_status (one-shot
                                             flow) and run/drive/doctor/evidence/code_search/memory.
   osa setup [--json]                        Register osa's own MCP server into your Claude Code
                                             configuration, at user scope.
@@ -321,7 +321,7 @@ function parseSetupArgs(rest: readonly string[]): Command {
 }
 
 /**
- * Parses the one-shot form `osa "<prompt>" [--file <path>]... [--repo-dir <path>] [--yes] [--json]`.
+ * Parses the one-shot form `osa "<prompt>" [--file <path>]... [--repo-dir <path>] [--yes] [--accept-risky] [--from-spec] [--stop-after-spec] [--json]`.
  * Every non-flag token is part of the prompt. A *single* whitespace-free token is not accepted as a prompt:
  * it is far more likely a mistyped command (`osa doctr`), and a mistyped command must stay a usage error.
  */
@@ -330,8 +330,11 @@ function parsePromptArgs(args: readonly string[], repoDirDefault: string): Comma
   const files: string[] = [];
   let repoDir = repoDirDefault;
   let yes = false;
+  let acceptRisky = false;
   let json = false;
   let build = true;
+  let fromSpec = false;
+  let stopAfterSpec = false;
   let features: FeatureFlags = {};
   for (let i = 0; i < args.length; i++) {
     const arg = args[i] as string;
@@ -341,6 +344,12 @@ function parsePromptArgs(args: readonly string[], repoDirDefault: string): Comma
       i = feature.last;
     } else if (arg === "--yes" || arg === "-y") {
       yes = true;
+    } else if (arg === "--accept-risky") {
+      acceptRisky = true;
+    } else if (arg === "--from-spec") {
+      fromSpec = true;
+    } else if (arg === "--stop-after-spec") {
+      stopAfterSpec = true;
     } else if (arg === "--json") {
       json = true;
     } else if (arg === "--spec-only") {
@@ -359,11 +368,29 @@ function parsePromptArgs(args: readonly string[], repoDirDefault: string): Comma
       words.push(arg);
     }
   }
+
+  // --accept-risky without --yes is a usage error
+  if (acceptRisky && !yes) {
+    throw new UsageError("--accept-risky is only valid with --yes.", { flag: "--accept-risky" });
+  }
+
   const prompt = words.join(" ").trim();
   if (prompt === "" || (words.length === 1 && !/\s/.test(prompt))) {
     throw new UsageError(`Unknown command: ${args.join(" ")}`, { argv: args });
   }
-  return { kind: "osa", prompt, files, repoDir: resolve(repoDir), yes, json, build, ...(Object.keys(features).length > 0 ? { features } : {}) };
+  return {
+    kind: "osa",
+    prompt,
+    files,
+    repoDir: resolve(repoDir),
+    yes,
+    json,
+    build,
+    acceptRisky,
+    fromSpec,
+    stopAfterSpec,
+    ...(Object.keys(features).length > 0 ? { features } : {})
+  };
 }
 
 /** Parses `index [--repo-dir <path>] [--json]`. */

@@ -28,6 +28,8 @@ function prd(over: Partial<BabyPrd> = {}): BabyPrd {
     constraints: [],
     researchPlan: { topic: "t", timeRange: "now", items: [{ slug: "a", title: "A", question: "Q?", modules: ["general-web"] }], docsTargets: [], academicQueries: [], priorArtQueries: [] },
     assumptions: [],
+    scope: "narrow",
+    recommendedQuestions: [],
     ...over,
   };
 }

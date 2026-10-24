@@ -1,0 +1,35 @@
+{
+  "summary": "The artifacts named in this item (PRD goal/scope, spec_assumption events / 'N spec decisions logged', research open uncertainties, unconfirmed claims, risky/defaulted lists, build-phase count, review-independence line) are internal to the OSA repo on branch feat/spec-gate at commit 67e1961. That repository is private and is not published or indexed anywhere I can reach: web search for 'One-Shot Anything', the Kaide-LABS org, and the specific identifiers (osa_plan/osa_spec/osa_build, spec-gate.json, baby-prd.md, spec_assumption) returned only unrelated OSA-named projects. [uncertain] Therefore I cannot confirm from any source I opened which of these artifacts actually exist on disk or are readable at that commit; that determination requires reading the worktree, which is outside my web-only tools. The only authoritative description of these artifacts available to me is the locked brief itself, which already enumerates them as the intended TL;DR inputs.",
+  "key_findings": [
+    "No public/web source exists for this codebase. Searches for 'OSA One-Shot Anything', the Kaide-LABS org, and the exact identifiers (spec-gate.json, baby-prd.md, osa_plan/osa_spec/osa_build, spec_assumption, prd_locked, prd_integrity_verified) matched only unrelated projects (Miosa-osa/OSA, aimclub/OSA, admax12959/OneShot, optical-networks one-shot learning). [uncertain]",
+    "The question is a repo-state question (AC8: 'TL;DR produced with no model call from existing artifacts'); it can only be answered by inspecting the run record/artifact schema at 67e1961, not by external reference material. [uncertain]",
+    "The locked brief is the sole trusted enumeration of the candidate TL;DR inputs: PRD goal/scope, spec_assumption events, research open uncertainties, unconfirmed claims, risky/defaulted assumption lists, build-phase count, and a review-independence line. These are named as targets, not confirmed as present. [uncertain]",
+    "AC8 requires a stop-and-report path if a readable TL;DR cannot be assembled, which implies the intended design treats some of these artifacts as possibly absent at assembly time rather than guaranteed. [uncertain]"
+  ],
+  "recommendations": [
+    "Resolve this item by reading the repo directly (run record event log, PRD/spec/research artifact files, and their TypeScript/zod schemas at 67e1961) rather than by any web lookup — no external source can answer it.",
+    "Treat each listed input as optional at assembly time: read PRD goal/scope from the locked PRD artifact, spec decision count and risky/defaulted lists from the spec_assumption records, open uncertainties and unconfirmed claims from the research artifact, and build-phase count from the build plan/record — but gate each behind a presence check.",
+    "Assemble the TL;DR purely by reading and formatting these existing fields (string concatenation/templating). Per the constraint and AC8, make zero model calls on the gate/TL;DR path; if any required piece is missing or unreadable, stop the run and report instead of synthesizing text.",
+    "Do not infer the artifact schema from the similarly-named public OSA/OneShot repos found in search — they are different projects and would mislead field names and shapes.",
+    "Confirm the exact event/field names (e.g. whether it is literally 'spec_assumption', the 'N spec decisions logged' string, and a 'review-independence' line) against the code before wiring them into the deterministic assembler; the brief's names may be descriptive rather than literal identifiers."
+  ],
+  "as_of": "2026-10-24",
+  "sources": [
+    {
+      "title": "GitHub search — OSA / One-Shot Anything MCP projects (no match for this repo)",
+      "url": "https://github.com/Miosa-osa/OSA",
+      "type": "repo",
+      "quote": "An AI agent for your terminal, built on signal theory — unrelated project; does not contain spec-gate.json, baby-prd.md, osa_plan/osa_spec/osa_build."
+    },
+    {
+      "title": "admax12959/OneShot Issue #14 — Assemble the build-ready spec (unrelated project)",
+      "url": "https://github.com/admax12959/OneShot/issues/14",
+      "type": "repo",
+      "quote": "Assemble the build-ready spec — name-adjacent but not the Kaide-LABS OSA repo; no matching artifact identifiers."
+    }
+  ],
+  "uncertain": [
+    "summary",
+    "key_findings"
+  ]
+}

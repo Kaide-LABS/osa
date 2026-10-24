@@ -1,0 +1,42 @@
+{
+  "summary": "The item asks for the exact exit-code-19 / --yes / accept-risky semantics currently implemented in OSA's src/*/lock.ts lockBabyPrd, and how to generalise them into a reusable artifact+hash gate for the new spec gate. This is private repository code (branch feat/spec-gate at 67e1961); I have web tools only and no file access, and web search surfaced no public source for OSA (One-Shot Anything), lock.ts, lockBabyPrd, baby-prd.md, or its exit-19 gate — the GitHub hits (Miosa-osa/OSA, aimclub/OSA, prd-os, etc.) are unrelated projects. I therefore cannot verify the current lockBabyPrd signature or branch logic from any source I opened; the exact-rules portion is unverifiable and the generalisation below is design inference from the locked brief itself, not from a cited source.",
+  "key_findings": [
+    "No public source for OSA's lock.ts / lockBabyPrd exists in web results; the repo is private, so the precise current semantics (signature, parameters, exit codes, branch order) cannot be verified from any opened source. [uncertain]",
+    "The only authoritative description of the intended gate behaviour available to me is the locked brief's acceptance criteria 10-13, which define the *target* rules (wrong/mismatched hash refused; risky-without-accept refused in the same style; --yes + >=1 risky exits code 19 with a plain-language message; --yes with only defaulted/safe proceeds; --yes --accept-risky proceeds and records every risky/defaulted item; --accept-risky without --yes is a usage error; interactive gate shows TL;DR and asks y/N, 'no' exits cleanly keeping the run folder). These are requirements, not observations of current lock.ts. [uncertain]",
+    "GitHub search returned no matching issue/PR documenting a behaviour change or bug for lockBabyPrd, so the github-debug module yields nothing citable for this symptom."
+  ],
+  "recommendations": [
+    "Do NOT treat anything in this report as the ground truth for what lockBabyPrd currently does — read src/*/lock.ts directly in the worktree at 67e1961 and extract the real signature, the order of its guard checks, and the literal exit code / message strings before refactoring. The generalisation must preserve today's observable behaviour exactly (criterion 6: prd_locked and prd_integrity_verified unchanged; criterion 10: same refusal *style* as today).",
+    "Generalise by extracting a single gate primitive that is independent of which artifact it guards. Suggested shape (adapt to the real code's conventions): a pure checkArtifactGate({ artifactPath, expectedHash, actualHash, assumptions, flags:{ yes, acceptRisky, interactive } }) -> a discriminated result union ('proceed' | 'refused-hash-mismatch' | 'refused-risky' | 'usage-error' | 'awaiting-confirmation'), with all process.exit / stdout side effects pushed to a thin caller wrapper so the decision logic is testable without a process.",
+    "Keep the hash comparison artifact-agnostic: the PRD gate compares prd_sha256; the spec gate compares both prd_sha256 and the spec-gate hash (sha256 of the sorted-path + per-file-sha256 manifest, criterion 7). The primitive should accept one or more (name, expected, actual) hash pairs and refuse if ANY mismatches, reusing the same refusal path for both gates so criterion 10's 'same refusal style' holds for free.",
+    "Encode the flag precedence once, in the primitive: --accept-risky without --yes => usage-error (criterion 12) must be rejected before any hash/risk evaluation; then hash mismatch => refuse; then (risky present && !acceptRisky) => exit 19 under --yes or the interactive refusal otherwise; defaulted/safe-only => proceed. Never let the gate itself set accept_risky (criterion 17).",
+    "Preserve exit code 19 as a named constant shared by both gates, and route the 'plain-language message', 'keep the run folder', and 'print how to change direction' behaviours (criteria 11, 13) through the caller wrapper so both PRD-lock and spec-gate callers emit identical UX.",
+    "Add no model call and no new dependency in the extracted primitive (constraints); keep it pure/deterministic so it can be unit-tested across safe/risky/defaulted assumption matrices, and ensure the backstop cannot promote 'defaulted' to 'risky' (criterion 5) lives outside this gate, upstream of it.",
+    "Because the exact current rules are unverified here, if the real lock.ts contradicts the brief's assumed semantics, stop that phase and report exactly where (per the brief's final constraint) rather than coding to this report."
+  ],
+  "as_of": "2026-10-24",
+  "sources": [
+    {
+      "title": "Miosa-osa/OSA (unrelated: Elixir/Rust terminal agent, no lock.ts/lockBabyPrd)",
+      "url": "https://github.com/Miosa-osa/OSA",
+      "type": "repo",
+      "quote": "The codebase uses Elixir and Rust, not TypeScript ... contains no mentions of lock.ts or lockBabyPrd function, baby-prd.md, spec-gate, exit code 19 or accept-risky gate logic."
+    },
+    {
+      "title": "assafkip/prd-os (unrelated PRD/DSSE Claude Code plugin surfaced by search)",
+      "url": "https://github.com/assafkip/prd-os",
+      "type": "repo",
+      "quote": "Standalone PRD + DSSE execution plugin for Claude Code ... gates them through Codex review ... with scope enforcement and receipts."
+    },
+    {
+      "title": "aimclub/OSA issue #287 (unrelated OSA docstring exit-code bug)",
+      "url": "https://github.com/aimclub/OSA/issues/287",
+      "type": "repo",
+      "quote": "bug: Incorrect Exit Code Status during Docstring Generation"
+    }
+  ],
+  "uncertain": [
+    "key_findings",
+    "summary"
+  ]
+}

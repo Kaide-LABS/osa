@@ -1,0 +1,74 @@
+{
+  "summary": "This build is locked to the `@modelcontextprotocol/sdk` package, which is the MCP TypeScript SDK v1.x maintenance line implementing the MCP spec up to 2025-11-25. For an MCP server the build uses `McpServer` (from `@modelcontextprotocol/sdk/server/mcp.js`), `registerTool()` with a Zod raw-shape `inputSchema`, `StdioServerTransport` (from `@modelcontextprotocol/sdk/server/stdio.js`), and `await server.connect(transport)`; tool handlers return `{ content: [...] }`. The SDK's only required peer is zod (it imports from `zod/v4` internally but is backward-compatible with zod >=3.25), which fits the locked dependency set (zod + @modelcontextprotocol/sdk). Note a separate v2 now exists as split packages (`@modelcontextprotocol/server` / `@modelcontextprotocol/client`); it is NOT this package and must not be adopted, since the build forbids new dependencies.",
+  "key_findings": [
+    "Package name for this build is `@modelcontextprotocol/sdk` (the v1.x line); its current published stable version is 1.32.1 as of ~Oct 2026 per the npm registry listing (not directly openable).",
+    "v1.x implements the MCP spec 'up to 2025-11-25' and is explicitly in maintenance mode; v2 (spec 2026-07-28) is a separate release shipped as `@modelcontextprotocol/server` and `@modelcontextprotocol/client`.",
+    "v1.x 'continues to receive bug fixes and security updates for at least six months after the v2 release (2026-07-27)'.",
+    "Install: `npm install @modelcontextprotocol/sdk zod` — zod is a required peer; the SDK 'internally imports from zod/v4 but maintains backwards compatibility with projects using Zod v3.25 or later'.",
+    "Server imports are deep subpath ESM specifiers with `.js` suffix: `import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';` and `import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';`.",
+    "`registerTool(name, { description, inputSchema }, handler)` takes `inputSchema` as a Zod RAW SHAPE object (e.g. `{ paramName: z.string() }`), NOT a wrapping `z.object(...)`.",
+    "Tool handlers are async and return `{ content: [{ type: 'text', text }] }` (also supports `image`/`audio` content and `isError: true`).",
+    "Server lifecycle: `const server = new McpServer({ name, version }); const transport = new StdioServerTransport(); await server.connect(transport);`."
+  ],
+  "recommendations": [
+    "Keep the dependency exactly as `@modelcontextprotocol/sdk` (v1.x); do NOT migrate to the v2 split packages `@modelcontextprotocol/server`/`@modelcontextprotocol/client`, as that would add/change dependencies, which the build forbids.",
+    "Register the four tools (osa_plan, osa_spec, osa_build, osa_status) via `registerTool` passing `inputSchema` as a Zod raw shape (plain object of zod validators), not a `z.object()` wrapper.",
+    "Return structured results from handlers as `{ content: [{ type: 'text', text }] }`; set `isError: true` for refusals (e.g. wrong spec hash, risky-without-accept) rather than throwing.",
+    "Use the exact deep-import specifiers with the `.js` extension (ESM) to satisfy Node 22+/24 TypeScript type-stripping; bare `@modelcontextprotocol/sdk` has no root export for these classes.",
+    "Keep zod at >=3.25 (or zod v4) to match the SDK's peer requirement; since zod is already an allowed dependency this needs no change.",
+    "Put the tool descriptions (relay recommended questions, show TL;DR before osa_build, never self-set accept_risky_assumptions) in the `description`/annotations passed to `registerTool`."
+  ],
+  "as_of": "2026-10-24 (SDK v1.x line; latest published v1 version reported as 1.32.1)",
+  "sources": [
+    {
+      "title": "MCP TypeScript SDK v1 documentation (overview/install)",
+      "url": "https://ts.sdk.modelcontextprotocol.io/",
+      "type": "official-docs",
+      "quote": "This documentation covers v1.x of the MCP TypeScript SDK, which implements the MCP spec up to 2025-11-25. ... npm install @modelcontextprotocol/sdk zod ... V2 is the current stable release with separate packages (@modelcontextprotocol/server and @modelcontextprotocol/client)."
+    },
+    {
+      "title": "MCP TypeScript SDK v1 quickstart (zod peer dependency)",
+      "url": "https://ts.sdk.modelcontextprotocol.io/quickstart",
+      "type": "official-docs",
+      "quote": "The SDK internally imports from zod/v4, but maintains backwards compatibility with projects using Zod v3.25 or later. ... implementing the 2025-11-25 MCP specification."
+    },
+    {
+      "title": "typescript-sdk v1.x docs/server.md (API surface)",
+      "url": "https://raw.githubusercontent.com/modelcontextprotocol/typescript-sdk/v1.x/docs/server.md",
+      "type": "official-docs",
+      "quote": "import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'; ... import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'; ... registerTool(... inputSchema: { paramName: z.string() } ...) ... return { content: [{ type: 'text', text: 'result' }] }; ... await server.connect(transport);"
+    },
+    {
+      "title": "typescript-sdk README (v1.x maintenance / v2 split)",
+      "url": "https://raw.githubusercontent.com/modelcontextprotocol/typescript-sdk/v1.x/README.md",
+      "type": "repo",
+      "quote": "This is v1.x ... continues to receive bug fixes and security updates for at least six months after the v2 release (2026-07-27). ... v2 (the current stable release) ships as separate packages: @modelcontextprotocol/server and @modelcontextprotocol/client."
+    },
+    {
+      "title": "@modelcontextprotocol/sdk - npm (version listing)",
+      "url": "https://www.npmjs.com/package/@modelcontextprotocol/sdk",
+      "type": "official-docs",
+      "quote": "The latest version is 1.32.1 ... npm i @modelcontextprotocol/sdk (npm page returned 403 to the fetcher; version read from registry search synthesis)."
+    }
+  ],
+  "current_version": "1.32.1 [uncertain] (v1.x line of @modelcontextprotocol/sdk; npm page was not directly openable, value from registry search synthesis)",
+  "api_surface": [
+    "import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'",
+    "import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'",
+    "new McpServer({ name, version })",
+    "server.registerTool(name, { description, inputSchema: <zod raw shape> }, async (inputs) => ({ content: [{ type: 'text', text }], isError? }))",
+    "await server.connect(transport)",
+    "zod as peer dependency (>=3.25 or v4) for inputSchema validation"
+  ],
+  "pitfalls": [
+    "Two distinct product lines exist: `@modelcontextprotocol/sdk` (v1.x, this build) vs the v2 split packages `@modelcontextprotocol/server`/`@modelcontextprotocol/client`; mixing them or 'upgrading' to v2 adds dependencies, which the build forbids.",
+    "v1.x is in maintenance mode and will NOT gain 2026-07-28 spec features; security updates are only guaranteed ~6 months past the v2 release (through ~2026-07-27).",
+    "`inputSchema` must be a Zod RAW SHAPE (plain object of validators), NOT a `z.object(...)` instance; passing a wrapped object is a common mistake.",
+    "Imports require the `.js` extension on deep subpaths (ESM); omitting it or importing these classes from the bare package root fails under Node 22+/24 type-stripping.",
+    "SDK imports `zod/v4` internally; a project pinned below zod 3.25 can break type/compat expectations.",
+    "Exact latest v1 patch version could not be confirmed from an opened page (npm returned 403), so treat 1.32.1 as approximate and verify against the lockfile at 67e1961."
+  ],
+  "uncertain": [
+    "current_version"
+  ]
+}

@@ -1,0 +1,50 @@
+{
+  "summary": "MCP tool handlers in the TypeScript SDK are per-call and effectively stateless: `McpServer.registerTool(name, config, handler)` validates args against a Zod `inputSchema`, runs an `async` handler, and returns `{ content, structuredContent }`. The SDK itself gives you no durability — anything that must survive a server restart (OSA's plan-request.json / mcp-result.json and background job state) has to be persisted by your own code to disk and re-read on each call, exactly so a tool like osa_status can answer from the file system rather than in-memory state. The emerging MCP 'Tasks' standard (io.modelcontextprotocol/tasks, 2026-07-28 spec; formerly the SEP-1391 'long-running operations' proposal, superseded by SEP-1686) formalizes the right shape for this: a call returns a handle immediately, work continues in the background, and the client polls a status RPC (tasks/get) until a terminal state — but the reference implementations still persist task records to an external store (Redis/QStash) because the protocol does not provide durability. For the reshape, keep that split: osa_plan/osa_spec write their request + result artifacts and launch the background job; osa_status is a pure read of persisted artifacts so a restarted server reconstructs answers from disk.",
+  "key_findings": [
+    "`registerTool(name, config, handler)` on the high-level `McpServer` class validates arguments against a Zod `inputSchema` before the handler runs; invalid args return `isError: true` and never reach the handler.",
+    "Handlers are `async` and return `{ content: [...], structuredContent?: ... }`; `structuredContent` is validated against an optional `outputSchema`. Long-running work 'works naturally' because the handler is async, but the SDK provides no built-in background/task machinery.",
+    "`registerTool` returns a `RegisteredTool` handle exposing `enable()`, `disable()`, `remove()`, and `update()` for runtime toggling — relevant if plan/spec/build tools must be gated per run.",
+    "The official SDK docs give no explicit guidance on stateful/background operations; state is 'managed at the server level outside individual handlers' — i.e., durability is the application's responsibility, not the SDK's.",
+    "MCP 'Tasks' shipped as an extension (`io.modelcontextprotocol/tasks`) with the 2026-07-28 MCP specification: a `tools/call` returns a task handle immediately, work continues in background, client polls `tasks/get`; states are `working`, `input_required`, `completed`, `failed`, `cancelled` (last three terminal), with a server-provided `pollIntervalMs`.",
+    "SEP-1391 'Long-Running Operations' (created 2025-08-26, Standards Track) proposed operation tokens plus `tools/async/status` and `tools/async/result` RPCs; it was closed and superseded by SEP-1686 (Tasks), which generalizes tasks to all JSON-RPC requests.",
+    "Durability across restarts is achieved in reference implementations (e.g. Upstash) by persisting task records to an external store (Redis) and dispatching work to a durable queue (QStash/Upstash Workflow), explicitly 'enabling survival across request boundaries and function restarts' — the protocol itself does not persist anything.",
+    "Client opt-in is required for Tasks: servers must not return task handles to clients that did not advertise task capability, and async-only tools are filtered out via protocol-version negotiation for older clients."
+  ],
+  "recommendations": [
+    "Model osa_plan/osa_spec as the write side and osa_status as a pure read side: on each call, persist plan-request.json and mcp-result.json to the run folder and reconstruct every osa_status answer by reading those artifacts, so a restarted server with empty memory still answers correctly. Do not rely on in-process maps or promises to hold job state.",
+    "Treat the background job as fire-and-detach that journals progress to disk (status + partial results) rather than holding the MCP request open; the MCP handler should return a handle/run id quickly and let osa_status report progress from persisted files — matching the standardized task-handle + poll pattern without adopting the full Tasks extension (which would add protocol surface and is unnecessary given osa_status already exists).",
+    "Keep the four-tool surface (osa_plan, osa_spec, osa_build, osa_status) and register each with its own Zod inputSchema and an outputSchema so osa_status can return structuredContent carrying awaiting_confirmation, TL;DR, risky/defaulted lists and spec_sha256 as machine-readable fields, not just text — this directly serves acceptance criteria 9 and 14.",
+    "Do NOT add Redis/QStash or any external store or new dependency: you are limited to zod and @modelcontextprotocol/sdk, so the durable store must be the existing run folder on disk. Use atomic writes (write-temp-then-rename) for plan-request.json and mcp-result.json so a crash mid-write never leaves osa_status reading a torn file.",
+    "Write a terminal-state marker into the persisted result (e.g. a status enum value in mcp-result.json) so osa_status is idempotent and distinguishes working vs completed vs failed exactly like the standard task states, without re-running any work — and with no model call, honoring the 'no new model call in the gate/TL;DR path' constraint.",
+    "Because the MCP handler is validated-then-async with no SDK-level concurrency guard, add your own per-run lock/guard on disk (the existing prd_locked / spec-gate.json mechanism) so two overlapping osa_build calls cannot both proceed; the SDK will not serialize them for you.",
+    "Avoid the SEP-1391 async RPC shape (tools/async/status, invocationMode): it is closed/superseded and unimplemented in the pinned SDK — osa_status already fills that role. Prefer plain registered tools reading persisted artifacts."
+  ],
+  "as_of": "2026-10-24; MCP Tasks per the 2026-07-28 spec; SEP-1391 closed (superseded by SEP-1686)",
+  "sources": [
+    {
+      "title": "Tools — MCP TypeScript SDK (v2 docs)",
+      "url": "https://ts.sdk.modelcontextprotocol.io/v2/servers/tools.html",
+      "type": "official-docs",
+      "quote": "Tools are registered using registerTool(name, config, handler)... Invalid arguments never reach your handler—instead, they return an error result with isError: true... The handler signature is already async, so long-running operations work naturally."
+    },
+    {
+      "title": "Tool Registration and Execution — MCP TypeScript SDK",
+      "url": "https://deepwiki.com/modelcontextprotocol/typescript-sdk/3.2-tool-registration-and-execution",
+      "type": "repo",
+      "quote": "registerTool returns a RegisteredTool handle with enable(), disable(), remove(), and update(), so you can toggle a tool at runtime."
+    },
+    {
+      "title": "MCP Tasks and Events, Explained: Long-Running Tools and Agents That Wake Up",
+      "url": "https://upstash.com/blog/mcp-tasks-and-events",
+      "type": "article",
+      "quote": "Instead of making the client wait, a server answers a tools/call right away with a task handle. The work continues in the background, and the client polls tasks/get until the task is done... Task records persist in Redis, enabling survival across request boundaries and function restarts."
+    },
+    {
+      "title": "SEP-1391: Long-Running Operations · Issue #1391 · modelcontextprotocol/modelcontextprotocol",
+      "url": "https://github.com/modelcontextprotocol/modelcontextprotocol/issues/1391",
+      "type": "repo",
+      "quote": "Status: Closed (superseded by SEP-1686)... New tools/async/status RPC method accepts operation tokens and returns status values: submitted, working, completed, canceled, failed, input_required, or unknown."
+    }
+  ],
+  "uncertain": []
+}

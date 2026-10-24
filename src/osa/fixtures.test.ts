@@ -10,8 +10,8 @@ import type { ProviderId } from "../domain/run.ts";
 import type { TextCall, TextCallResult, TextRequest } from "../ports/text-provider.ts";
 import type { FetchFn } from "../research/net/http.ts";
 
-/** A valid PRD with one safe and (optionally) one risky assumption. */
-export function samplePrd(opts: { risky?: boolean } = {}): BabyPrd {
+/** A valid PRD with one safe and (optionally) one risky assumption, or a broad PRD with scope and recommended questions. */
+export function samplePrd(opts: { risky?: boolean; broad?: boolean } = {}): BabyPrd {
   return {
     tldr: ["A small command-line tool that counts words in text files.", "You run it on a file and it prints the count.", "You will know it works when the counts match a manual count."],
     problem: "People want a quick word count without opening an editor.",
@@ -20,6 +20,11 @@ export function samplePrd(opts: { risky?: boolean } = {}): BabyPrd {
     outOfScope: ["A graphical interface"],
     acceptanceCriteria: ["Running the tool on a file with 5 words prints 5.", "A missing file prints a clear error and exits non-zero."],
     constraints: ["Node.js only", "No network access"],
+    scope: opts.broad === true ? "broad" : "narrow",
+    recommendedQuestions: opts.broad === true ? [
+      { question: "Should it count words, characters, or lines?", default: "words" },
+      { question: "How should it handle non-ASCII text?", default: "Count all characters as words if separated by whitespace" },
+    ] : [],
     researchPlan: {
       topic: "Word counting CLI",
       timeRange: "last 3 years",

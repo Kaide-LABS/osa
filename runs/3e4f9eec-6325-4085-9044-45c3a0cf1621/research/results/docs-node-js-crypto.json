@@ -1,0 +1,49 @@
+{
+  "summary": "Node.js crypto is a core module (no install; import via `require('node:crypto')` or `import ... from 'node:crypto'`) that wraps OpenSSL. For this build's needs (prd_sha256 and the spec-gate manifest hash), the relevant surface is `crypto.createHash('sha256')` plus `hash.update(...)` and `hash.digest('hex')`. The module is Stability 2 - Stable and is the right primitive for the sorted-path + per-file-sha256 manifest hashing in acceptance criteria 6 and 7. No new dependency is needed since crypto ships with Node 22+/24, matching the build's dependency constraint.",
+  "key_findings": [
+    "crypto is a built-in Node.js core module; it requires no install and is imported with `require('node:crypto')` or `await import('node:crypto')`. The docs warn Node can be built without crypto support, in which case importing throws.",
+    "Module stability is 'Stability: 2 - Stable'.",
+    "`crypto.createHash(algorithm[, options])` returns a Hash object; algorithm is a string (e.g. 'sha256'), and available algorithms depend on the platform OpenSSL and can be listed via `crypto.getHashes()`.",
+    "`hash.update(data[, inputEncoding])` accepts string | Buffer | TypedArray | DataView and can be called multiple times with new data.",
+    "`hash.digest([encoding])` returns a Buffer by default, or a string when an encoding such as 'hex' is passed; it can only be called once — after calling digest() the Hash object cannot hash more data and a second digest() call throws.",
+    "Documentation reviewed is current for Node.js v24.22.1 (LTS), within the build's Node 22+/24 target."
+  ],
+  "recommendations": [
+    "Use `createHash('sha256').update(data).digest('hex')` to produce the hex sha256 strings for prd_sha256 and per-file hashes; this matches acceptance criteria 6/7 with no new dependency.",
+    "Import from `node:crypto` (prefixed specifier) for clarity and to keep crypto usage explicit; this is a pure stdlib call with no network or child_process, so it does not touch boundary rules B1-B12.",
+    "Build the spec-gate manifest deterministically: sort file paths, hash each file, then hash the concatenation of sorted-path + per-file-sha256 — feed a single stable, canonical byte sequence into one Hash instance (or concatenate per-file digests) so the result is reproducible across runs and platforms.",
+    "Create a fresh Hash per digest; do not reuse a Hash object after calling digest() (it throws), and do not rely on mutating a shared hasher across files.",
+    "Normalize inputs before hashing (consistent string encoding, e.g. explicit 'utf8' on update for string data, and consistent newline/path separators) so the byte-for-byte round trip in criterion 4 and cross-platform Windows/Linux hashes stay equal."
+  ],
+  "as_of": "Node.js v24.22.1 (docs reviewed 2026-10-24)",
+  "sources": [
+    {
+      "title": "Crypto | Node.js v24.x Documentation",
+      "url": "https://nodejs.org/dist/latest-v24.x/docs/api/crypto.html",
+      "type": "official-docs",
+      "quote": "crypto.createHash(algorithm[, options]) ... Returns a Hash object ... Once hash.digest() method has been called, the Hash object can no longer be used to hash additional data."
+    },
+    {
+      "title": "Crypto | Node.js Documentation (crypto.html)",
+      "url": "https://nodejs.org/api/crypto.html",
+      "type": "official-docs",
+      "quote": "It is possible for Node.js to be built without including support for the node:crypto module. In such cases, attempting to import from crypto or calling require('node:crypto') will result in an error being thrown. ... Stability: 2 - Stable"
+    }
+  ],
+  "current_version": "Node.js v24.22.1 (LTS); crypto is a core module versioned with Node, Stability 2 - Stable",
+  "api_surface": [
+    "require('node:crypto') / import from 'node:crypto'",
+    "crypto.createHash('sha256') -> Hash",
+    "hash.update(data[, inputEncoding])",
+    "hash.digest('hex')",
+    "crypto.getHashes() (to confirm 'sha256' availability if needed)"
+  ],
+  "pitfalls": [
+    "hash.digest() can be called only once; calling it again, or calling update() after digest(), throws — create a new Hash per file/manifest.",
+    "crypto can be absent if Node is built without OpenSSL support; importing then throws (edge case, not typical for standard Node 22/24 builds).",
+    "digest() returns a Buffer unless an encoding ('hex') is given — omitting the encoding yields a Buffer, which would not match an expected hex string.",
+    "Available algorithms depend on the platform OpenSSL; rely on standard 'sha256' and avoid platform-specific digests to keep hashes reproducible.",
+    "String inputs are encoded per inputEncoding (default utf8); inconsistent encodings or OS-specific path separators/newlines across platforms produce different hashes — normalize inputs for the byte-for-byte round trip and cross-platform determinism."
+  ],
+  "uncertain": []
+}

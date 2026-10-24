@@ -1,0 +1,44 @@
+{
+  "summary": "The OSA repository and its internal modules (intake.ts, baby-prd.ts, the BabyPrd zod schema, and the parseBabyPrd/renderBabyPrd/counts/applyRiskBackstop functions) are not public or indexed: targeted searches for the project and these exact symbols returned nothing matching this codebase, and I have web tools only, so I cannot read the worktree at 67e1961 to describe how these files actually fit together [uncertain]. What is verifiable is the zod mechanics that make the three additions (scope, recommended_questions, the new 'defaulted' risk) losslessly addable: adding fields as optional-with-default is backward compatible, a fixed value set like risk is a z.enum you extend by adding a literal, and object parsing defaults to 'strip' (unknown keys dropped) so byte-for-byte round-trips require you NOT to rely on default-stripping and to preserve field order/formatting in renderBabyPrd. Treat the per-file interaction description as a design recommendation grounded in zod behavior, not as a verified reading of the repo.",
+  "key_findings": [
+    "Could not verify any OSA/baby-prd/intake/spec-gate source: web searches for 'OSA One-Shot Anything baby-prd intake spec-gate' and for the symbols 'applyRiskBackstop/renderBabyPrd/parseBabyPrd' returned only unrelated repos (optical-networks one-shot learning, baby-tracker parsers), indicating a private/unindexed codebase [uncertain].",
+    "zod z.enum(['safe','risky']) extends to z.enum(['safe','risky','defaulted']) by adding the string literal; existing values keep validating, so the new 'defaulted' risk is additive and does not break prior parses (zod.dev/api).",
+    "Adding an optional field with a fallback uses .default() (e.g. z.enum(['broad','narrow']) for scope, z.array(...).default([]) for recommended_questions); .parse(undefined) returns the default, so older PRDs lacking the field still parse (zod.dev/api).",
+    "Zod object parsing defaults to 'strip' — unrecognized keys are removed from the output; z.strictObject() throws on unknown keys and z.looseObject() passes them through. For a byte-for-byte render->parse round trip, scope/recommended_questions/defaulted must be explicit known fields, not unknown keys that strip would silently drop (zod.dev/api).",
+    "A per-question 'default' and a per-assumption risk value are separate concerns: recommended_questions[].default is the best-guess answer; an unanswered question becomes an assumption whose risk is 'defaulted'. Both can be modeled as optional-with-default without touching the existing 'safe'/'risky' branch (zod.dev/api; AC 3-5 of the brief).",
+    "z.default() values must be assignable to the schema's output type, and string enum arrays need `as const` (or be passed inline) for literal-type inference — relevant if scope/risk value lists are declared as variables (zod.dev/api; colinhacks/zod issue #2738)."
+  ],
+  "recommendations": [
+    "Do not treat this research as a substitute for reading the actual files: open intake.ts, baby-prd.ts and the BabyPrd zod schema in the worktree at 67e1961 before implementing, because the wiring between them (who calls counts/applyRiskBackstop, what renderBabyPrd's exact text format is) is not verifiable from any public source.",
+    "Model scope as z.enum(['broad','narrow']) and recommended_questions as z.array(questionSchema) where each question carries a default; keep both additive so a narrow prompt yields scope 'narrow' with an empty array (AC 2).",
+    "Extend the risk enum to add 'defaulted' as a third literal alongside 'safe'/'risky'; do NOT reuse 'risky' for defaulted items, so applyRiskBackstop can be written to never upgrade 'defaulted' -> 'risky' (AC 5) and counts() can tally each value separately (AC 4).",
+    "For the byte-for-byte render->parse round trip (AC 4), ensure every new field is a recognized schema key (avoid relying on strip to hide anything) and make renderBabyPrd emit the new fields in a stable, canonical order/format; verify with a round-trip test rather than trusting zod to preserve formatting — zod validates values, it does not preserve source bytes.",
+    "Prefer .default([]) / .default(...) over bare .optional() where a missing field should become a concrete value, so downstream code (counts, backstop, TL;DR assembly) never has to branch on undefined.",
+    "Avoid any new dependency and any new model call in this path (per locked constraints); all three additions are pure schema/serialization changes expressible with zod alone."
+  ],
+  "as_of": "2026-10-24; zod docs current as of this date, repo state unverified",
+  "sources": [
+    {
+      "title": "Zod — Defining schemas (API reference)",
+      "url": "https://zod.dev/api",
+      "type": "official-docs",
+      "quote": "Default (strip): unrecognized keys are stripped from the parsed result ... z.strictObject() throws on unknown keys ... z.looseObject() allows unknown keys to pass through"
+    },
+    {
+      "title": "z.enum with default give type incompatibility · Issue #2738 · colinhacks/zod",
+      "url": "https://github.com/colinhacks/zod/issues/2738",
+      "type": "repo",
+      "quote": "z.enum with a default value and TypeScript type inference interaction when the enum array is declared as a variable rather than inline/as const"
+    },
+    {
+      "title": "OSA networks one-shot learning (unrelated repo returned by search)",
+      "url": "https://github.com/carlosnatalino/osa-networks-one-shot-learning",
+      "type": "repo",
+      "quote": "One-Shot Learning for Modulation Format Identification in Evolving Optical Networks — the only 'OSA one-shot' repo surfaced, confirming the target codebase is not public"
+    }
+  ],
+  "uncertain": [
+    "summary",
+    "key_findings"
+  ]
+}

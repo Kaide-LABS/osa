@@ -75,35 +75,39 @@ test("osa '<prompt>' --yes (no risky assumptions): intake -> auto-lock -> resear
   assert.match(renderOsaRunReport(report), /Research: \d+ topic\(s\) investigated, \d+ documentation source\(s\)[\s\S]*independently checked by a second AI/);
 });
 
-test("osa --yes with a risky assumption: stops at the lock (exit 19); no research, no spec, nothing committed", async () => {
+// Gate redesign (docs/osa/CONFLICTS.md S-11): the PRD is locked automatically, and the one human decision comes after the spec, before the build.
+// These two tests replace the earlier ones, which pinned the reversed rule (refuse / cancel AT THE LOCK, before research, nothing committed).
+test("osa --yes with a risky assumption: the PRD locks automatically, research and spec run, and the run stops at the post-spec gate (exit 19) before any build", async () => {
   const repoDir = await tempGitRepo();
-  const before = git(repoDir, "rev-parse", "HEAD");
   const model = fakeModel({ prd: samplePrd({ risky: true }) });
-  const report = await runOsaCommand({ prompt: "make me a word counter", files: [], repoDir, yes: true, json: false, build: false }, deps({ textCall: model.call }));
+  const report = await runOsaCommand({ prompt: "make me a word counter", files: [], repoDir, yes: true, json: false, build: true }, deps({ textCall: model.call }));
   assert.equal(report.ok, false);
-  assert.equal(report.lock, "refused");
+  assert.equal(report.lock, "locked", "the lock before research never refuses");
   assert.equal(report.exit_code, ExitCode.PRD_LOCK_REFUSED);
-  assert.equal(report.stage, "lock");
-  assert.equal(report.research, null);
-  assert.equal(report.spec, null);
-  assert.deepEqual([...new Set(model.log.map((l) => l.purpose))], ["intake"], "no dispatch past the lock");
-  assert.equal(git(repoDir, "rev-parse", "HEAD"), before);
-  assert.match(renderOsaRunReport(report), /stopped at the lock/);
+  assert.equal(report.stage, "spec");
+  assert.notEqual(report.research, null, "research ran");
+  assert.notEqual(report.spec, null, "the spec was written");
+  assert.equal(report.build, null, "no build was started");
+  assert.match(report.problems.join(" "), /risky assumption/i);
+  assert.equal(git(repoDir, "ls-files", `runs/${RUN_ID}/spec/PHASE_1_SPEC.md`), `runs/${RUN_ID}/spec/PHASE_1_SPEC.md`, "the spec is committed so the person can read what was refused");
 });
 
-test("interactive: Cancel -> exit 22, nothing committed; Lock with a risky assumption (a knowing human choice) -> proceeds", async () => {
+test("interactive: Cancel at the post-spec gate -> exit 22, no build; Approve with a risky assumption (a knowing human choice) -> goes on to the build", async () => {
   const repoDir = await tempGitRepo();
   const prd = samplePrd({ risky: true });
-  const cancelled = await runOsaCommand({ prompt: "x y", files: [], repoDir, yes: false, json: false, build: false }, deps({ textCall: fakeModel({ prd }).call, interactive: true, io: io(["cancel"]) }));
+  const cancelled = await runOsaCommand({ prompt: "x y", files: [], repoDir, yes: false, json: false, build: true }, deps({ textCall: fakeModel({ prd }).call, interactive: true, io: io(["cancel"]) }));
   assert.equal(cancelled.exit_code, ExitCode.LOCK_CANCELLED);
-  assert.equal(cancelled.spec, null);
-  const locked = await runOsaCommand(
-    { prompt: "x y", files: [], repoDir, yes: false, json: false, build: false },
-    deps({ textCall: fakeModel({ prd }).call, interactive: true, io: io(["lock"]), runId: "22222222-2222-4222-8222-222222222222" }),
+  assert.equal(cancelled.stage, "spec");
+  assert.notEqual(cancelled.spec, null, "the spec exists; only the build was declined");
+  assert.equal(cancelled.build, null);
+  // Approval reaches the build stage: the safety-net drive of deps() refuses to run one, which proves the gate let the run through.
+  await assert.rejects(
+    runOsaCommand({ prompt: "x y", files: [], repoDir, yes: false, json: false, build: true }, deps({ textCall: fakeModel({ prd }).call, interactive: true, io: io(["lock"]), runId: "22222222-2222-4222-8222-222222222222" })),
+    /must not reach the build stage/,
   );
-  assert.equal(locked.lock, "locked");
-  assert.equal(locked.stage, "spec");
-  assert.equal(locked.assumptions.risky, 1);
+  const spec = await runOsaCommand({ prompt: "x y", files: [], repoDir, yes: false, json: false, build: false }, deps({ textCall: fakeModel({ prd }).call, interactive: true, io: io([]), runId: "33333333-3333-4333-8333-333333333333" }));
+  assert.equal(spec.lock, "locked", "a spec-only run needs no confirmation");
+  assert.equal(spec.assumptions.risky, 1);
 });
 
 test("without --yes and without a terminal, the run is refused BEFORE any model call", async () => {
@@ -153,4 +157,21 @@ test("if anything rewrites the locked PRD during research, the run hard-fails (P
     return base.call(provider, req, purpose);
   };
   await assert.rejects(runOsaCommand({ prompt: "a b", files: [], repoDir, yes: true, json: false, build: false }, deps({ textCall: tamper })), (e: unknown) => e instanceof PrdLockViolationError && e.exitCode === ExitCode.PRD_LOCK_VIOLATION);
+});
+
+test("counts() in the report correctly separates risky, safe, and defaulted assumptions", async () => {
+  const repoDir = await tempGitRepo();
+  const prd = {
+    ...samplePrd(),
+    assumptions: [
+      { text: "Safe assumption 1", risk: "safe" as const },
+      { text: "Safe assumption 2", risk: "safe" as const },
+      { text: "Risky assumption", risk: "risky" as const },
+      { text: "Defaulted assumption", risk: "defaulted" as const },
+    ],
+  };
+  const report = await runOsaCommand({ prompt: "a b", files: [], repoDir, yes: true, json: false, build: false }, deps({ textCall: fakeModel({ prd }).call }));
+  assert.equal(report.assumptions.risky, 1);
+  assert.equal(report.assumptions.safe, 2);
+  assert.equal(report.assumptions.defaulted, 1);
 });

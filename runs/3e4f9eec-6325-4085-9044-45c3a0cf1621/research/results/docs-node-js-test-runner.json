@@ -1,0 +1,59 @@
+{
+  "summary": "The `node:test` module (the built-in Node.js test runner) is marked Stability 2 - Stable since Node v20.0.0 and is available without any dependency install; it is imported only via the `node:test` scheme (e.g. `import { test, describe, it, mock } from 'node:test'`). For this build on Node 22+/24, the relevant surface — `test`/`it`/`describe`/`suite`, lifecycle hooks (`before`/`after`/`beforeEach`/`afterEach`), the `mock` object (notably `mock.fn()` for the fake textCall seam), `assert`, and the programmatic `run()` API with built-in reporters — is all stable in that version range. `npm run check` can drive it through the `node --test` CLI flag or a programmatic `run()` call, with code coverage still gated behind the experimental `--experimental-test-coverage` flag.",
+  "key_findings": [
+    "`node:test` is Stability: 2 - Stable as of Node.js v20.0.0 (initial release v18.0.0, backported to v16.17.0); confirmed on the latest docs page (v26.x) which still shows Stability 2 - Stable.",
+    "The module is ONLY available under the `node:` scheme: `import test from 'node:test'` or `const test = require('node:test')`; a bare `'test'` specifier does not resolve.",
+    "Core API: `test([name][,options][,fn])`, `it` (alias of test), `describe`/`suite`, each with `.skip()`, `.todo()`, `.only()` variants.",
+    "Lifecycle hooks: `before`, `after`, `beforeEach`, `afterEach`.",
+    "Mocking (stable): top-level `mock` object with `mock.fn()`, `mock.method()`, `mock.getter()/setter()`, `mock.module()`, `mock.reset()`, `mock.restoreAll()`, plus `mock.timers`; `MockTracker` assertion helpers like `context.assert.calledWith`-style exist.",
+    "Programmatic `run([options])` returns a stream; key options include `files`, `concurrency`, `isolation` ('process' default | 'none'), `timeout`, `watch`, `coverage`, `testNamePatterns`.",
+    "CLI flags: `--test`, `--test-name-pattern`, `--test-only`, `--test-reporter` (spec|tap|dot|junit|lcov), `--test-reporter-destination`, `--watch`; coverage via `--experimental-test-coverage`.",
+    "Built-in reporters importable from `node:test/reporters`: `spec` (default), `tap`, `dot`, `junit`, `lcov`.",
+    "Test fails => process exit code 1; subtests must settle before parent completes.",
+    "Snapshot testing stabilized around v23.4.0 (added v22.3.0); global setup/teardown added v24.0.0; test tags/randomization added in v26.x — these are newer than the Node 22/24 baseline and should not be relied on. [uncertain: exact snapshot-stable version]"
+  ],
+  "recommendations": [
+    "Use only the stable surface guaranteed on Node 22 LTS / 24: `test`/`it`/`describe`, the four lifecycle hooks, `mock.fn()` for the fake textCall seam, `assert` (node:assert), and either `node --test` or programmatic `run()` — all available with zero extra dependencies, satisfying the zod + MCP-SDK-only constraint.",
+    "Drive the suite via `node --test` (or an npm script wrapping it) and pick a deterministic reporter for `npm run check`; the default `spec` reporter is fine for green/red.",
+    "For the fake textCall seam, prefer `mock.fn()` / `mock.method()` and call `mock.reset()`/`mock.restoreAll()` (or `t.mock` on the test context) in `afterEach` to avoid cross-test leakage.",
+    "Do NOT depend on `--experimental-test-coverage`, snapshot testing, global setup/teardown, test tags, or randomization as load-bearing for the acceptance criteria — coverage is Stability 1 (experimental) and the others are either experimental or only landed after the Node 22/24 baseline.",
+    "Remember the `node:` prefix is mandatory; a plain `'test'` import will fail — ensure all test files import from `node:test`.",
+    "Since tests throw to fail and exit non-zero, rely on process exit code 1 for CI gating rather than parsing reporter output."
+  ],
+  "as_of": "Node.js v26.12.1 docs (latest) / stable since v20.0.0; verified 2026-10-24",
+  "sources": [
+    {
+      "title": "Test runner | Node.js v26.x Documentation (latest)",
+      "url": "https://nodejs.org/docs/latest/api/test.html",
+      "type": "official-docs",
+      "quote": "The node:test module is marked as Stability: 2 - Stable (as of v20.0.0)."
+    },
+    {
+      "title": "Test runner | Node.js API Documentation",
+      "url": "https://nodejs.org/api/test.html",
+      "type": "official-docs",
+      "quote": "The module is only available under the node: scheme. ... run([options]) ... isolation: 'process' (default) or 'none'."
+    }
+  ],
+  "current_version": "node:test is Stability 2 - Stable since Node.js v20.0.0; current docs reflect Node.js v26.x (v26.12.1). On the build's Node 22 LTS / 24 baseline the stable surface is fully available.",
+  "api_surface": [
+    "import { test, it, describe, suite } from 'node:test'",
+    "before / after / beforeEach / afterEach lifecycle hooks",
+    "mock.fn() / mock.method() / mock.reset() / mock.restoreAll() (and t.mock on test context) for the fake textCall seam",
+    "node:assert (strictEqual, deepStrictEqual, etc.) for assertions",
+    "run([options]) programmatic runner ({ files, concurrency, timeout, isolation, testNamePatterns })",
+    "CLI: node --test, --test-name-pattern, --test-only, --test-reporter=spec, --watch",
+    "reporters from 'node:test/reporters' (spec default, tap, dot, junit, lcov)"
+  ],
+  "pitfalls": [
+    "The `node:` prefix is mandatory; importing from bare `'test'` does not resolve to the runner.",
+    "Code coverage is still Stability 1 - Experimental behind `--experimental-test-coverage`; do not treat it as stable in the check gate.",
+    "Features such as snapshot testing (stable ~v23.4.0), global setup/teardown (v24.0.0), test tags and randomization (v26.1/26.2) landed after the Node 22 baseline — using them reduces portability across the supported 22/24 range.",
+    "Subtests must be awaited/settled before the parent test completes or they may be orphaned and silently miss assertions.",
+    "A failing test makes the process exit with code 1; relying on reporter text instead of exit code for CI gating is fragile.",
+    "`isolation: 'none'` in run()/CLI shares a single process — mocks and globals can leak between files unless reset."
+  ],
+  "uncertain": [
+    "key_findings"
+  ]
+}

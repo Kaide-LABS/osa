@@ -1,0 +1,108 @@
+# OSA research outline -- generated from the locked baby PRD. Do not hand-edit mid-run.
+topic: "OSA's intake/lock/spec gate internals and the reshaped one-shot plan/spec/build flow across CLI and MCP"
+items:
+  - slug: "docs-zod"
+    title: "Official documentation: zod"
+    question: "Find the OFFICIAL documentation for \"zod\": its current stable version, how it is installed or enabled, the API surface this build will use, and any breaking changes or pitfalls in the current repo state at 67e1961; reference material last 2 years."
+    kind: "docs"
+    modules:
+      - "general-web"
+  - slug: "docs-modelcontextprotocol-sdk"
+    title: "Official documentation: @modelcontextprotocol/sdk"
+    question: "Find the OFFICIAL documentation for \"@modelcontextprotocol/sdk\": its current stable version, how it is installed or enabled, the API surface this build will use, and any breaking changes or pitfalls in the current repo state at 67e1961; reference material last 2 years."
+    kind: "docs"
+    modules:
+      - "general-web"
+  - slug: "docs-model-context-protocol"
+    title: "Official documentation: Model Context Protocol"
+    question: "Find the OFFICIAL documentation for \"Model Context Protocol\": its current stable version, how it is installed or enabled, the API surface this build will use, and any breaking changes or pitfalls in the current repo state at 67e1961; reference material last 2 years."
+    kind: "docs"
+    modules:
+      - "general-web"
+  - slug: "docs-node-js"
+    title: "Official documentation: Node.js"
+    question: "Find the OFFICIAL documentation for \"Node.js\": its current stable version, how it is installed or enabled, the API surface this build will use, and any breaking changes or pitfalls in the current repo state at 67e1961; reference material last 2 years."
+    kind: "docs"
+    modules:
+      - "general-web"
+  - slug: "docs-typescript"
+    title: "Official documentation: TypeScript"
+    question: "Find the OFFICIAL documentation for \"TypeScript\": its current stable version, how it is installed or enabled, the API surface this build will use, and any breaking changes or pitfalls in the current repo state at 67e1961; reference material last 2 years."
+    kind: "docs"
+    modules:
+      - "general-web"
+  - slug: "docs-node-js-crypto"
+    title: "Official documentation: Node.js crypto"
+    question: "Find the OFFICIAL documentation for \"Node.js crypto\": its current stable version, how it is installed or enabled, the API surface this build will use, and any breaking changes or pitfalls in the current repo state at 67e1961; reference material last 2 years."
+    kind: "docs"
+    modules:
+      - "general-web"
+  - slug: "docs-node-js-test-runner"
+    title: "Official documentation: Node.js test runner"
+    question: "Find the OFFICIAL documentation for \"Node.js test runner\": its current stable version, how it is installed or enabled, the API surface this build will use, and any breaking changes or pitfalls in the current repo state at 67e1961; reference material last 2 years."
+    kind: "docs"
+    modules:
+      - "general-web"
+  - slug: "intake-schema-and-babyprd"
+    title: "Intake schema, baby PRD types and backstop"
+    question: "How do intake.ts, baby-prd.ts (parseBabyPrd/renderBabyPrd, counts, applyRiskBackstop) and the BabyPrd zod schema fit together so scope, recommended_questions and the 'defaulted' risk can be added losslessly?"
+    kind: "research"
+    modules:
+      - "github-debug"
+  - slug: "lock-gate-generalisation"
+    title: "lockBabyPrd gate semantics"
+    question: "What exact unattended/--yes/refused (exit 19)/accept-risky rules does lock.ts lockBabyPrd implement, and how can it be generalised into a gate over an arbitrary artifact+hash for reuse at the spec gate?"
+    kind: "research"
+    modules:
+      - "github-debug"
+  - slug: "pipeline-stages-and-resume"
+    title: "Pipeline stages, hashing and resume"
+    question: "How does pipeline.ts sequence intake/lock/research/spec with stopAfterPlan and fromDraft, how is prd_sha256 computed/verified (prd_integrity_verified), and what resume support exists (research_validated 'resumed' count)?"
+    kind: "research"
+    modules:
+      - "github-debug"
+  - slug: "spec-manifest-hashing"
+    title: "Deterministic spec-file manifest hashing"
+    question: "What is a robust way to build a sorted-path + per-file-sha256 manifest of all spec files and hash it reproducibly across platforms for the spec-gate hash?"
+    kind: "research"
+    modules:
+      - "general-web"
+      - "stackoverflow"
+  - slug: "deterministic-tldr-sources"
+    title: "Artifacts available for the deterministic TL;DR"
+    question: "Which events/artifacts (PRD goal/scope, spec_assumption / 'N spec decisions logged', research open uncertainties, unconfirmed claims, risky/defaulted lists, build-phase count, review-independence line) exist and are readable for assembling the TL;DR without a model?"
+    kind: "research"
+    modules:
+      - "github-debug"
+  - slug: "mcp-tools-and-jobs"
+    title: "MCP tool wiring and durable background jobs"
+    question: "How do src/mcp/tools/osa.ts and the server register tools, persist plan-request.json / mcp-result.json, and run background jobs so a restarted server still answers osa_status, to reshape into plan/spec/build?"
+    kind: "research"
+    modules:
+      - "github-debug"
+  - slug: "mcp-sdk-tool-contract"
+    title: "@modelcontextprotocol/sdk tool declaration"
+    question: "What is the current SDK-supported way to declare tools, their input schemas and descriptions, and return results, so osa_spec can be added and the surfaces test re-pinned?"
+    kind: "research"
+    modules:
+      - "general-web"
+  - slug: "surfaces-and-boundary-tests"
+    title: "Surfaces test and boundary scan"
+    question: "How does the surfaces test pin the tool list and how does the boundary scanner enforce B1-B12, so the tool-list assertions can be replaced and 0 violations kept?"
+    kind: "research"
+    modules:
+      - "github-debug"
+execution:
+  timeRange: "current repo state at 67e1961; reference material last 2 years"
+  batchSize: 4
+  resume: true
+  docsRequired: true
+  academic:
+    enabled: true
+    queries: []
+  githubLookup:
+    enabled: true
+    queries:
+      - "Model Context Protocol server stdio tool implementation TypeScript"
+      - "long-running background job durable status MCP tool node"
+      - "deterministic directory file manifest sha256 reproducible hash node"

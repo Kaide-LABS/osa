@@ -617,3 +617,29 @@ the top 5 on 70 queries, 30 of them held out); token savings and answer quality 
 **D-02 -- Import trusts nothing in the file.** Facts go through `saveFacts`, so import accepts and refuses exactly what `osa memory save` would (a test uses `save` itself as the oracle). Ids and dates in the file are ignored: a fresh id and the import time are used, so a file cannot overwrite or back-date a row. The cost is that a round trip does not preserve original dates. *(safe)*
 
 **D-03 -- The page is attacked, not assumed safe.** Stored facts are untrusted. The data is JSON in a non-executing script element with `<`, `>`, `&`, U+2028 and U+2029 escaped, written to the page with `textContent` only. Tests check that hostile text appears only inside the data block, that the block holds no raw angle bracket, that the page contains no network call and no `innerHTML`, and run the page's script against a stand-in DOM. The page could not be opened in a real browser while this was written (the Chrome extension was not connected), so its look is unchecked. *(open: a human glance at the layout)*
+
+**S-11 -- The one human decision moves from the lock (before research) to a confirmation after the spec, before the build.** Requested and agreed by the
+user, 2026-10-24: the lock reasoned from the raw one-shot prompt alone, so for a vague prompt ("build the next Instagram") the plan the person was asked to
+lock was generic, and a blocking gate before any work sits badly with one-shot. New rule: (1) the baby PRD is locked AUTOMATICALLY before research (same
+SHA-256, lock record, `prd_locked` event and integrity checks; it never refuses and asks nothing); (2) intake classifies the prompt `narrow` or `broad` and,
+when broad, offers up to 3 recommended questions with best-guess defaults (a nudge, not a gate); defaults the person did not answer carry the new assumption
+tag `defaulted`; (3) after research and spec the person sees a TL;DR assembled deterministically from existing artifacts (no extra model call) and approves
+once; (4) `--yes` proceeds only when no assumption is `risky` (`defaulted` ones are accepted, and always listed), otherwise exits 19 at that gate; with
+`--accept-risky` (only valid with `--yes`) it proceeds and every risky and defaulted item is recorded. Old rule, replaced: exit 19 / Cancel (22) AT THE LOCK with
+nothing researched or committed, and "no I/O after the lock". Tests replaced (the rule they pinned was reversed, not weakened): `pipeline.test.ts` "osa --yes
+with a risky assumption" and "interactive: Cancel ...", and `lock-hardening.test.ts` "NO MID-RUN QUESTIONS" (still exactly one human prompt per run and every
+model prompt still forbids questions; the prompt is now after the spec). Not changed: the PRD hash is still checked before research, around every build phase and
+at the end. Cost of the new order: a refusal or a cancel now happens after about 20 minutes of research and spec, not before them; the broad-prompt nudge exists
+to make that rare. *(risky -- changes when the person decides; reversible by restoring `lockBabyPrd` in the pipeline)*
+
+**S-12 -- The MCP flow is plan -> spec -> confirm -> build (it was plan -> confirm -> build).** Follows from S-11. `osa_plan` still runs intake only and now also returns
+`scope`, `recommended_questions` and `defaulted_assumptions` (`safe_assumptions` no longer includes defaulted ones) and accepts `answers`. New `osa_spec` locks the PRD
+automatically and runs research and spec in the background; the same background job then WAITS at the post-spec gate, so a run is one pipeline invocation, not two. While it waits,
+`osa_status` reports `awaiting_confirmation` at stage `spec` with the deterministic TL;DR, a `spec_sha256` and the risky and defaulted assumptions. `osa_build` now takes that
+`spec_sha256` (not `plan_sha256`; `spec_only` is gone) and releases the waiting run: it refuses with no spec waiting, a hash that is not the recorded one, a spec file that changed after
+the TL;DR was shown (the hash is recomputed from disk), and risky assumptions without `accept_risky_assumptions`; the tool descriptions tell the assistant never to set that flag itself.
+One run at a time per repository is kept (now enforced by `osa_spec`). A server restart while a run waits leaves it `interrupted`, as for a running build; `fromSpec`, which would
+let a restarted server resume from disk, is still a stub. Tests replaced because they pinned the reversed contract: the `osa_build` tests in `src/mcp/tools/osa.test.ts` (plan fingerprint,
+`spec_only`, one build per repository) and the tool-list pins in `src/code-index/surfaces.test.ts` and `src/mcp/server.test.ts` (now include `osa_spec`), plus the `osa_plan` next-step
+assertion about `accept_risky_assumptions` (that flag now belongs to `osa_build`). Breaking for any client that called the old two-step flow: published 0.4.x clients must move to
+plan/spec/build. *(risky -- changes the public MCP tool contract; the next release should be 0.5.0)*

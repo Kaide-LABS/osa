@@ -1,0 +1,72 @@
+{
+  "summary": "Zod is the official TypeScript-first schema validation library; the current stable line is Zod 4 (installed via `npm install zod`, zero dependencies, requires TypeScript 5.5+ with strict mode). For this build Zod 4 is already an allowed dependency and is the natural choice for validating MCP tool inputs, spec-gate.json, and PRD/assumption shapes, giving static `z.infer` types alongside runtime `.parse`/`.safeParse` validation. The main caution at repo state 67e1961 is Zod-3-to-4 breaking changes: unified `error` param (old `message`/`invalid_type_error`/`required_error`/`errorMap` deprecated or removed), two-argument `z.record`, deprecated `z.nativeEnum`/`.merge`/`z.promise`/`z.function`, and shifted `.default()`/optional and `z.coerce` input-type semantics. None of Zod's `z.enum` usage conflicts with the repo's `erasableSyntaxOnly` 'no TypeScript enums' rule, since `z.enum` is a runtime value, not a TS `enum` declaration.",
+  "key_findings": [
+    "Current stable version is Zod 4, with 4.6 noted as the latest available on the official site (as of fetch 2026-10-24).",
+    "Installation is `npm install zod`; it has zero external dependencies, ~2kb gzipped core, works in Node.js and modern browsers, and is also published on jsr.io.",
+    "Official docs state Zod requires TypeScript v5.5 or later with strict mode enabled.",
+    "Zod 4 unified error customization under a single `error` parameter: `message` is deprecated, `invalid_type_error` and `required_error` are dropped entirely, and `errorMap` was renamed to `error`.",
+    "`z.record()` now requires two arguments (key schema AND value schema); the single-argument form `z.record(z.string())` no longer works.",
+    "`z.nativeEnum()` is deprecated; `z.enum()` is overloaded to accept enum-like inputs directly. `.merge()` is deprecated in favor of `.extend()`; `z.promise()` and schema-form `z.function()` are deprecated/changed.",
+    "`.default()` behavior shifted: `z.string().default('x').optional()` now applies the default even on optional fields; `.prefault()` restores the old parse-the-default-as-input behavior.",
+    "`z.coerce` schemas now have input type `unknown` instead of the coerced type, and missing coerced object keys error unless `.default()` is set.",
+    "The `ZodType` base generic changed from three generics to two (`ZodType<Output, Input = unknown>`); the `Def` generic was removed and `z.ZodTypeAny` is no longer needed.",
+    "String-format validators were promoted to top level (`z.email()`, `z.uuid()`, `z.ipv4()`, `z.cidrv4()`, etc.); `z.string().ip()` and `.cidr()` were dropped, chained `.email()/.uuid()` are deprecated.",
+    "Zod 4 adds first-party JSON Schema conversion via `z.toJSONSchema()` and an `.overwrite()` transform that preserves the inferred type.",
+    "Reported performance gains vs Zod 3: ~14x faster string parsing, 7x array, 6.5x object parsing."
+  ],
+  "recommendations": [
+    "Author all schemas against the Zod 4 API: use the single `error` parameter for custom messages, not the removed `invalid_type_error`/`required_error` or deprecated `message`.",
+    "Write every `z.record(...)` with both key and value schemas (e.g. `z.record(z.string(), SomeSchema)`) to satisfy the Zod 4 two-argument requirement.",
+    "Validate MCP tool inputs and the spec-gate.json / assumption shapes with `z.object(...).safeParse(...)` and derive static types with `z.infer<typeof Schema>`, so refusals (wrong spec hash, risky assumption) can branch on `success`/`error` without throwing.",
+    "Model the assumption `risk` field ('safe'|'risky'|'defaulted') and the scope field ('broad'|'narrow') as `z.enum([...])` literals — this is a runtime Zod value and does NOT violate the repo's `erasableSyntaxOnly` no-TS-enum rule; avoid `z.nativeEnum`.",
+    "[removed by OSA: this line looked like an instruction aimed at an AI (governance)]",
+    "Pin zod to the 4.x line and confirm the lockfile resolves to Zod 4 (not a stray Zod 3) before relying on the above signatures; add no other dependencies per the constraint.",
+    "Avoid deprecated/removed APIs (`.merge`, `z.promise`, `z.string().ip()`, chained string-format validators, `z.ZodTypeAny` as a public type) to keep the code aligned with the stable v4 surface."
+  ],
+  "as_of": "2026-10-24; Zod 4 (site shows 4.6 latest)",
+  "sources": [
+    {
+      "title": "Zod — Introduction (official docs)",
+      "url": "https://zod.dev",
+      "type": "official-docs",
+      "quote": "Zero external dependencies ... Tiny: 2kb core bundle (gzipped) ... Zod requires TypeScript v5.5 or later with strict mode enabled."
+    },
+    {
+      "title": "Zod v4 Migration guide / changelog (official docs)",
+      "url": "https://zod.dev/v4/changelog",
+      "type": "official-docs",
+      "quote": "z.record(z.string()) no longer works; you must specify both key and value schemas ... message param is deprecated; use error instead ... invalid_type_error and required_error dropped entirely."
+    },
+    {
+      "title": "Zod v4 changelog source (colinhacks/zod repo)",
+      "url": "https://github.com/colinhacks/zod/blob/main/packages/docs/content/v4/changelog.mdx",
+      "type": "repo",
+      "quote": "Official changelog source for the Zod v4 breaking changes and migration notes."
+    }
+  ],
+  "current_version": "Zod 4 (site lists 4.6 as latest)",
+  "api_surface": [
+    "npm install zod",
+    "z.object({...}) for MCP tool input / spec-gate / PRD assumption schemas",
+    "z.string(), z.number(), z.boolean(), z.array(...)",
+    "z.enum([...]) for risk ('safe'|'risky'|'defaulted') and scope ('broad'|'narrow') literals (runtime value, not a TS enum)",
+    "z.literal(...) and z.discriminatedUnion(...) for tagged variants",
+    "Schema.parse(data) / Schema.safeParse(data) returning { success, data | error } for refusal branching",
+    "z.infer<typeof Schema> for static types",
+    "z.record(keySchema, valueSchema) — two-argument form",
+    "single `error` parameter for custom validation messages",
+    "optional/default modifiers: .optional(), .default(x), .prefault(x)"
+  ],
+  "pitfalls": [
+    "z.record single-argument form removed — must pass key and value schemas (breaking in v4).",
+    "Error API changed: invalid_type_error/required_error removed, errorMap renamed to error, message deprecated — v3 code using these breaks or warns.",
+    "z.nativeEnum deprecated; .merge deprecated (use .extend); z.promise and schema-form z.function deprecated/changed.",
+    "`.default()` now applies through `.optional()` in v4, which can inject values where v3 omitted them — relevant to byte-for-byte PRD render/parse round trips; use .prefault() for old behavior.",
+    "z.coerce schemas now have input type `unknown` and error on missing coerced keys unless .default() set.",
+    "String-format methods moved to top level; z.string().ip()/.cidr() dropped and chained .email()/.uuid() deprecated.",
+    "ZodType generics reduced to two (Output, Input); Def generic and z.ZodTypeAny removed — affects any code typing schemas generically.",
+    "Requires TypeScript 5.5+ with strict mode; older TS will mis-infer.",
+    "Do not confuse z.enum (allowed Zod runtime value) with TypeScript `enum` declarations, which the repo's erasableSyntaxOnly rule forbids."
+  ],
+  "uncertain": []
+}

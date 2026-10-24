@@ -1,0 +1,49 @@
+{
+  "summary": "The current @modelcontextprotocol/sdk (v1.x, the package OSA already depends on) declares tools via server.registerTool(name, config, handler). The config object carries title, description, a Zod inputSchema (optionally outputSchema and annotations), and the SDK auto-derives JSON Schema, validates arguments, and infers handler param types from that one Zod schema. The async handler returns { content: [{ type: 'text', text }], structuredContent?, isError? }. registerTool is the modern replacement for the deprecated server.tool()/tool() API; to add osa_spec, register it alongside osa_plan/osa_build/osa_status and re-pin the surfaces test to assert exactly those four names.",
+  "key_findings": [
+    "registerTool signature: server.registerTool(name: string, config: { title?: string; description: string; inputSchema?: ZodRawShape|ZodObject; outputSchema?; annotations?: { readOnlyHint, destructiveHint, idempotentHint, openWorldHint } }, handler: async (args) => result).",
+    "In v1.x the imports are: import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'; import { z } from 'zod'; registerTool is available from ^1.6.1 (per anthropics/skills mcp-builder reference).",
+    "The handler result shape is { content: Array<{ type: 'text'|'image'|'audio'|'resource'|'resource_link', ... }>, structuredContent?: object (must match outputSchema if given), isError?: boolean }.",
+    "A single Zod schema is the source of truth: the SDK converts it to the JSON Schema the model sees, validates args before the handler runs, and infers the handler's TypeScript arg types (via z.infer). Per-field descriptions come from .describe(); JSDoc is NOT auto-extracted.",
+    "registerTool replaces the older tool()/server.tool() API; the v2 docs note 'registerTool replaces tool()'. Both v1.x and v2 expose registerTool, so OSA can stay on the @modelcontextprotocol/sdk (v1.x) package it already has rather than switching to the v2 '@modelcontextprotocol/server' package.",
+    "Known perf caveat (issue #2838): registerTool converts Zod schemas eagerly per McpServer instance, so a stateless/per-request server re-converts every tool each request — relevant only if OSA constructs a new server per call.",
+    "The anthropics reference example uses z.nativeEnum for a format field; that relies on a runtime TS enum, which OSA's erasableSyntaxOnly/no-enums constraint forbids — use z.enum(['markdown','json']) with string literals instead."
+  ],
+  "recommendations": [
+    "Add osa_spec with server.registerTool('osa_spec', { title, description, inputSchema: z.object({...}) , annotations }, handler) using the same import path (@modelcontextprotocol/sdk/server/mcp.js) and pattern as the existing osa_plan/osa_build so no new dependency is introduced.",
+    "Define inputSchema as a z.object with per-field .describe() calls; put the 'relay recommended questions / show TL;DR before osa_build / never set accept_risky_assumptions' guidance in the tool description string (AC 17), since descriptions are the only thing the model reads.",
+    "Return results as { content: [{ type: 'text', text: JSON.stringify(payload) }] } and, if you want machine-readable output (e.g. awaiting_confirmation status, spec_sha256, risky/defaulted lists), add a matching outputSchema and structuredContent.",
+    "Do NOT use z.nativeEnum or any TS enum (erasableSyntaxOnly / no-enums); use z.enum([...]) string-literal unions for any scope/format fields.",
+    "Stay on the v1.x @modelcontextprotocol/sdk package already in deps; do not migrate to the v2 '@modelcontextprotocol/server' package, as that would be a dependency change outside the allowed set.",
+    "Re-pin the surfaces test to assert the tool list is exactly ['osa_plan','osa_spec','osa_build','osa_status'] (strict equality, replaced not weakened), matching AC 14.",
+    "Set annotations honestly (e.g. osa_spec/osa_status readOnlyHint where applicable; osa_build destructiveHint:false but openWorldHint as appropriate) so clients get correct behavior hints."
+  ],
+  "as_of": "2026-10-24; v1.x SDK registerTool confirmed from ^1.6.1, v2 docs reference MCP spec 2026-07-28.",
+  "sources": [
+    {
+      "title": "anthropics/skills — mcp-builder reference: node_mcp_server.md",
+      "url": "https://github.com/anthropics/skills/blob/main/skills/mcp-builder/reference/node_mcp_server.md",
+      "type": "repo",
+      "quote": "Use the modern registerTool() method (not deprecated APIs like server.tool())... import { McpServer } from \"@modelcontextprotocol/sdk/server/mcp.js\"; ... @modelcontextprotocol/sdk: ^1.6.1 ... return { content: [{ type: \"text\", text: JSON.stringify(output) }], structuredContent: output }"
+    },
+    {
+      "title": "MCP TypeScript SDK — Tools (v2 docs)",
+      "url": "https://ts.sdk.modelcontextprotocol.io/v2/servers/tools.html",
+      "type": "official-docs",
+      "quote": "registerTool replaces tool()—run the codemod, then see the upgrade guide. config: title?, description, inputSchema?, outputSchema?, annotations (readOnlyHint, destructiveHint, idempotentHint). Handler returns { content: [...], structuredContent?, isError? }"
+    },
+    {
+      "title": "typescript-sdk issue #2838 — registerTool converts zod schemas eagerly per McpServer instance",
+      "url": "https://github.com/modelcontextprotocol/typescript-sdk/issues/2838",
+      "type": "repo",
+      "quote": "registerTool converts zod schemas eagerly per McpServer instance, so stateless servers re-convert every tool on every request"
+    },
+    {
+      "title": "registerTool: accept ZodType<object> for input and output schema (PR #816)",
+      "url": "https://github.com/modelcontextprotocol/typescript-sdk/pull/816",
+      "type": "repo",
+      "quote": "allows any Zod schema extending ZodType<object>, which unblocks MCP servers' ability to define tool schemas that use z.union(...) and z.intersection(...)"
+    }
+  ],
+  "uncertain": []
+}

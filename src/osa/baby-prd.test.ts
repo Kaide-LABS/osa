@@ -37,7 +37,7 @@ test("parseBabyPrd round-trips empty lists via the (none) marker", () => {
 
 test("parseBabyPrd reports a hand-edit that breaks the structure in plain language (IntakeError)", () => {
   const md = renderBabyPrd(samplePrd()).replace("- [safe] Words are separated by whitespace.", "- Words are separated by whitespace.");
-  assert.throws(() => parseBabyPrd(md), (e: unknown) => e instanceof IntakeError && /\[risky\] or \[safe\]/.test(e.message));
+  assert.throws(() => parseBabyPrd(md), (e: unknown) => e instanceof IntakeError && /\[risky\], \[safe\] or \[defaulted\]/.test(e.message));
   assert.throws(() => parseBabyPrd("# nothing here"), IntakeError);
 });
 
@@ -83,4 +83,100 @@ test("the person's request is carried verbatim in the PRD and round-trips (multi
 test("an edit at the lock to the request section is what gets read back", () => {
   const md = renderBabyPrd({ ...samplePrd(), request: "old words" }).replace("> old words", "> new words, edited by the person");
   assert.equal(parseBabyPrd(md).request, "new words, edited by the person");
+});
+
+test("renderBabyPrd includes scope and recommended questions sections", () => {
+  const prd = samplePrd({ broad: true });
+  const md = renderBabyPrd(prd);
+  assert.match(md, /^## Scope$/m, "scope section exists");
+  assert.match(md, /^broad$/m, "scope value is rendered");
+  assert.match(md, /^## Recommended questions$/m, "recommended questions section exists");
+  assert.ok(md.includes("Should it count words, characters, or lines?"));
+  assert.ok(md.includes("| words"), "question and default are pipe-separated");
+});
+
+test("parseBabyPrd round-trips scope and recommended questions", () => {
+  const prd = samplePrd({ broad: true });
+  const back = parseBabyPrd(renderBabyPrd(prd));
+  assert.equal(back.scope, "broad");
+  assert.deepEqual(back.recommendedQuestions, prd.recommendedQuestions);
+});
+
+test("parseBabyPrd round-trips empty recommended questions via (none) marker", () => {
+  const prd = samplePrd({ broad: false });
+  const md = renderBabyPrd(prd);
+  assert.match(md, /## Recommended questions[\s\S]*- \(none\)/);
+  assert.deepEqual(parseBabyPrd(md).recommendedQuestions, []);
+});
+
+test("renderBabyPrd lists assumptions in order: risky, then defaulted, then safe", () => {
+  const prd = {
+    ...samplePrd(),
+    assumptions: [
+      { text: "safe one", risk: "safe" as const },
+      { text: "risky one", risk: "risky" as const },
+      { text: "defaulted one", risk: "defaulted" as const },
+    ],
+  };
+  const md = renderBabyPrd(prd);
+  const riskIdx = md.indexOf("[risky] risky one");
+  const defaultedIdx = md.indexOf("[defaulted] defaulted one");
+  const safeIdx = md.indexOf("[safe] safe one");
+  assert.ok(riskIdx < defaultedIdx && defaultedIdx < safeIdx, "order is risky, defaulted, safe");
+});
+
+test("parseBabyPrd accepts [defaulted] assumption prefix (case-insensitive)", () => {
+  const base = renderBabyPrd(samplePrd({ broad: true }));
+  const md = base.replace("## Assumptions", "## Assumptions\n- [DEFAULTED] A default assumption");
+  const prd = parseBabyPrd(md);
+  assert.ok(prd.assumptions.some((a) => a.risk === "defaulted" && a.text === "A default assumption"));
+});
+
+test("parseBabyPrd rejects recommended question with no pipe separator", () => {
+  const base = renderBabyPrd(samplePrd());
+  const bad = base.replace("Should it count words", "Should it count words");
+  // Insert a bad recommended question
+  const withBad = bad.replace("## Recommended questions\n- (none)", "## Recommended questions\n- no pipe here");
+  assert.throws(() => parseBabyPrd(withBad), (e: unknown) => e instanceof IntakeError && /format "question | default"/.test(e.message));
+});
+
+test("applyRiskBackstop never upgrades defaulted assumptions to risky, even if they contain risk signals", () => {
+  const prd = {
+    ...samplePrd(),
+    assumptions: [
+      { text: "Users log in with a password.", risk: "defaulted" as const },
+      { text: "We store API keys securely.", risk: "defaulted" as const },
+    ],
+  };
+  const { prd: out } = applyRiskBackstop(prd);
+  assert.ok(out.assumptions.every((a) => a.risk !== "risky"), "no defaulted assumptions upgraded to risky");
+  assert.deepEqual(
+    out.assumptions,
+    prd.assumptions,
+    "defaulted assumptions unchanged",
+  );
+});
+
+test("renderBabyPrd output with all three risk values and broad scope round-trips byte-for-byte through parse", () => {
+  const prd = {
+    ...samplePrd({ broad: true }),
+    assumptions: [
+      { text: "safe one", risk: "safe" as const },
+      { text: "risky one", risk: "risky" as const },
+      { text: "defaulted one", risk: "defaulted" as const },
+    ],
+  };
+  const rendered1 = renderBabyPrd(prd);
+  const parsed = parseBabyPrd(rendered1);
+  const rendered2 = renderBabyPrd(parsed);
+  assert.equal(rendered2, rendered1, "renderBabyPrd(parseBabyPrd(renderBabyPrd(prd))) is byte-identical to renderBabyPrd(prd)");
+});
+
+test("parseBabyPrd rejects an invalid Scope value via schema validation", () => {
+  const base = renderBabyPrd(samplePrd({ broad: true }));
+  const withInvalidScope = base.replace(/^## Scope\nbroad$/m, "## Scope\ninvalid-scope");
+  assert.throws(
+    () => parseBabyPrd(withInvalidScope),
+    (e: unknown) => e instanceof IntakeError && /not valid/.test(e.message),
+  );
 });

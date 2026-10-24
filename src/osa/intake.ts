@@ -29,6 +29,8 @@ export interface IntakeInput {
   readonly maxItems: number;
   /** `intake.quoteStatedRules` (default false): ask for, verify and append the person's stated rules as acceptance criteria. */
   readonly quoteStatedRules?: boolean;
+  /** Answers to recommended questions, keyed by the question text. When present, appended as clarifications. */
+  readonly answers?: Readonly<Record<string, string>>;
 }
 
 /** Collaborators of {@link runIntake}. */
@@ -68,6 +70,8 @@ const SCHEMA_DESCRIPTION = `{
   "outOfScope": ["string"],
   "acceptanceCriteria": ["falsifiable, checkable statements; each can be answered yes/no by running or inspecting the result"],
   "constraints": ["stack, deadlines, data rules"],
+  "scope": "narrow | broad -- 'broad' when the prompt is vague/open-ended (e.g. 'build the next Instagram'), 'narrow' when it is specific enough to build from",
+  "recommendedQuestions": [{ "question": "a short question whose answer would most change the build", "default": "your single best-guess answer, used as-is if the person does not answer" }],
   "researchPlan": {
     "topic": "string",
     "timeRange": "e.g. last 3 years",
@@ -100,6 +104,9 @@ export function buildIntakePrompt(input: IntakeInput, retryNote: string | null =
     "- The TL;DR is for a non-engineer: no jargon, 3 to 5 lines.",
     "- Acceptance criteria must be falsifiable (answerable yes/no by running or inspecting the result); avoid vague words like 'fast' or 'nice'.",
     "  Do NOT write numbers or bullets at the start of any list item: numbering is added for you.",
+    "- Scope: classify as 'narrow' when the prompt is specific enough to build from, or 'broad' when it is vague/open-ended.",
+    "  When broad, provide up to 3 recommended questions -- questions whose answers would most change the build -- each with a best-guess default.",
+    "  These are nudges, not blockers: the build proceeds on the defaults unless answered.",
     `- Research plan: at most ${String(input.maxItems)} items. This plan is settled NOW; nothing will be asked later, so choose the outline,`,
     "  the time range and the modules yourself. Always list the official-docs targets for every named technology.",
     "- Links in the prompt that you cannot open are NOT to be guessed at: record an assumption saying so.",
@@ -123,6 +130,13 @@ export function buildIntakePrompt(input: IntakeInput, retryNote: string | null =
       "=== PROJECT MEMORY (decisions and conventions from earlier runs on this project; use them to choose assumptions) ===",
       wrapUntrusted({ kind: "project memory (facts written by earlier runs)", provenance: ".osa/memory", text: neutralizeInstructions(input.memory.trim(), { grow: false }).text }),
     );
+  }
+  if (input.answers !== undefined && Object.keys(input.answers).length > 0) {
+    lines.push("", "=== CLARIFICATIONS FROM THE PERSON ===", "Clarifications from the person:");
+    for (const [question, answer] of Object.entries(input.answers)) {
+      lines.push(`- ${question}: ${answer}`);
+    }
+    lines.push("Treat each clarification as a stated requirement, not an assumption.");
   }
   if (retryNote !== null) {
     lines.push("", "=== YOUR PREVIOUS REPLY WAS REJECTED ===", retryNote, "Fix every problem and reply with the corrected JSON object only.");
@@ -228,7 +242,7 @@ export function stripListMarker(s: string): string {
   return s.replace(LEADING_MARKER, "").trim();
 }
 
-/** Makes slugs unique, strips stray list markers, and enforces the research-item cap (truncation becomes a safe assumption). */
+/** Makes slugs unique, strips stray list markers, enforces the research-item cap (truncation becomes a safe assumption), and normalises scope/recommendedQuestions. */
 function normalisePlan(raw: BabyPrd, maxItems: number): BabyPrd {
   const prd: BabyPrd = {
     ...raw,
@@ -237,6 +251,8 @@ function normalisePlan(raw: BabyPrd, maxItems: number): BabyPrd {
     outOfScope: raw.outOfScope.map(stripListMarker),
     acceptanceCriteria: raw.acceptanceCriteria.map(stripListMarker),
     constraints: raw.constraints.map(stripListMarker),
+    // When scope is narrow, clear recommended questions. When broad, truncate to 3.
+    recommendedQuestions: raw.scope === "narrow" ? [] : raw.recommendedQuestions.slice(0, 3),
   };
   const seen = new Set<string>();
   const items = prd.researchPlan.items.map((it) => {
@@ -288,14 +304,24 @@ export async function runIntake(input: IntakeInput, deps: IntakeDeps): Promise<I
       const { prd: backstopped, upgraded } = applyRiskBackstop(normalisePlan(parsed, input.maxItems));
       const withReq = withRequest(backstopped, input.prompt);
       const tagged = input.quoteStatedRules === true ? withStatedRequirements(withReq, verifiedQuotes(input.prompt, quotes)) : withReq;
+
+      // Derive defaulted assumptions for unanswered recommended questions.
+      const answeredQuestions = new Set(Object.keys(input.answers ?? {}));
+      const defaultedAssumptions = tagged.recommendedQuestions
+        .filter((q) => !answeredQuestions.has(q.question))
+        .map((q) => ({ text: q.default, risk: "defaulted" as const }));
+
+      const withDefaulted = { ...tagged, assumptions: [...tagged.assumptions, ...defaultedAssumptions] };
+
       await deps.events.emit("assumptions_generated", {
-        total: tagged.assumptions.length,
-        risky: tagged.assumptions.filter((a) => a.risk === "risky").length,
-        safe: tagged.assumptions.filter((a) => a.risk === "safe").length,
+        total: withDefaulted.assumptions.length,
+        risky: withDefaulted.assumptions.filter((a) => a.risk === "risky").length,
+        safe: withDefaulted.assumptions.filter((a) => a.risk === "safe").length,
+        defaulted: withDefaulted.assumptions.filter((a) => a.risk === "defaulted").length,
         upgradedByBackstop: upgraded.length,
         provider: deps.provider,
       });
-      return { prd: tagged, upgraded };
+      return { prd: withDefaulted, upgraded };
     } catch (err) {
       lastError = err instanceof Error ? err.message : String(err);
       retryNote = lastError;
