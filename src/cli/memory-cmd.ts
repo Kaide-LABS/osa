@@ -13,7 +13,14 @@ export type MemoryCommandOptions =
   | { readonly sub: "show"; readonly repoDir: string; readonly json: boolean }
   | { readonly sub: "search"; readonly query: string; readonly project: string | null; readonly limit: number; readonly json: boolean }
   | { readonly sub: "save"; readonly text: string; readonly project: string | null; readonly factKind: Kind; readonly json: boolean }
-  | { readonly sub: "forget"; readonly project: string | null; readonly all: boolean; readonly yes: boolean; readonly json: boolean };
+  | { readonly sub: "forget"; readonly project: string | null; readonly all: boolean; readonly yes: boolean; readonly json: boolean }
+  | { readonly sub: "dashboard"; readonly out: string | null; readonly project: string | null; readonly json: boolean }
+  | { readonly sub: "export"; readonly out: string | null; readonly project: string | null; readonly json: boolean }
+  | { readonly sub: "import"; readonly file: string; readonly project: string | null; readonly json: boolean };
+
+/** Where the dashboard and the export go when no `--out` is given: the current folder, so the person can find them. */
+export const DEFAULT_DASHBOARD_FILE = "osa-memory-dashboard.html";
+export const DEFAULT_EXPORT_FILE = "osa-memory-export.json";
 
 /** The project-memory view: print `.osa/memory` for the repo. Unchanged from the original `osa memory`. */
 async function runShow(opts: { readonly repoDir: string; readonly json: boolean }): Promise<{ text: string; exitCode: number }> {
@@ -32,6 +39,26 @@ async function runShow(opts: { readonly repoDir: string; readonly json: boolean 
 /** Dispatches `osa memory [search|save|forget|<show>]`. */
 export async function runMemoryCommand(opts: MemoryCommandOptions): Promise<{ text: string; exitCode: number }> {
   if (opts.sub === "show") return runShow(opts);
+
+  if (opts.sub === "dashboard" || opts.sub === "export" || opts.sub === "import") {
+    // Lazy, like the store itself: neither the page renderer nor node:sqlite loads unless one of these runs.
+    const dash = await import("../memory/global/dashboard.ts");
+    const { readFile, writeFile } = await import("node:fs/promises");
+    const { resolve } = await import("node:path");
+    const { pathToFileURL } = await import("node:url");
+    if (opts.sub === "import") {
+      const r = dash.importExport(await readFile(opts.file, "utf8"), opts.project !== null ? { project: opts.project } : {});
+      if (opts.json) return { text: `${JSON.stringify(r, null, 2)}\n`, exitCode: ExitCode.OK };
+      const refused = r.refused === 0 ? "" : ` ${String(r.refused)} were refused by the same checks as \`osa memory save\` (a secret, an instruction, hidden text or a bad label) and were not stored.`;
+      return { text: `Imported ${String(r.total)} fact(s): ${String(r.saved)} new, ${String(r.deduped)} already present.${refused}\n`, exitCode: ExitCode.OK };
+    }
+    const data = dash.readDashboardData(opts.project !== null ? { project: opts.project, ...(opts.sub === "export" ? { limit: 1_000_000 } : {}) } : opts.sub === "export" ? { limit: 1_000_000 } : {});
+    const target = resolve(opts.out ?? (opts.sub === "dashboard" ? DEFAULT_DASHBOARD_FILE : DEFAULT_EXPORT_FILE));
+    await writeFile(target, opts.sub === "dashboard" ? dash.renderDashboard(data) : `${JSON.stringify(dash.buildExport(data), null, 2)}\n`, "utf8");
+    if (opts.json) return { text: `${JSON.stringify({ file: target, facts: data.facts.length, total: data.total, projects: data.projects.length }, null, 2)}\n`, exitCode: ExitCode.OK };
+    const where = opts.sub === "dashboard" ? `Open it in a browser: ${pathToFileURL(target).href}` : "Move it to another machine and run `osa memory import <file>` there.";
+    return { text: `Wrote ${opts.sub === "dashboard" ? "the memory dashboard" : "the export"} (${String(data.facts.length)} fact(s), ${String(data.projects.length)} project(s)) to ${target}\n${where}\n`, exitCode: ExitCode.OK };
+  }
 
   // Lazy: the global store (and node:sqlite) loads only when a global subcommand runs.
   const { saveFact, searchMemory, forgetMemory } = await import("../memory/global/memory.ts");
