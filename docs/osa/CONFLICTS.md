@@ -397,6 +397,35 @@ could not be run live here (no endpoint or key), only against a fake embeddings 
 The embeddings client lives in `src/research/net/` (the one network-exempt directory, held to B9) and contacts only the configured host. No
 dependency was added. *(risky -- unverified live)*
 
+## Added during memory phase 1 (global memory store, save/search/forget)
+
+**M-01 -- The redactor reuses secrets.ts's rule list but needs spans, which `findSecret` does not give.** `findSecret`
+returns one reason for the whole text, not match offsets. `src/memory/global/redact.ts` therefore mirrors the same rule
+patterns as global (span-finding) regexes to replace each secret-shaped span with `[redacted:<reason>]`, and then uses
+`findSecret` itself as the authoritative final gate: `saveFact` refuses any text on which `findSecret` still fires after
+redaction, so nothing secret-shaped can reach the table or the FTS index even if a span rule has a gap. `findSecret`'s
+own behaviour is unchanged. *(safe)*
+
+**M-02 -- `osa memory` gained subcommands; its options type became a discriminated union.** The existing `osa memory`
+(project-memory view) is preserved as `sub: "show"`; `search`/`save`/`forget` are added. The one existing test that
+called `runMemoryCommand({ repoDir, json })` now passes `{ sub: "show", repoDir, json }` -- an API-shape update, every
+assertion unchanged. The fact `kind` flag is carried as `factKind` in the parsed command so it does not collide with the
+`Command` union's own `kind` discriminator. *(safe)*
+
+**M-03 -- The two pinned MCP tool-set tests were extended by two names.** `src/mcp/server.test.ts` and
+`src/code-index/surfaces.test.ts` each asserted the exact registered-tool set; both now include `memory_save` and
+`memory_search`. As with C-28/C-30 this is a faithful extension of a pinned set to cover the new feature, not a
+weakening -- it is still an exact-set equality. *(safe)*
+
+**M-04 -- The global store (and `node:sqlite`) is loaded only through dynamic `import()`.** The MCP tool handlers and the
+CLI run function import `src/memory/global/memory.ts` lazily, so with memory unused no global-memory module is reachable
+from any entry point's static import graph (FM-I, proved by `src/memory/global/import-graph.test.ts`). The existing
+plug-in invariant test (`src/osa/modular-features.test.ts`) is untouched and still passes. *(safe)*
+
+**M-05 -- A fact with no project is stored under the project `default`.** The CLI's `--project` is optional for `save`;
+an absent or blank project becomes `"default"` rather than being rejected, so a quick `osa memory save "..."` works.
+*(safe)*
+
 **S-09 -- The CBM engine runs ranked, with a query rewrite, instead of abstaining.** Requested: optimise codebase-memory-mcp rather than accept the earlier
 negative result. Findings (docs/osa/CBM_NOTES.md section 6): the earlier tuning optimised "confident-wrong <= 2%" by abstaining on 65% of questions;
 CBM's text-search channel alone beat the fused engine; and the question was never translated into code vocabulary. The engine now defaults to

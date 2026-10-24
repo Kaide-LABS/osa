@@ -52,6 +52,12 @@ Code index:
 Project memory:
   osa memory [--repo-dir <path>] [--json]   Show what OSA remembers about this project (.osa/memory).
 
+Global memory (one store at ~/.osa/memory.db, shared across projects; override with OSA_MEMORY_DB):
+  osa memory search <query> [--project p] [--limit n] [--json]   Find stored facts, ranked (FTS5 bm25).
+  osa memory save <text> [--project p] [--kind fact|decision|note] [--json]
+                                            Store a fact; secret-shaped spans are redacted and reported.
+  osa memory forget --project p | --all [--yes] [--json]         Purge a project or everything (--all needs --yes).
+
 Optional plug-ins (each has one switch; OFF means none of its code runs):
   osa cbm install [--dir <path>] [--harden] [--write-config]   Download, verify and test the pinned codebase-memory-mcp (opt-in code search);
   osa cbm status [--repo-dir <path>] [--json]        check it is installed, the right version, and can start
@@ -361,8 +367,72 @@ function parseIndexArgs(rest: readonly string[]): Command {
   return { kind: "index", repoDir: resolve(repoDir), json };
 }
 
-/** Parses `memory [--repo-dir <path>] [--json]`. */
+const MEMORY_KINDS = ["fact", "decision", "note"] as const;
+
+/**
+ * Parses `memory` and its subcommands:
+ *   osa memory [--repo-dir <path>] [--json]                      (project-memory view, unchanged)
+ *   osa memory search <query> [--project p] [--limit n] [--json]
+ *   osa memory save <text> [--project p] [--kind fact|decision|note] [--json]
+ *   osa memory forget --project p | --all [--yes] [--json]
+ * Every non-flag token of `search`/`save` is part of the query/text. Unknown flags are never ignored.
+ */
 function parseMemoryArgs(rest: readonly string[]): Command {
+  const sub = rest[0];
+
+  if (sub === "search" || sub === "save") {
+    const words: string[] = [];
+    let project: string | null = null;
+    let limit = 20;
+    let kind: (typeof MEMORY_KINDS)[number] = "fact";
+    let json = false;
+    for (let i = 1; i < rest.length; i++) {
+      const arg = rest[i] as string;
+      if (arg === "--json") json = true;
+      else if (arg === "--project" || arg === "--limit" || arg === "--kind") {
+        const v = rest[i + 1];
+        if (v === undefined) throw new UsageError(`memory ${sub} ${arg} requires a value.`, { flag: arg });
+        if (arg === "--project") project = v;
+        else if (arg === "--limit") {
+          if (sub !== "search") throw new UsageError(`Unknown flag for memory ${sub}: --limit`, { flag: arg });
+          const n = Number(v);
+          if (!Number.isInteger(n) || n < 1 || n > 100) throw new UsageError("memory search --limit must be an integer from 1 to 100.", { flag: arg });
+          limit = n;
+        } else {
+          if (sub !== "save") throw new UsageError(`Unknown flag for memory ${sub}: --kind`, { flag: arg });
+          if (!(MEMORY_KINDS as readonly string[]).includes(v)) throw new UsageError(`memory save --kind must be one of: ${MEMORY_KINDS.join(", ")}.`, { flag: arg });
+          kind = v as (typeof MEMORY_KINDS)[number];
+        }
+        i += 1;
+      } else if (arg.startsWith("-")) throw new UsageError(`Unknown flag for memory ${sub}: ${arg}`, { flag: arg });
+      else words.push(arg);
+    }
+    const body = words.join(" ").trim();
+    if (body === "") throw new UsageError(`memory ${sub} requires ${sub === "search" ? "a query" : "the fact text"}.`, { argv: rest });
+    return sub === "search" ? { kind: "memory", sub: "search", query: body, project, limit, json } : { kind: "memory", sub: "save", text: body, project, factKind: kind, json };
+  }
+
+  if (sub === "forget") {
+    let project: string | null = null;
+    let all = false;
+    let yes = false;
+    let json = false;
+    for (let i = 1; i < rest.length; i++) {
+      const arg = rest[i] as string;
+      if (arg === "--json") json = true;
+      else if (arg === "--all") all = true;
+      else if (arg === "--yes" || arg === "-y") yes = true;
+      else if (arg === "--project") {
+        const v = rest[i + 1];
+        if (v === undefined) throw new UsageError("memory forget --project requires a value.", { flag: arg });
+        project = v;
+        i += 1;
+      } else throw new UsageError(`Unknown flag for memory forget: ${arg}`, { flag: arg });
+    }
+    return { kind: "memory", sub: "forget", project, all, yes, json };
+  }
+
+  // No (or unknown) subcommand: the project-memory view.
   let repoDir = process.cwd();
   let json = false;
   for (let i = 0; i < rest.length; i++) {
@@ -375,7 +445,7 @@ function parseMemoryArgs(rest: readonly string[]): Command {
       i += 1;
     } else throw new UsageError(`Unknown flag for memory: ${String(arg)}`, { flag: arg });
   }
-  return { kind: "memory", repoDir: resolve(repoDir), json };
+  return { kind: "memory", sub: "show", repoDir: resolve(repoDir), json };
 }
 
 /** Parses `search "<query>" [-k <n>] [--repo-dir <path>] [--no-refresh] [--json]`. */
