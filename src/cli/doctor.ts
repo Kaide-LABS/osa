@@ -16,8 +16,9 @@ import type { BoundaryViolation } from "../verify/boundary.ts";
 import { listScannedSourceFiles, scanBoundary } from "../verify/boundary.ts";
 import type { BuildFreshness } from "../verify/build-stamp.ts";
 import { checkBuildFreshness } from "../verify/build-stamp.ts";
-import type { ToolCheck } from "../verify/preflight.ts";
+import type { PreflightSummary, ToolCheck } from "../verify/preflight.ts";
 import { MIN_HEALTHY_PROVIDERS, experimentalProviderWarnings, runPreflight } from "../verify/preflight.ts";
+import type { ProviderProbe } from "../osa/seats.ts";
 import { acquireRunLock, releaseRunLock } from "../util/lock.ts";
 import { loadOsaConfig } from "../util/config-file.ts";
 import { applyFeatureFlags, describeFeatures } from "../features/features.ts";
@@ -98,6 +99,11 @@ export type DoctorReport = z.infer<typeof DoctorReport>;
 export interface DoctorOptions {
   readonly json: boolean;
   readonly only: "all" | "boundary" | "providers";
+  /**
+   * Check each provider that passed the static checks with ONE real, tiny call (`--live`). Without it a login is judged from what is on disk, which
+   * cannot tell a live session from an expired one. Costs a few seconds and a tiny request on each provider's own quota. Default off.
+   */
+  readonly live?: boolean;
   /** Per-command overrides of the optional plug-ins (`--index-engine`, `--trim` / `--no-trim`, `--quote-stated-rules`). */
   readonly features?: FeatureFlags;
 }
@@ -136,6 +142,61 @@ const CREDENTIAL_LOOKING_PATTERN = /(sk-|ghp_|xoxb-)[A-Za-z0-9_-]+/g;
 function redactExcerpt(excerpt: string): string {
   const redacted = excerpt.replace(CREDENTIAL_LOOKING_PATTERN, "***REDACTED***");
   return redacted.length > 200 ? redacted.slice(0, 200) : redacted;
+}
+
+const AUTH_LIKE = /auth|log ?in|sign ?in|credential|token|unauthori[sz]ed|\b40[13]\b/i;
+// Boundary rule B6 forbids spelling the Claude Code and Codex sign-in commands anywhere in src/ (OSA observes credentials, never sets them up), so
+// those two get the generic pointer to the CLI's own help; Antigravity has no such rule and gets the concrete step.
+const SIGN_IN_HINT: Partial<Record<PreflightReport["provider"], string>> = {
+  "antigravity-cli": "Sign in again: run `agy` once in a terminal and finish the Google sign-in.",
+};
+const GENERIC_SIGN_IN_HINT = "Sign in again using that CLI's own sign-in (see its --help).";
+
+/** One line of a provider's failure, with links removed (a sign-in URL is long and useless in a report) and a length cap. Pure. */
+function plainFailure(message: string): string {
+  const one = message.replace(/https?:\/\/\S+/g, "<link>").replace(/\s+/g, " ").trim();
+  return one.length > 160 ? `${one.slice(0, 157)}...` : one;
+}
+
+/**
+ * `--live`: asks every provider that passed the static checks one tiny real question. A provider that cannot answer is NOT healthy, whatever its saved
+ * login file says (found because Antigravity showed as authenticated, from a `refresh_token` on disk, while a real call answered "Authentication
+ * required"). A sign-in hint is added only when the failure reads like a sign-in problem. Providers are asked in parallel; a probe that throws counts as
+ * a failure, never a crash.
+ */
+async function applyLiveChecks(reports: readonly PreflightReport[], probe: ProviderProbe): Promise<{ readonly reports: PreflightReport[]; readonly failures: string[] }> {
+  const failures: string[] = [];
+  const checked = await Promise.all(
+    reports.map(async (r): Promise<PreflightReport> => {
+      if (!r.cliFound || !r.versionInRange || r.problems.length > 0) return r;
+      let message: string | null;
+      try {
+        message = await probe(r.provider);
+      } catch (e) {
+        message = e instanceof Error ? e.message : String(e);
+      }
+      if (message === null) return r;
+      const why = plainFailure(message);
+      // Only a failure that reads like a sign-in problem is called "unauthenticated". A timeout or an odd reply says nothing about the login (the
+      // calls run in parallel and a slow CLI can run out of time), so it is "indeterminate" -- the same honest state the rest of doctor uses.
+      const signIn = AUTH_LIKE.test(message);
+      const hint = signIn ? (SIGN_IN_HINT[r.provider] ?? GENERIC_SIGN_IN_HINT) : "This is not a confirmed sign-in failure; run the CLI once by hand to see why.";
+      const problem = `${r.provider}: a real test call failed (${why}). ${hint}`;
+      failures.push(problem);
+      return { ...r, authenticated: false, authState: signIn ? "unauthenticated" : "indeterminate", problems: [problem] };
+    }),
+  );
+  return { reports: checked, failures };
+}
+
+/**
+ * Without `--live`, a provider whose login is judged only from a saved file or an environment variable cannot be told from an expired one. Say so,
+ * for exactly those providers (the others answer a real status query of their own CLI). Pure.
+ */
+function unverifiedLoginWarnings(reports: readonly PreflightReport[]): string[] {
+  return reports
+    .filter((r) => (r.provider === "antigravity-cli" || r.provider === "copilot-cli") && r.cliFound && r.authenticated)
+    .map((r) => `${r.provider}: the sign-in is judged from a saved login file or key, not checked with a real call, so an expired login still shows as authenticated. Run \`osa doctor --live\` to confirm it works.`);
 }
 
 /**
@@ -215,7 +276,7 @@ function computeExitCode(input: {
 export async function runDoctor(
   repoRoot: string,
   opts: DoctorOptions,
-  deps: { readonly buildCheck?: () => BuildFreshness } = {},
+  deps: { readonly buildCheck?: () => BuildFreshness; readonly preflightFn?: (repoDir: string) => Promise<PreflightSummary>; readonly liveProbe?: ProviderProbe } = {},
 ): Promise<{ report: DoctorReport; exitCode: number }> {
   const generatedAt = new Date().toISOString();
   const problems: string[] = [];
@@ -230,12 +291,31 @@ export async function runDoctor(
   let providerWarnings: readonly string[] = [];
 
   if (runProviders) {
-    const summary = await runPreflight(repoRoot);
+    const summary = await (deps.preflightFn ?? runPreflight)(repoRoot);
     toolchainNode = summary.node;
     toolchainGit = summary.git;
     providerReports = summary.providers;
     problems.push(...summary.problems);
-    providerWarnings = summary.warnings ?? [];
+    const pw = [...(summary.warnings ?? [])];
+    if (opts.live === true) {
+      // Loaded only here: the quick doctor never pulls in the adapters that make a real call.
+      // Two minutes each: the calls run in parallel, and Antigravity alone takes up to ~15 s for the smallest question.
+      const probe = deps.liveProbe ?? (await import("../osa/seats.ts")).liveProbe({ cwd: repoRoot, timeoutMs: 120_000 });
+      const live = await applyLiveChecks(providerReports, probe);
+      providerReports = live.reports;
+      if (live.failures.length > 0) {
+        const healthy = providerReports.filter((p) => p.problems.length === 0).length;
+        if (healthy >= MIN_HEALTHY_PROVIDERS) pw.push(...live.failures);
+        else
+          problems.push(
+            ...live.failures,
+            `${String(healthy)} providers are usable; at least ${String(MIN_HEALTHY_PROVIDERS)} is required. Install and sign in to one of Claude Code, Codex CLI, Antigravity CLI, OpenCode or GitHub Copilot CLI.`,
+          );
+      }
+    } else {
+      pw.push(...unverifiedLoginWarnings(providerReports));
+    }
+    providerWarnings = pw;
   }
 
   let boundaryFilesScanned = 0;
