@@ -149,7 +149,7 @@ export interface OsaRunReport {
   readonly lock: "locked" | "cancelled" | "refused" | "not-reached";
   readonly prd_path: string | null;
   readonly prd_sha256: string | null;
-  readonly assumptions: { readonly risky: number; readonly safe: number };
+  readonly assumptions: { readonly risky: number; readonly safe: number; readonly defaulted: number };
   /** Research summary, `null` until the research stage has run. */
   readonly research: { readonly skipped: boolean; readonly items: number; readonly docSources: number; readonly papers: number; readonly repos: number; readonly crossChecked: boolean } | null;
   /** Spec artifacts, `null` until the spec stage has run. */
@@ -193,9 +193,11 @@ async function readAttachments(repoDir: string, files: readonly string[]): Promi
   return out;
 }
 
-function counts(prd: BabyPrd): { risky: number; safe: number } {
+function counts(prd: BabyPrd): { risky: number; safe: number; defaulted: number } {
   const risky = prd.assumptions.filter((a) => a.risk === "risky").length;
-  return { risky, safe: prd.assumptions.length - risky };
+  const defaulted = prd.assumptions.filter((a) => a.risk === "defaulted").length;
+  const safe = prd.assumptions.length - risky - defaulted;
+  return { risky, safe, defaulted };
 }
 
 function lockLabel(outcome: LockOutcome): OsaRunReport["lock"] {

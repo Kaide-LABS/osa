@@ -140,3 +140,84 @@ test("runIntake: the person's own rules end up verbatim in the acceptance criter
   assert.match(added[0] ?? "", /ASCII letters a-z and A-Z plus the apostrophe; other Unicode separates words\./);
   assert.ok(buildIntakePrompt({ prompt: asked, files: [], memory: null, maxItems: 8, quoteStatedRules: true }).includes('"statedRequirements"'), "the model is asked for them");
 });
+
+test("buildIntakePrompt describes scope and recommended questions to the model", () => {
+  const p = buildIntakePrompt(input);
+  assert.match(p, /Scope: classify as 'narrow'/);
+  assert.match(p, /When broad, provide up to 3 recommended questions/);
+  assert.ok(p.includes('"scope": "narrow | broad'), "schema includes scope field");
+  assert.ok(p.includes('"recommendedQuestions":'), "schema includes recommendedQuestions field");
+});
+
+test("buildIntakePrompt appends clarifications block when answers are provided", () => {
+  const p = buildIntakePrompt({ ...input, answers: { "Question 1": "Answer 1", "Question 2": "Answer 2" } });
+  assert.match(p, /=== CLARIFICATIONS FROM THE PERSON ===/);
+  assert.match(p, /Clarifications from the person:/);
+  assert.match(p, /- Question 1: Answer 1/);
+  assert.match(p, /- Question 2: Answer 2/);
+  assert.match(p, /Treat each clarification as a stated requirement, not an assumption/);
+});
+
+test("buildIntakePrompt does not append clarifications block for empty answers", () => {
+  const p = buildIntakePrompt({ ...input, answers: {} });
+  assert.ok(!p.includes("CLARIFICATIONS FROM THE PERSON"));
+});
+
+test("intake with broad scope yields scope 'broad' and 1-3 recommended questions, no answers -> defaulted assumptions", async () => {
+  const reply = samplePrd({ broad: true });
+  const { call } = scriptedTextCall([JSON.stringify(reply)]);
+  const events = new MemoryEventSink();
+  const r = await runIntake(input, deps(call, events));
+  assert.equal(r.prd.scope, "broad");
+  assert.ok(r.prd.recommendedQuestions.length >= 1 && r.prd.recommendedQuestions.length <= 3);
+  const defaultedAssumptions = r.prd.assumptions.filter((a) => a.risk === "defaulted");
+  assert.equal(defaultedAssumptions.length, r.prd.recommendedQuestions.length, "one defaulted assumption per unanswered question");
+  assert.ok(defaultedAssumptions.every((a) => a.text === r.prd.recommendedQuestions.find((q) => q.default === a.text)?.default));
+  const ev = events.events.find((e) => e.event === "assumptions_generated");
+  assert.equal(ev?.data["defaulted"], r.prd.recommendedQuestions.length);
+});
+
+test("intake with narrow scope yields scope 'narrow' and empty recommended questions, no defaulted assumptions", async () => {
+  const reply = samplePrd({ broad: false });
+  const { call } = scriptedTextCall([JSON.stringify(reply)]);
+  const events = new MemoryEventSink();
+  const r = await runIntake(input, deps(call, events));
+  assert.equal(r.prd.scope, "narrow");
+  assert.deepEqual(r.prd.recommendedQuestions, []);
+  assert.ok(r.prd.assumptions.every((a) => a.risk !== "defaulted"), "no defaulted assumptions when narrow");
+  const ev = events.events.find((e) => e.event === "assumptions_generated");
+  assert.equal(ev?.data["defaulted"], 0);
+});
+
+test("intake with answers matching recommended questions does not create defaulted assumptions for those questions", async () => {
+  const reply = { ...samplePrd({ broad: true }), recommendedQuestions: [
+    { question: "Q1", default: "D1" },
+    { question: "Q2", default: "D2" },
+  ] };
+  const { call } = scriptedTextCall([JSON.stringify(reply)]);
+  const events = new MemoryEventSink();
+  const r = await runIntake({ ...input, answers: { "Q1": "User Answer 1" } }, deps(call, events));
+  const defaultedAssumptions = r.prd.assumptions.filter((a) => a.risk === "defaulted");
+  assert.equal(defaultedAssumptions.length, 1, "only Q2 is unanswered");
+  assert.equal(defaultedAssumptions[0]?.text, "D2");
+});
+
+test("intake normalizes recommended questions: narrow clears them, broad truncates to 3", async () => {
+  const manyQuestions = { ...samplePrd({ broad: true }), recommendedQuestions: [
+    { question: "Q1", default: "D1" },
+    { question: "Q2", default: "D2" },
+    { question: "Q3", default: "D3" },
+    { question: "Q4", default: "D4" },
+    { question: "Q5", default: "D5" },
+  ] };
+  const { call: call1 } = scriptedTextCall([JSON.stringify(manyQuestions)]);
+  const r1 = await runIntake(input, deps(call1));
+  assert.equal(r1.prd.recommendedQuestions.length, 3, "truncated to 3");
+  assert.equal(r1.prd.assumptions.filter((a) => a.risk === "defaulted").length, 3);
+
+  const narrowWithQuestions = { ...manyQuestions, scope: "narrow" as const };
+  const { call: call2 } = scriptedTextCall([JSON.stringify(narrowWithQuestions)]);
+  const r2 = await runIntake(input, deps(call2));
+  assert.deepEqual(r2.prd.recommendedQuestions, [], "cleared when narrow");
+  assert.equal(r2.prd.assumptions.filter((a) => a.risk === "defaulted").length, 0);
+});

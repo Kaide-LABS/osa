@@ -6,15 +6,25 @@
 
 import { z } from "zod";
 
-/** `safe` = reversible, low-impact, conventional default. `risky` = would change scope/architecture/data/cost/security if wrong. */
-export const ASSUMPTION_RISKS = ["safe", "risky"] as const;
+/** `safe` = reversible, low-impact, conventional default. `risky` = would change scope/architecture/data/cost/security if wrong. `defaulted` = a recommended-question default the person did not answer. */
+export const ASSUMPTION_RISKS = ["safe", "risky", "defaulted"] as const;
 export type AssumptionRisk = (typeof ASSUMPTION_RISKS)[number];
+
+/** Scope of the prompt: 'narrow' (specific) or 'broad' (vague). */
+export const SCOPES = ["narrow", "broad"] as const;
+export type Scope = (typeof SCOPES)[number];
 
 /** Search modules a research item may load (WS3.1). */
 export const RESEARCH_MODULES = ["general-web", "github-debug", "stackoverflow", "academic-papers"] as const;
 export type ResearchModule = (typeof RESEARCH_MODULES)[number];
 
 const NonEmpty = z.string().trim().min(1);
+
+export const RecommendedQuestionSchema = z.strictObject({
+  question: z.string().trim().min(1).max(300),
+  default: z.string().trim().min(1).max(500),
+});
+export type RecommendedQuestion = z.infer<typeof RecommendedQuestionSchema>;
 
 export const AssumptionSchema = z.strictObject({
   text: NonEmpty.max(500),
@@ -59,6 +69,8 @@ export const BabyPrdSchema = z.strictObject({
   constraints: z.array(NonEmpty.max(400)).max(30),
   researchPlan: ResearchPlanSchema,
   assumptions: z.array(AssumptionSchema).max(60),
+  scope: z.enum(SCOPES).default("narrow"),
+  recommendedQuestions: z.array(RecommendedQuestionSchema).max(10).default([]),
   /**
    * The person's own request, verbatim, kept inside the locked PRD and authoritative over every summary above it. Intake rewrites what it was
    * told into scope lines and criteria, and a model summarising a precise request drops or contradicts details of it (found by the live
