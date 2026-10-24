@@ -175,6 +175,8 @@ export async function runResearchStage(input: ResearchStageInput): Promise<Resea
   // ---- 2b. documentation reuse: load reusable prior-run results with ONE database open (dynamic import, only when enabled) ----
   const reuseEnabled = config.memory.enabled && config.memory.global.reuse.enabled;
   let reuseSeam: ReuseSeam | undefined;
+  /** A lookup that found the database LOCKED means the remember at the end would wait for the same lock; it is skipped so a busy database costs one wait, not two. */
+  let lookupLocked = false;
   if (reuseEnabled) {
     const docsItems = outline.items.filter((it) => it.kind === "docs");
     const targetBySlug = new Map<string, string>();
@@ -198,7 +200,9 @@ export async function runResearchStage(input: ResearchStageInput): Promise<Resea
         }
         reuseSeam = { lookup: (slug: string): ReuseCandidate | null => bySlug.get(slug) ?? null };
       } catch (err) {
-        await events.emit("research_reuse_failed", { reason: reuseFailReason(err), phase: "lookup" });
+        const reason = reuseFailReason(err);
+        lookupLocked = reason === "locked";
+        await events.emit("research_reuse_failed", { reason, phase: "lookup" });
       }
     }
   }
@@ -271,15 +275,21 @@ export async function runResearchStage(input: ResearchStageInput): Promise<Resea
   await writeFile(`${researchDir}/report.md`, reportMd, "utf8");
 
   // ---- 6b. remember: store freshly-researched documentation items, only when the independent check ran and flagged nothing ----
-  if (reuseEnabled && crosscheck !== null && crosscheck.flagged.length === 0) {
+  // The gate is strict on purpose (accuracy first): the check must have been a FULL one (the reviewer could open the sources, not a consistency-only read),
+  // must have ended in a pass, must have actually examined at least one claim, and must have flagged none. Anything less remembers nothing.
+  const fullyChecked = crosscheck !== null && !crosscheck.degraded && crosscheck.verdict.verdict === "pass" && crosscheck.flagged.length === 0 && crosscheck.verdict.claims.some((c) => c.status === "supported");
+  if (reuseEnabled && !lookupLocked && crosscheck !== null && fullyChecked) {
     const toRemember: { target: string; title: string; resultJson: string; checkLevel: "full" | "consistency-only"; project: string; createdAt: string }[] = [];
     for (const o of outcomes) {
       if (o.status !== "done" || o.result === null) continue; // only freshly done items (never resumed, reused or failed)
       const item = outline.items.find((it) => it.slug === o.slug);
       if (item === undefined || item.kind !== "docs") continue;
+      // An item whose own researcher said it could not verify some fields is not something to hand to a later project as settled.
+      const uncertain = o.result["uncertain"];
+      if (Array.isArray(uncertain) && uncertain.length > 0) continue;
       const target = docsTargetOf(item.title);
       if (target === null) continue;
-      toRemember.push({ target, title: item.title, resultJson: JSON.stringify(o.result, null, 2) + "\n", checkLevel: crosscheck.degraded ? "consistency-only" : "full", project: "", createdAt: nowIso() });
+      toRemember.push({ target, title: item.title, resultJson: JSON.stringify(o.result, null, 2) + "\n", checkLevel: "full", project: "", createdAt: nowIso() });
     }
     if (toRemember.length > 0) {
       try {

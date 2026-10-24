@@ -188,7 +188,9 @@ END;
  * logarithmic. Existing rows are back-filled; of any duplicates only the first keeps a key.
  */
 function migrateDedupKey(db: DatabaseSync): void {
-  db.exec("ALTER TABLE facts ADD COLUMN dedup_key TEXT");
+  // Idempotent: a process that lost an upgrade race can reach this with the column already added.
+  const hasColumn = (db.prepare("PRAGMA table_info(facts)").all() as { name: string }[]).some((c) => c.name === "dedup_key");
+  if (!hasColumn) db.exec("ALTER TABLE facts ADD COLUMN dedup_key TEXT");
   const seen = new Set<string>();
   const set = db.prepare("UPDATE facts SET dedup_key = ? WHERE id = ?");
   for (const r of db.prepare("SELECT id, project, text FROM facts WHERE deleted_at IS NULL ORDER BY created_at, id").all() as { id: string; project: string; text: string }[]) {
@@ -198,7 +200,7 @@ function migrateDedupKey(db: DatabaseSync): void {
     seen.add(full);
     set.run(key, r.id);
   }
-  db.exec("CREATE UNIQUE INDEX facts_dedup_idx ON facts(project, dedup_key) WHERE deleted_at IS NULL AND dedup_key IS NOT NULL");
+  db.exec("CREATE UNIQUE INDEX IF NOT EXISTS facts_dedup_idx ON facts(project, dedup_key) WHERE deleted_at IS NULL AND dedup_key IS NOT NULL");
 }
 
 /**
@@ -211,7 +213,7 @@ function migrateDedupKey(db: DatabaseSync): void {
  */
 function migrateResearchItems(db: DatabaseSync): void {
   db.exec(`
-CREATE TABLE research_items (
+CREATE TABLE IF NOT EXISTS research_items (
   id TEXT PRIMARY KEY,
   dkey TEXT NOT NULL,
   title TEXT NOT NULL,
@@ -222,8 +224,8 @@ CREATE TABLE research_items (
   updated_at TEXT NOT NULL,
   deleted_at TEXT
 );
-CREATE UNIQUE INDEX research_items_key_idx ON research_items(dkey) WHERE deleted_at IS NULL;
-CREATE INDEX research_items_project_idx ON research_items(project);
+CREATE UNIQUE INDEX IF NOT EXISTS research_items_key_idx ON research_items(dkey) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS research_items_project_idx ON research_items(project);
 `);
 }
 
@@ -246,9 +248,15 @@ function migrate(db: DatabaseSync): void {
   if (current >= SCHEMA_VERSION) return;
   db.exec("BEGIN IMMEDIATE");
   try {
-    if (current < 1) db.exec(MIGRATION_1);
-    if (current < 2) migrateDedupKey(db);
-    if (current < 3) migrateResearchItems(db);
+    // Read the version AGAIN now that this process holds the write lock: another process may have finished the upgrade while this one waited for it.
+    const now = (db.prepare("SELECT MAX(version) AS v FROM schema_version").get() as { v: number | null }).v ?? 0;
+    if (now >= SCHEMA_VERSION) {
+      db.exec("COMMIT");
+      return;
+    }
+    if (now < 1) db.exec(MIGRATION_1);
+    if (now < 2) migrateDedupKey(db);
+    if (now < 3) migrateResearchItems(db);
     db.prepare("INSERT INTO schema_version(version, applied_at) VALUES (?, ?)").run(SCHEMA_VERSION, new Date().toISOString());
     db.exec("COMMIT");
   } catch (e) {

@@ -33,7 +33,9 @@ export function docsKey(target: string): string {
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim()
-    .replace(/[\p{P}\s]+$/u, "")
+    // Only SENTENCE punctuation is trimmed. "#", "+" and the like can be part of a technology's name: trimming them made "C#" and "C" (and "F#" and "F") the same key,
+    // so one language's documentation was served for another.
+    .replace(/[.,;:!?\s]+$/u, "")
     .trim();
 }
 
@@ -45,6 +47,8 @@ export function isFresh(createdAt: string, maxAgeDays: number, now: Date): boole
   const created = Date.parse(createdAt);
   if (Number.isNaN(created)) return false;
   const ageMs = now.getTime() - created;
+  // A date in the future is a wrong clock or an edited row, and would be "fresh" forever: a day of skew is tolerated, more is not.
+  if (ageMs < -86_400_000) return false;
   return ageMs <= maxAgeDays * 86_400_000;
 }
 
@@ -101,6 +105,9 @@ export function findReusable(targets: readonly string[], opts: ResearchStoreOpti
       .all(...keys) as { dkey: string; result: string; project: string; created_at: string }[];
     for (const row of rows) {
       if (!isFresh(row.created_at, opts.maxAgeDays, opts.now)) continue;
+      // The same limits as when remembering, applied again on the way OUT: a row edited after it was stored must not be able to put a secret into a report
+      // or a prompt just because it was clean once.
+      if (Buffer.byteLength(row.result, "utf8") > MAX_RESULT_BYTES || findSecret(maskCommitHashes(row.result)) !== null) continue;
       let parsed: unknown;
       try {
         parsed = JSON.parse(row.result);
@@ -167,6 +174,13 @@ export function rememberItems(records: readonly RememberInput[], opts: ResearchS
     if (over > 0) {
       mem.db.prepare("DELETE FROM research_items WHERE id IN (SELECT id FROM research_items WHERE deleted_at IS NULL ORDER BY created_at ASC, id ASC LIMIT ?)").run(over);
     }
+    // `stored` counts what is actually in the table now: an item older than every row is deleted by the cap above in the same transaction.
+    let survived = 0;
+    for (const rec of records) {
+      const key = docsKey(rec.target);
+      if (key !== "" && mem.db.prepare("SELECT 1 AS one FROM research_items WHERE dkey = ? AND deleted_at IS NULL").get(key) !== undefined) survived += 1;
+    }
+    stored = Math.min(stored, survived);
     mem.db.exec("COMMIT");
     return { stored, refused };
   } catch (e) {
