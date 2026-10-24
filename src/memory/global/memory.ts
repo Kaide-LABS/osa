@@ -12,15 +12,20 @@
 
 import { randomUUID } from "node:crypto";
 import { UsageError } from "../../domain/errors.ts";
-import { detectInjection } from "../../osa/untrusted.ts";
-import { openMemoryDb } from "./db.ts";
-import { redactSecrets, stillHasSecret } from "./redact.ts";
+import { detectInjection, scrubUntrusted } from "../../osa/untrusted.ts";
+import { findSecret } from "../secrets.ts";
+import { factKey, openMemoryDb } from "./db.ts";
+import { maskCommitHashes, redactSecrets, stillHasSecret } from "./redact.ts";
+
+export { factKey } from "./db.ts";
 
 /** The kinds a fact may carry. */
 export const FACT_KINDS = ["fact", "decision", "note"] as const;
 export type FactKind = (typeof FACT_KINDS)[number];
 
 export const MAX_FACT_CHARS = 2000;
+export const MAX_PROJECT_CHARS = 100;
+export const MAX_SOURCE_CHARS = 200;
 export const DEFAULT_SEARCH_LIMIT = 20;
 export const MAX_SEARCH_LIMIT = 100;
 
@@ -60,9 +65,31 @@ export interface ProjectInfo {
   readonly updated_at: string;
 }
 
-/** Normalised key for de-duplication within a project. Pure. */
-export function factKey(text: string): string {
-  return text.toLowerCase().replace(/\s+/g, " ").replace(/[.\s]+$/, "").trim();
+// Control characters other than newline and tab (NUL, BEL, ESC, DEL ...). Terminal escapes are removed whole by scrubUntrusted first.
+// eslint-disable-next-line no-control-regex
+const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F-\u009F]/g;
+
+/**
+ * Cleans text that is about to be stored: removes hidden and invisible content (Unicode tag characters, zero-width and bidirectional
+ * controls, terminal escapes, HTML comments) and control characters, and folds look-alikes with NFKC. Hidden text that a person
+ * could not see but a model could read is REFUSED, not silently dropped: it is the shape of a planted instruction. Pure.
+ */
+function cleanStored(text: string, what: string): string {
+  const scrubbed = scrubUntrusted(text);
+  if (scrubbed.hidden.length > 0) throw new UsageError(`memory save: the ${what} contains hidden text (${scrubbed.hidden[0]?.rule ?? "hidden-text"}); nothing was stored.`);
+  return scrubbed.text.replace(CONTROL, "").normalize("NFKC");
+}
+
+/**
+ * Validates a label (project or source): cleaned, length-capped, and REJECTED -- not redacted, because redacting would change the
+ * scope key -- when it looks like a secret or an instruction. Pure.
+ */
+function cleanLabel(value: string, what: string, max: number): string {
+  const label = cleanStored(value, what).replace(/\s+/g, " ").trim();
+  if (label.length > max) throw new UsageError(`memory save: the ${what} is ${String(label.length)} characters; the limit is ${String(max)}.`);
+  if (findSecret(maskCommitHashes(label)) !== null || redactSecrets(label).redactions.length > 0) throw new UsageError(`memory save: the ${what} looks like it contains a secret; nothing was stored.`);
+  if (detectInjection(label).length > 0) throw new UsageError(`memory save: the ${what} looks like an instruction aimed at an AI; nothing was stored.`);
+  return label;
 }
 
 /**
@@ -72,7 +99,7 @@ export function factKey(text: string): string {
  * Pure.
  */
 export function toFtsMatch(query: string): string | null {
-  const tokens = query.split(/\s+/).filter((t) => t !== "");
+  const tokens = query.replace(CONTROL, " ").split(/\s+/).filter((t) => t !== "");
   if (tokens.length === 0) return null;
   const phrases = tokens.map((t) => `"${t.replace(/"/g, '""')}"`);
   return phrases.join(" ");
@@ -89,7 +116,8 @@ function requireKind(kind: FactKind | undefined): FactKind {
  * (or refreshed) id and the redaction reasons.
  */
 export function saveFact(input: SaveFactInput, opts: { readonly dbPath?: string } = {}): SaveFactResult {
-  const text = input.text.trim();
+  // Hidden text is judged BEFORE it is removed: an instruction spelled in invisible characters is refused, not quietly cleaned and saved.
+  const text = cleanStored(input.text, "text").trim();
   if (text === "") throw new UsageError("memory save: the text is empty.");
   if (text.length > MAX_FACT_CHARS) throw new UsageError(`memory save: the text is ${String(text.length)} characters; the limit is ${String(MAX_FACT_CHARS)}.`);
   const injected = detectInjection(text)[0];
@@ -99,23 +127,36 @@ export function saveFact(input: SaveFactInput, opts: { readonly dbPath?: string 
   if (redacted.fraction > 0.5) throw new UsageError("memory save: more than half of the text was secret-shaped; refusing to store a redacted husk.");
   if (stillHasSecret(redacted.text)) throw new UsageError("memory save: the text contains a secret that could not be fully redacted; nothing was stored.");
 
-  const project = input.project.trim() === "" ? "default" : input.project.trim();
+  const rawProject = cleanLabel(input.project, "project name", MAX_PROJECT_CHARS);
+  const project = rawProject === "" ? "default" : rawProject;
   const kind = requireKind(input.kind);
-  const source = input.source ?? null;
+  const source = input.source === undefined || input.source.trim() === "" ? null : cleanLabel(input.source, "source", MAX_SOURCE_CHARS);
   const now = new Date().toISOString();
+  const key = factKey(redacted.text);
 
   const mem = openMemoryDb(opts.dbPath);
   try {
-    const key = factKey(redacted.text);
-    const rows = mem.db.prepare("SELECT id, text FROM facts WHERE project = ? AND deleted_at IS NULL").all(project) as { id: string; text: string }[];
-    const dup = rows.find((r) => factKey(r.text) === key);
-    if (dup !== undefined) {
-      mem.db.prepare("UPDATE facts SET updated_at = ? WHERE id = ?").run(now, dup.id);
-      return { id: dup.id, redactions: redacted.redactions, deduped: true };
+    // One transaction that takes the write lock first: two processes saving the same fact serialise, and the second sees the first's row.
+    mem.db.exec("BEGIN IMMEDIATE");
+    try {
+      const dup = mem.db.prepare("SELECT id FROM facts WHERE project = ? AND dedup_key = ? AND deleted_at IS NULL").get(project, key) as { id: string } | undefined;
+      let result: SaveFactResult;
+      if (dup !== undefined) {
+        mem.db.prepare("UPDATE facts SET updated_at = ? WHERE id = ?").run(now, dup.id);
+        result = { id: dup.id, redactions: redacted.redactions, deduped: true };
+      } else {
+        const id = randomUUID();
+        mem.db
+          .prepare("INSERT INTO facts(id, project, kind, source, text, created_at, updated_at, deleted_at, dedup_key) VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?)")
+          .run(id, project, kind, source, redacted.text, now, now, key);
+        result = { id, redactions: redacted.redactions, deduped: false };
+      }
+      mem.db.exec("COMMIT");
+      return result;
+    } catch (e) {
+      mem.db.exec("ROLLBACK");
+      throw e;
     }
-    const id = randomUUID();
-    mem.db.prepare("INSERT INTO facts(id, project, kind, source, text, created_at, updated_at, deleted_at) VALUES (?, ?, ?, ?, ?, ?, ?, NULL)").run(id, project, kind, source, redacted.text, now, now);
-    return { id, redactions: redacted.redactions, deduped: false };
   } finally {
     mem.close();
   }
@@ -132,14 +173,15 @@ export function searchMemory(input: { readonly query: string; readonly project?:
   const limit = Math.min(Math.max(1, input.limit ?? DEFAULT_SEARCH_LIMIT), MAX_SEARCH_LIMIT);
   const mem = openMemoryDb(opts.dbPath);
   try {
-    const where = input.project !== undefined && input.project.trim() !== "" ? "AND f.project = ?" : "";
+    const projectFilter = input.project === undefined ? "" : cleanLabel(input.project, "project name", MAX_PROJECT_CHARS);
+    const where = projectFilter !== "" ? "AND f.project = ?" : "";
     const sql =
       `SELECT f.id AS id, f.project AS project, f.kind AS kind, f.source AS source, f.created_at AS created_at, ` +
       `snippet(facts_fts, 1, '', '', '…', 12) AS snippet, bm25(facts_fts) AS rank ` +
       `FROM facts_fts JOIN facts f ON f.id = facts_fts.id ` +
       `WHERE facts_fts MATCH ? AND f.deleted_at IS NULL ${where} ` +
       `ORDER BY rank ASC, f.created_at ASC, f.id ASC LIMIT ?`;
-    const params = where === "" ? [match, limit] : [match, (input.project as string).trim(), limit];
+    const params = where === "" ? [match, limit] : [match, projectFilter, limit];
     const rows = mem.db.prepare(sql).all(...params) as unknown as SearchResult[];
     return rows.map((r) => ({ id: r.id, project: r.project, kind: r.kind, source: r.source ?? null, created_at: r.created_at, snippet: r.snippet, rank: r.rank }));
   } finally {
@@ -155,9 +197,24 @@ export function searchMemory(input: { readonly query: string; readonly project?:
 export function forgetMemory(input: { readonly project: string } | { readonly all: true }, opts: { readonly dbPath?: string } = {}): ForgetResult {
   const mem = openMemoryDb(opts.dbPath);
   try {
-    const result = "all" in input ? mem.db.prepare("DELETE FROM facts").run() : mem.db.prepare("DELETE FROM facts WHERE project = ?").run(input.project);
+    // The same cleaning `save` applies, so a project saved as "  spaced  " (stored as "spaced") is forgotten by the same name.
+    const project = "all" in input ? null : cleanLabel(input.project, "project name", MAX_PROJECT_CHARS);
+    if (project === "") throw new UsageError("memory forget: the project name is empty.");
+    mem.db.exec("BEGIN IMMEDIATE");
+    let removed: number;
+    try {
+      const result = project === null ? mem.db.prepare("DELETE FROM facts").run() : mem.db.prepare("DELETE FROM facts WHERE project = ?").run(project);
+      removed = Number(result.changes);
+      // FTS5 keeps deleted text in its index segments until they are merged; 'optimize' merges them away so VACUUM can drop the old pages.
+      mem.db.exec("INSERT INTO facts_fts(facts_fts) VALUES('optimize')");
+      mem.db.exec("COMMIT");
+    } catch (e) {
+      mem.db.exec("ROLLBACK");
+      throw e;
+    }
     mem.db.exec("VACUUM");
-    return { facts: Number(result.changes) };
+    mem.db.exec("PRAGMA wal_checkpoint(TRUNCATE)"); // the write-ahead log would otherwise still hold the pages that held the text
+    return { facts: removed };
   } finally {
     mem.close();
   }

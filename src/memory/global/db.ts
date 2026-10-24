@@ -14,8 +14,13 @@ import { chmodSync, mkdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join } from "node:path";
 
-/** Current schema version. One migration today; the runner and the `schema_version` table exist so later ones drop in. */
-export const SCHEMA_VERSION = 1;
+/** Current schema version. The runner and the `schema_version` table let later migrations drop in. */
+export const SCHEMA_VERSION = 2;
+
+/** Normalised key used to de-duplicate a fact within a project. Pure. */
+export function factKey(text: string): string {
+  return text.toLowerCase().replace(/\s+/g, " ").replace(/[.\s]+$/, "").trim();
+}
 
 /**
  * The resolved path of the global memory database: the explicit `path`, else `OSA_MEMORY_DB`, else `~/.osa/memory.db`.
@@ -122,15 +127,35 @@ CREATE TRIGGER chunks_au AFTER UPDATE ON chunks BEGIN
 END;
 `;
 
+/**
+ * Migration 2: an indexed de-duplication key. Without it every save scanned all of a project's facts, and two parallel saves of
+ * the same text could both insert. A unique index over (project, dedup_key) makes the duplicate impossible and the lookup
+ * logarithmic. Existing rows are back-filled; of any duplicates only the first keeps a key.
+ */
+function migrateDedupKey(db: DatabaseSync): void {
+  db.exec("ALTER TABLE facts ADD COLUMN dedup_key TEXT");
+  const seen = new Set<string>();
+  const set = db.prepare("UPDATE facts SET dedup_key = ? WHERE id = ?");
+  for (const r of db.prepare("SELECT id, project, text FROM facts WHERE deleted_at IS NULL ORDER BY created_at, id").all() as { id: string; project: string; text: string }[]) {
+    const key = factKey(r.text);
+    const full = `${r.project}\u0000${key}`;
+    if (seen.has(full)) continue;
+    seen.add(full);
+    set.run(key, r.id);
+  }
+  db.exec("CREATE UNIQUE INDEX facts_dedup_idx ON facts(project, dedup_key) WHERE deleted_at IS NULL AND dedup_key IS NOT NULL");
+}
+
 /** Runs every migration past the recorded version inside one transaction. Idempotent: a current database is untouched. */
 function migrate(db: DatabaseSync): void {
   db.exec("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER NOT NULL, applied_at TEXT NOT NULL)");
   const row = db.prepare("SELECT MAX(version) AS v FROM schema_version").get() as { v: number | null };
   const current = row.v ?? 0;
   if (current >= SCHEMA_VERSION) return;
-  db.exec("BEGIN");
+  db.exec("BEGIN IMMEDIATE");
   try {
     if (current < 1) db.exec(MIGRATION_1);
+    if (current < 2) migrateDedupKey(db);
     db.prepare("INSERT INTO schema_version(version, applied_at) VALUES (?, ?)").run(SCHEMA_VERSION, new Date().toISOString());
     db.exec("COMMIT");
   } catch (e) {
@@ -148,32 +173,56 @@ function migrate(db: DatabaseSync): void {
 export function openMemoryDb(path?: string, env: NodeJS.ProcessEnv = process.env): MemoryDb {
   const resolved = resolveMemoryDbPath(path, env);
   try {
-    mkdirSync(dirname(resolved), { recursive: true });
+    mkdirSync(dirname(resolved), { recursive: true, mode: 0o700 });
   } catch {
     // directory may already exist; a real failure surfaces below when the file cannot be opened
   }
-  let db: DatabaseSync;
+  let db: DatabaseSync | undefined;
   try {
     db = new DatabaseSync(resolved);
-    db.exec("PRAGMA journal_mode = WAL");
+    // The busy timeout comes FIRST: switching to WAL needs a lock, and with the default timeout of zero a second process opening at the same moment fails at once.
     db.exec("PRAGMA busy_timeout = 5000");
+    db.exec("PRAGMA journal_mode = WAL");
+    // Deleted content is overwritten with zeros, not left in free pages (forget must not leave the text in the file).
+    db.exec("PRAGMA secure_delete = ON");
     db.exec("PRAGMA foreign_keys = ON");
     assertFts5(db);
     migrate(db);
   } catch (e) {
+    try {
+      db?.close();
+    } catch {
+      // already closed or never opened
+    }
     if (e instanceof MemoryDbError) throw e;
-    throw new MemoryDbError(`the memory database at ${resolved} could not be opened (it may be corrupt or unreadable)`);
+    const code = (e as { errcode?: unknown; code?: unknown }).errcode ?? (e as { code?: unknown }).code;
+    const busy = code === 5 || code === 6 || /database is locked|busy/i.test(e instanceof Error ? e.message : "");
+    throw new MemoryDbError(
+      busy
+        ? `the memory database at ${resolved} is locked by another process; try again in a moment`
+        : `the memory database at ${resolved} could not be opened (it may be corrupt or unreadable${typeof code === "number" || typeof code === "string" ? `; sqlite code ${String(code)}` : ""})`,
+    );
   }
+  const handle = db as DatabaseSync; // set: the try block above either assigned it or threw
   try {
-    if (process.platform !== "win32") chmodSync(resolved, 0o600);
+    if (process.platform !== "win32") {
+      chmodSync(dirname(resolved), 0o700);
+      for (const f of [resolved, `${resolved}-wal`, `${resolved}-shm`]) {
+        try {
+          chmodSync(f, 0o600);
+        } catch {
+          // the sidecar files may not exist yet
+        }
+      }
+    }
   } catch {
     // best-effort; some filesystems reject chmod
   }
   return {
-    db,
+    db: handle,
     path: resolved,
     close(): void {
-      db.close();
+      handle.close();
     },
   };
 }

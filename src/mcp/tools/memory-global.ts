@@ -14,7 +14,7 @@ const KINDS = ["fact", "decision", "note"] as const;
 
 export const MemorySaveInput = z.strictObject({
   text: z.string().min(1).max(4000),
-  project: z.string().min(1),
+  project: z.string().min(1).max(100),
   kind: z.enum(KINDS).default("fact"),
   source: z.string().max(200).optional(),
 });
@@ -76,7 +76,9 @@ export function registerGlobalMemoryTools(server: McpServer): void {
     try {
       const { searchMemory } = await import("../../memory/global/memory.ts");
       const results = searchMemory({ query: input.query, ...(input.project !== undefined ? { project: input.project } : {}), limit: input.limit });
-      const out: MemorySearchOutput = { results: results.map((r) => ({ id: r.id, project: r.project, kind: r.kind, source: r.source, created_at: r.created_at, snippet: r.snippet, rank: r.rank })) };
+      // MCP clients commonly hand structuredContent straight to the model, so the stored text in it is fenced like the text content is.
+      const fence = (id: string, snippet: string): string => wrapUntrusted({ kind: "global memory fact", provenance: `OSA global memory ${id}`, text: snippet });
+      const out: MemorySearchOutput = { results: results.map((r) => ({ id: r.id, project: r.project, kind: r.kind, source: r.source, created_at: r.created_at, snippet: fence(r.id, r.snippet), rank: r.rank })) };
       const body = results.length === 0 ? "(no matching facts)" : results.map((r) => `- [${r.kind}] (${r.project}) ${r.snippet}`).join("\n");
       const wrapped = wrapUntrusted({ kind: "global memory facts", provenance: "OSA global memory", text: body });
       return { content: [{ type: "text", text: wrapped }], structuredContent: out };

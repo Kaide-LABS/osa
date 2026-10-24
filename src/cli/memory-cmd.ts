@@ -53,6 +53,7 @@ export async function runMemoryCommand(opts: MemoryCommandOptions): Promise<{ te
   }
 
   // forget
+  if (opts.all && opts.project !== null) throw new UsageError("memory forget: give --project <name> OR --all, not both (--all would wipe every project).");
   if (opts.all && !opts.yes) throw new UsageError("memory forget --all requires --yes.");
   if (!opts.all && opts.project === null) throw new UsageError("memory forget requires --project <name> or --all.");
   const r = opts.all ? forgetMemory({ all: true }) : forgetMemory({ project: opts.project as string });

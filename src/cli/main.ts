@@ -429,6 +429,7 @@ function parseMemoryArgs(rest: readonly string[]): Command {
         i += 1;
       } else throw new UsageError(`Unknown flag for memory forget: ${arg}`, { flag: arg });
     }
+    if (all && project !== null) throw new UsageError("memory forget: give --project <name> OR --all, not both (--all would wipe every project).");
     return { kind: "memory", sub: "forget", project, all, yes, json };
   }
 

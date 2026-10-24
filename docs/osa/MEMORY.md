@@ -31,8 +31,30 @@ can add to them without changing the data model; only `facts` has a write path t
   rejected, because memory is a place for facts, not a channel for steering a later run.
 - No raw run chat log. The raw chat log is write-only and is never read back into memory.
 
-Text read back out of memory is returned wrapped as untrusted data by the MCP tool (`memory_search`); it is data to
-read, never instructions to follow. The CLI prints it plainly.
+Hidden text is refused, not cleaned and saved: Unicode tag characters (which spell invisible ASCII), HTML comments and
+hidden elements make a save fail. Zero-width characters, terminal escape sequences and control characters are removed,
+and the text is folded with Unicode NFKC (fullwidth letters and punctuation become plain ASCII).
+
+The `project` and `source` labels get the same checks. A label that looks like a secret or an instruction is **rejected**
+(not redacted, because redacting would change which project the fact belongs to), a project name is at most 100
+characters and a source at most 200.
+
+Text read back out of memory is returned wrapped as untrusted data by the MCP tool (`memory_search`), both in the text
+content and in each result's `snippet` in the structured content; it is data to read, never instructions to follow.
+The CLI prints it plainly.
+
+### Known limits of the secret filter
+
+The filter is built to lean toward refusing, but it is pattern-based and is not a guarantee. Known gaps, found by review
+and left in on purpose because closing them would refuse ordinary notes:
+
+- A password written as plain words with no digit ("the password is correcthorsebatterystaple") is not detected, and
+  neither is a 32-plus-character token made only of letters. Do not paste secrets into a fact.
+- A short bearer value (`Bearer abc.def`) is not detected.
+- It also over-redacts in the safe direction: `token: ...`, `key: ...` and `pwd: ...` followed by a word are treated as
+  credentials, and a long identifier can be mistaken for a key. A 40- or 64-character hex string is kept only when the
+  word just before it is `commit`, `sha`, `sha256`, `digest`, `hash`, `rev` or `revision`; anywhere else it is treated as
+  a key.
 
 ## Using it
 
@@ -50,7 +72,10 @@ osa memory forget --project <p> | --all [--yes] [--json]
   `NEAR(`) are treated as literal text and cannot inject query syntax. Ordering is deterministic: rank, then
   `created_at`, then id.
 - `forget` physically **purges** the matching rows and their FTS entries, then runs `VACUUM`, and reports the count.
-  A project match is exact (`forget --project x` never touches project `xy`). `--all` requires `--yes`.
+  A project match is exact (`forget --project x` never touches project `xy`) and uses the same name cleaning as `save`.
+  `--all` requires `--yes`, and `--project` together with `--all` is refused. The purge also merges away the search
+  index's old segments (FTS5 otherwise keeps deleted words until a merge), overwrites freed pages (`secure_delete`) and
+  truncates the write-ahead log; a test checks that neither the database file nor its `-wal` still contains the text.
 
 MCP tools (for any client that has OSA's server registered): `memory_save` and `memory_search`, mirroring `save` and
 `search`. They are named apart from the existing project-memory tools `memory_append` / `memory_read`.
