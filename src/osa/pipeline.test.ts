@@ -175,3 +175,53 @@ test("counts() in the report correctly separates risky, safe, and defaulted assu
   assert.equal(report.assumptions.safe, 2);
   assert.equal(report.assumptions.defaulted, 1);
 });
+
+// ---- the intake nudge (S-11): broad requests get up to 3 optional questions with suggested answers; never blocking ----
+
+function nudgeIo(answers: string[]): { io: import("./terminal.ts").NudgeIO; shown: string[]; asked: string[] } {
+  const q = [...answers];
+  const shown: string[] = [];
+  const asked: string[] = [];
+  return { io: { show: (t) => void shown.push(t), ask: (question) => (asked.push(question), Promise.resolve(q.shift() ?? "")) }, shown, asked };
+}
+
+test("nudge: a broad request in a terminal gets its recommended questions; answering one costs one more intake call and the answer reaches the model", async () => {
+  const repoDir = await tempGitRepo();
+  const model = fakeModel({ prd: samplePrd({ broad: true }) });
+  const nudge = nudgeIo(["characters"]);
+  const report = await runOsaCommand({ prompt: "make a counter", files: [], repoDir, yes: false, json: false, build: false }, deps({ textCall: model.call, interactive: true, io: io(["lock"]), nudgeIo: nudge.io }));
+  assert.equal(report.ok, true);
+  assert.equal(nudge.asked.length, 2, "both recommended questions were offered");
+  assert.match(nudge.shown.join(" "), /highly recommended/);
+  assert.match(nudge.shown.join(" "), /20 minutes/);
+  const intakes = model.log.filter((l) => l.purpose === "intake");
+  assert.equal(intakes.length, 2, "the first plan, then one more with the answer");
+  assert.match(intakes[1]?.req.prompt ?? "", /characters/);
+  assert.doesNotMatch(intakes[0]?.req.prompt ?? "", /Clarifications from the person/);
+});
+
+test("nudge: pressing Enter on every question accepts the suggestions with no extra model call", async () => {
+  const repoDir = await tempGitRepo();
+  const model = fakeModel({ prd: samplePrd({ broad: true }) });
+  const nudge = nudgeIo(["", ""]);
+  const report = await runOsaCommand({ prompt: "make a counter", files: [], repoDir, yes: false, json: false, build: false }, deps({ textCall: model.call, interactive: true, io: io(["lock"]), nudgeIo: nudge.io }));
+  assert.equal(report.ok, true);
+  assert.equal(nudge.asked.length, 2);
+  assert.equal(model.log.filter((l) => l.purpose === "intake").length, 1, "nothing answered: the plan stands");
+});
+
+test("nudge: a narrow request, --yes, and a plan that already has answers are never asked", async () => {
+  const repoDir = await tempGitRepo();
+  const narrow = nudgeIo(["x"]);
+  await runOsaCommand({ prompt: "make a counter", files: [], repoDir, yes: false, json: false, build: false }, deps({ textCall: fakeModel().call, interactive: true, io: io(["lock"]), nudgeIo: narrow.io }));
+  assert.deepEqual(narrow.asked, [], "a narrow request is not asked");
+  const unattended = nudgeIo(["x"]);
+  await runOsaCommand({ prompt: "make a counter", files: [], repoDir, yes: true, json: false, build: false }, deps({ textCall: fakeModel({ prd: samplePrd({ broad: true }) }).call, nudgeIo: unattended.io, runId: "22222222-2222-4222-8222-222222222222" }));
+  assert.deepEqual(unattended.asked, [], "--yes never asks");
+  const answered = nudgeIo(["x"]);
+  await runOsaCommand(
+    { prompt: "make a counter", files: [], repoDir, yes: false, json: false, build: false, answers: { "Should it count words, characters, or lines?": "lines" } },
+    deps({ textCall: fakeModel({ prd: samplePrd({ broad: true }) }).call, interactive: true, io: io(["lock"]), nudgeIo: answered.io, runId: "33333333-3333-4333-8333-333333333333" }),
+  );
+  assert.deepEqual(answered.asked, [], "answers already supplied (for example by an MCP client): nothing more to ask");
+});

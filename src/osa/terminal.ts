@@ -74,3 +74,32 @@ export function makeTerminalGateIO(): GateIO {
     },
   };
 }
+
+/** The terminal side of the intake nudge for a broad request: show the recommended questions one by one, each with the suggested answer. */
+export interface NudgeIO {
+  show(text: string): void;
+  /** Returns what the person typed; an empty string means "accept the suggested answer". */
+  ask(question: string, suggested: string): Promise<string>;
+}
+
+/** What the person is told before the questions. Only the measured figure is quoted: the last full spec-only run took about 22 minutes. */
+export const NUDGE_TEXT =
+  "Your request is broad, so OSA has a few questions. Answering them is highly recommended: research and the spec take about 20 minutes, and a wrong " +
+  "direction means paying for that again, plus rewriting your prompt. Press Enter to accept the suggested answer.";
+
+/** Builds the terminal {@link NudgeIO}. */
+export function makeTerminalNudgeIO(): NudgeIO {
+  return {
+    show(text: string): void {
+      process.stdout.write(`\n${text}\n`);
+    },
+    async ask(question: string, suggested: string): Promise<string> {
+      const rl = createInterface({ input: process.stdin, output: process.stdout });
+      try {
+        return await rl.question(`\n${question}\n  [Enter = ${suggested}] > `);
+      } finally {
+        rl.close();
+      }
+    },
+  };
+}

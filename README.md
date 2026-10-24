@@ -40,29 +40,31 @@ osa setup            # registers the server with Claude Code (user scope); safe 
 osa mcp-config       # any other client: prints the entry to paste into its MCP settings
 ```
 
-Then, in a git project, ask your assistant: *"Use OSA to build a command line word counter"*. Three tools do the one-shot flow:
+Then, in a git project, ask your assistant: *"Use OSA to build a command line word counter"*. Four tools do the one-shot flow:
 
 | Tool | What it does |
 |---|---|
-| `osa_plan` | Turns the request into a plain-language plan (TL;DR, scope, acceptance criteria, risky and safe assumptions). **Builds nothing.** The assistant shows you the plan and asks. |
-| `osa_build` | Only after your explicit yes: locks exactly that plan (it must echo the plan's fingerprint) and runs research, spec, build and a final check **in the background**. It returns at once. Risky assumptions must be accepted explicitly. `decision: "cancel"` discards the plan. |
-| `osa_status` | State (`running`, `finished`, `stopped`, `interrupted`, ...), stage, recent events, and, at the end, the report and the plain-language summary. A build takes 15 to 60 minutes: poll every few minutes. |
+| `osa_plan` | Turns the request into a plain-language plan (TL;DR, `scope`, acceptance criteria, risky, defaulted and safe assumptions). **Builds nothing.** For a broad request ("build me the next Instagram") it also returns up to 3 `recommended_questions`, each with a best-guess default. Answering them is **highly recommended**, because it saves redoing a run that takes about 20 minutes, but it is never required: skipped questions become `defaulted` assumptions. To answer, call `osa_plan` again with `answers`. |
+| `osa_spec` | Locks the plan automatically and runs research and the spec **in the background**; it returns at once. The run then **waits** for you. |
+| `osa_status` | State (`running`, `awaiting_confirmation`, `finished`, `stopped`, `interrupted`, ...), stage, recent events and, at the end, the report and the plain-language summary. When the spec is ready it shows `awaiting_confirmation` at stage `spec` with the **TL;DR**, a `spec_sha256`, and the risky and defaulted assumptions. |
+| `osa_build` | The one confirmation, after the spec: pass the `spec_sha256` from `osa_status`. It refuses if that is not the spec you were shown, or if a spec file changed after you saw it. Risky assumptions must be accepted explicitly (`accept_risky_assumptions`; the assistant must never set it itself). `decision: "cancel"` ends the run without building. The build then runs **in the background** (30 to 60 minutes). |
 
-The build runs inside the MCP server process, so keep the client open until it finishes. If the server is restarted mid-build, `osa_status` reports `interrupted` and the files written so far stay under `runs/` and `.osa/runs/`. The server also offers `run`, `drive`, `evidence`, `doctor`, `code_search`, `memory_read` and `memory_append`.
+The run lives inside the MCP server process, so keep the client open until it finishes. If the server is restarted mid-build, `osa_status` reports `interrupted` and the files written so far stay under `runs/` and `.osa/runs/`. The server also offers `run`, `drive`, `evidence`, `doctor`, `code_search`, `memory_read` and `memory_append`.
 `npm install -g github:Kaide-LABS/osa` does not work: the compiled files are not committed.
 
 ## What happens, in order
 
 | # | Stage | What you see / get |
 |---|---|---|
-| 1 | **Intake** | A TL;DR (3-5 plain lines) and a *baby PRD*: problem, who it's for, in/out of scope, falsifiable acceptance criteria, constraints, research plan, and every **assumption** OSA had to make, tagged `[risky]` (would change scope, architecture, data, cost or security if wrong -- listed first) or `[safe]`. No questions are asked. |
-| 2 | **The lock** | The only human touchpoint: **Lock and run / Edit / Cancel.** *Edit* opens the PRD in your editor and re-shows it. On lock, the PRD is hashed (`prd_locked`) and committed. It is immutable from here: any later change is a hard failure (exit 20). |
+| 1 | **Intake** | A TL;DR (3-5 plain lines) and a *baby PRD*: problem, who it's for, in/out of scope, falsifiable acceptance criteria, constraints, research plan, and every **assumption** OSA had to make, tagged `[risky]` (would change scope, architecture, data, cost or security if wrong -- listed first), `[defaulted]` (a suggested answer you did not give) or `[safe]`. For a **broad** request intake also suggests up to 3 questions with defaults; answering them is optional but highly recommended (a wrong direction costs a full research and spec run again). Nothing blocks. |
+| 2 | **The lock** | **Automatic.** The PRD is hashed (`prd_locked`) and committed, with no prompt and no refusal. It is immutable from here: any later change is a hard failure (exit 20). |
 | 3 | **Research** | Runs unattended against the **locked** PRD: official documentation for every library/framework/API named (mandatory), arXiv + OpenAlex papers, public prior-art repos on GitHub -- then a **second AI model** (a different provider when you have two, otherwise a different model) checks the report against its sources. |
 | 4 | **Spec** | `context.md` + `PHASE_1_SPEC.md`, with documentation sources (a spec with none fails the phase). Gaps become logged *spec decisions*, never questions. |
 | 5 | **Agents** | A *lateral architecture* agent (the most independent model available) proposes a materially different design and the planner records which it chose and why; an *implication* agent turns second-order consequences into extra acceptance criteria / out-of-scope lines **in the spec** (never the PRD). |
-| 6 | **Build** | The dispatcher: per phase, executor / executor / reviewer turns across two seats (two providers, or two models of one), verified through git, file hashes and continuity checks. Around every phase: the PRD hash is re-verified, and **step 14** writes a trimmed handoff for the next phase plus a plain-language note for you. |
-| 7 | **Application check** | An agent *runs the finished project* in a disposable copy and tries each acceptance criterion. Unmet criteria **fail the run** (exit 24); a "met" without evidence doesn't count. |
-| 8 | **Summary + memory** | `runs/<id>/summary.md` (what was built, what was decided for you, what's uncertain, how it was checked) and facts saved to `.osa/memory/` for next time. |
+| 6 | **Confirm** | **The one human decision.** You see a TL;DR built from the spec, its logged decisions, what research could not confirm, and the risky and defaulted assumptions -- assembled without another model call -- tied to a hash of the spec. Approve or cancel. `--yes` approves only when nothing is risky (otherwise exit **19**); `--yes --accept-risky` approves everything and records each risky and defaulted item in the summary. |
+| 7 | **Build** | The dispatcher: per phase, executor / executor / reviewer turns across two seats (two providers, or two models of one), verified through git, file hashes and continuity checks. Around every phase: the PRD hash is re-verified, and **step 14** writes a trimmed handoff for the next phase plus a plain-language note for you. |
+| 8 | **Application check** | An agent *runs the finished project* in a disposable copy and tries each acceptance criterion. Unmet criteria **fail the run** (exit 24); a "met" without evidence doesn't count. |
+| 9 | **Summary + memory** | `runs/<id>/summary.md` (what was built, what was decided for you, what's uncertain, how it was checked) and facts saved to `.osa/memory/` for next time. |
 
 Everything it produces for a run lives in `runs/<run-id>/` in your repo (committed): `baby-prd.md`, `research/`
 (`outline.yaml`, `fields.yaml`, `results/*.json`, `report.md`), `spec/`, `step14/`, `application/`, `summary.md`.
@@ -70,13 +72,18 @@ Everything it produces for a run lives in `runs/<run-id>/` in your repo (committ
 ### Flags
 
 ```
-osa "<what you want built>" [--file <path>]... [--repo-dir <path>] [--yes] [--spec-only] [--json]
+osa "<what you want built>" [--file <path>]... [--repo-dir <path>] [--yes [--accept-risky]] [--spec-only] [--json]
 ```
 
 - `--file` attaches a file to the prompt (links in the prompt or files are noted; anything OSA can't open becomes an assumption).
-- `--yes` is **unattended mode**: it locks automatically **only if there are zero `risky` assumptions**; otherwise it
-  stops at the lock and exits **19** with a clear message. Without `--yes` a terminal is required.
-- `--spec-only` stops after research and the spec.
+- `--yes` is **unattended mode**: the PRD is locked automatically, research and the spec run, and the build starts **only if
+  there are zero `risky` assumptions** (`defaulted` ones are accepted and listed); otherwise it stops after the spec at the
+  confirmation and exits **19** with a clear message. Without `--yes` a terminal is required.
+- `--accept-risky` (only with `--yes`) is the fully hands-off mode: it also proceeds past risky assumptions, and every risky
+  and defaulted item is written to the run summary.
+- `--spec-only` stops after research and the spec: nothing is built and there is no confirmation.
+- For a broad request in a terminal, intake may offer up to 3 questions with a suggested answer each (Enter accepts it).
+  `--yes` never asks.
 - The target directory must be a git repository with at least one commit (OSA verifies every phase through git).
 
 ## Configuration -- `osa.config.json`
@@ -201,8 +208,8 @@ are never trimmed**, and paths, hashes, errors, URLs and test names always survi
 Every stage logs a stable event to `.osa/runs/<run-id>/events.jsonl` (`assumptions_generated`, `prd_locked`,
 `research_item_done`, `research_validated`, `research_crosscheck`, `academic_query`, `github_lookup`, `trim_applied`,
 `trim_skipped`, `implication_done`, `lateral_arch_done`, `application_check`, `index_updated`, `memory_written`, ...).
-New exit codes: `19` stopped at the lock (risky assumptions, unattended), `20` locked PRD changed, `21` intake failed,
-`22` cancelled at the lock, `23` a stage's own contract failed (e.g. zero documentation sources), `24` the application check failed.
+New exit codes: `19` stopped at the confirmation after the spec (risky assumptions, unattended without `--accept-risky`), `20` locked PRD changed, `21` intake failed,
+`22` cancelled at the confirmation, `23` a stage's own contract failed (e.g. zero documentation sources), `24` the application check failed.
 
 ## The lower-level commands (unchanged)
 

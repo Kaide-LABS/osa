@@ -37,11 +37,13 @@ const USAGE_TEXT = `Usage: osa <command> [options]
 OSA -- One-Shot Anything.
 
 One-shot:
-  osa "<what you want built>" [--file <path>]... [--repo-dir <path>] [--yes] [--spec-only] [--json]
+  osa "<what you want built>" [--file <path>]... [--repo-dir <path>] [--yes [--accept-risky]] [--spec-only] [--json]
                                             Turn one prompt into a TL;DR + baby PRD with tagged
-                                            assumptions, confirm once at the lock (Lock / Edit /
-                                            Cancel), then run to completion with no further questions.
-                                            --yes locks automatically only when no assumption is risky.
+                                            assumptions (a broad prompt gets up to 3 optional questions
+                                            with suggested answers), lock it automatically, research and
+                                            write the spec, then confirm ONCE before the build.
+                                            --yes approves only when no assumption is risky (else exit 19);
+                                            --yes --accept-risky approves everything and records it.
                                             --spec-only stops after research and the spec (no build).
 
 Code index:
@@ -321,7 +323,7 @@ function parseSetupArgs(rest: readonly string[]): Command {
 }
 
 /**
- * Parses the one-shot form `osa "<prompt>" [--file <path>]... [--repo-dir <path>] [--yes] [--accept-risky] [--from-spec] [--stop-after-spec] [--json]`.
+ * Parses the one-shot form `osa "<prompt>" [--file <path>]... [--repo-dir <path>] [--yes [--accept-risky]] [--stop-after-spec] [--json]`.
  * Every non-flag token is part of the prompt. A *single* whitespace-free token is not accepted as a prompt:
  * it is far more likely a mistyped command (`osa doctr`), and a mistyped command must stay a usage error.
  */
@@ -333,7 +335,6 @@ function parsePromptArgs(args: readonly string[], repoDirDefault: string): Comma
   let acceptRisky = false;
   let json = false;
   let build = true;
-  let fromSpec = false;
   let stopAfterSpec = false;
   let features: FeatureFlags = {};
   for (let i = 0; i < args.length; i++) {
@@ -347,7 +348,8 @@ function parsePromptArgs(args: readonly string[], repoDirDefault: string): Comma
     } else if (arg === "--accept-risky") {
       acceptRisky = true;
     } else if (arg === "--from-spec") {
-      fromSpec = true;
+      // The pipeline option exists but resuming from a finished spec is not implemented (it would stop with a stub message), and the CLI cannot name the run to resume.
+      throw new UsageError("--from-spec is not available yet: resuming from a finished spec is not implemented. Run again, or use --stop-after-spec to stop after the spec.", { flag: "--from-spec" });
     } else if (arg === "--stop-after-spec") {
       stopAfterSpec = true;
     } else if (arg === "--json") {
@@ -387,7 +389,6 @@ function parsePromptArgs(args: readonly string[], repoDirDefault: string): Comma
     json,
     build,
     acceptRisky,
-    fromSpec,
     stopAfterSpec,
     ...(Object.keys(features).length > 0 ? { features } : {})
   };

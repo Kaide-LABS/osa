@@ -275,3 +275,15 @@ test("mcp-config prints a paste-ready MCP entry for the installation it runs fro
   assert.match(help.stdout, /osa mcp-config/);
   assert.match(help.stdout, /osa_plan \/ osa_spec \/ osa_build \/ osa_status/);
 });
+
+test("the one-shot flags: --accept-risky needs --yes, and --from-spec is refused plainly because resuming from a finished spec is not implemented", async () => {
+  const noYes = await runMain(["make a word counter", "--accept-risky"]);
+  assert.equal(noYes.exitCode, 2);
+  assert.match(noYes.stderr, /--accept-risky is only valid with --yes/);
+  const from = await runMain(["make a word counter", "--from-spec"]);
+  assert.equal(from.exitCode, 2);
+  assert.match(from.stderr, /--from-spec is not available yet/);
+  const help = await runMain(["--help"]);
+  assert.match(help.stdout, /--yes \[--accept-risky\]/);
+  assert.doesNotMatch(help.stdout, /--from-spec/);
+});

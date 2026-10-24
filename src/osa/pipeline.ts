@@ -29,7 +29,8 @@ import { runIntake } from "./intake.ts";
 import type { IntakeFile } from "./intake.ts";
 import { assertPrdUnchanged, autoLockBabyPrd, exitCodeForLockOutcome, gateIoFromLockIo, runGate, exitCodeForGateOutcome } from "./lock.ts";
 import type { LockIO, LockOutcome, GateIO, GateMode } from "./lock.ts";
-import { makeTerminalGateIO } from "./terminal.ts";
+import { makeTerminalGateIO, makeTerminalNudgeIO, NUDGE_TEXT } from "./terminal.ts";
+import type { NudgeIO } from "./terminal.ts";
 import { writeSpecGate, verifySpecGate } from "./spec-gate.ts";
 import { buildApprovalTldr } from "./tldr.ts";
 import { runDrive } from "../dispatch/driver-loop.ts";
@@ -126,6 +127,8 @@ export interface OsaDeps {
   readonly events?: EventSink;
   /** Whether a human can answer the lock prompt. Default: both stdin and stdout are TTYs. */
   readonly interactive?: boolean;
+  /** The terminal side of the intake nudge (tests supply a fake). Absent = the real terminal when OSA itself decides the run is interactive. */
+  readonly nudgeIo?: NudgeIO;
   readonly runId?: string;
   /** Project memory block for intake (WS8). */
   readonly readMemory?: (repoDir: string) => Promise<string | null>;
@@ -363,10 +366,26 @@ async function runOsaCommandInner(opts: OsaCommandOptions, deps: OsaDeps, track:
   if (opts.fromDraft === true) {
     prd = parseBabyPrd(await readFile(prdAbs, "utf8"));
   } else {
-    ({ prd } = await runIntake(
-      { prompt: opts.prompt, files, memory, maxItems: config.research.maxItems, quoteStatedRules: config.intake.quoteStatedRules, ...(opts.answers && { answers: opts.answers }) },
-      { textCall, provider: config.providers.pair[0], model: modelFor(config, config.providers.pair[0], 0), cwd: opts.repoDir, timeoutMs: config.providers.textTimeoutMs, events },
-    ));
+    const intakeWith = async (answers: Readonly<Record<string, string>> | undefined): Promise<BabyPrd> =>
+      (
+        await runIntake(
+          { prompt: opts.prompt, files, memory, maxItems: config.research.maxItems, quoteStatedRules: config.intake.quoteStatedRules, ...(answers !== undefined && Object.keys(answers).length > 0 ? { answers } : {}) },
+          { textCall, provider: config.providers.pair[0], model: modelFor(config, config.providers.pair[0], 0), cwd: opts.repoDir, timeoutMs: config.providers.textTimeoutMs, events },
+        )
+      ).prd;
+    prd = await intakeWith(opts.answers);
+    // The nudge (S-11): for a broad request in a real terminal, offer the recommended questions. Never blocking: Enter accepts the suggested answer, and
+    // when nothing was answered the plan stands (the suggestions stay as `defaulted` assumptions). Answered questions cost one more intake call.
+    const nudge = opts.yes ? undefined : (deps.nudgeIo ?? (deps.interactive === undefined && deps.io === undefined && deps.gateIo === undefined && interactive ? makeTerminalNudgeIO() : undefined)); // --yes never asks
+    if (nudge !== undefined && opts.answers === undefined && opts.stopAfterPlan !== true && prd.scope === "broad" && prd.recommendedQuestions.length > 0) {
+      nudge.show(NUDGE_TEXT);
+      const answers: Record<string, string> = {};
+      for (const q of prd.recommendedQuestions) {
+        const answer = (await nudge.ask(q.question, q.default)).trim();
+        if (answer !== "") answers[q.question] = answer;
+      }
+      if (Object.keys(answers).length > 0) prd = await intakeWith(answers);
+    }
     await mkdir(dirname(prdAbs), { recursive: true });
     await writeFile(prdAbs, renderBabyPrd(prd), "utf8");
   }
