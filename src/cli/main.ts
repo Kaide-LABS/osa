@@ -67,6 +67,8 @@ Commands:
                                             boundary scan, and a lock smoke test.
   osa doctor --boundary [--json]            Boundary scan only (fast, no provider probes).
   osa doctor --providers [--json]           Provider preflight only.
+  osa doctor --live [--providers] [--json]  Also make ONE tiny real call to each usable provider, to
+                                            catch an expired sign-in (a saved login file alone can't).
   osa run --config <path> [--json]          Dispatch one loopr phase's turn sequence. Providers may
                                             be pinned to a fixed role via the config's role_pins.
   osa evidence --repo-dir <path> --run-id <uuid> [--final-phase] [--json]
@@ -122,10 +124,16 @@ type Command =
   | { readonly kind: "setup"; readonly json: boolean }
   | { readonly kind: "mcp-config" };
 
+/** The options `runDoctor` gets for a parsed `doctor` command. Its own function so a flag that is parsed but never passed on (it happened to `--live`) is caught by a test. Pure. */
+export function doctorOptionsOf(command: DoctorOptions): DoctorOptions {
+  return { json: command.json, only: command.only, ...(command.live === true ? { live: true } : {}), ...(command.features !== undefined ? { features: command.features } : {}) };
+}
+
 function parseDoctorArgs(rest: readonly string[]): Command {
   let json = false;
   let boundaryFlag = false;
   let providersFlag = false;
+  let liveFlag = false;
   let features: FeatureFlags = {};
 
   for (let i = 0; i < rest.length; i++) {
@@ -140,6 +148,8 @@ function parseDoctorArgs(rest: readonly string[]): Command {
       boundaryFlag = true;
     } else if (arg === "--providers") {
       providersFlag = true;
+    } else if (arg === "--live") {
+      liveFlag = true;
     } else {
       throw new UsageError(`Unknown flag for doctor: ${arg}`, { flag: arg });
     }
@@ -150,9 +160,12 @@ function parseDoctorArgs(rest: readonly string[]): Command {
       flags: ["--boundary", "--providers"],
     });
   }
+  if (boundaryFlag && liveFlag) {
+    throw new UsageError("doctor --live checks providers, so it cannot be combined with --boundary (which checks none).", { flags: ["--boundary", "--live"] });
+  }
 
   const only: DoctorOptions["only"] = boundaryFlag ? "boundary" : providersFlag ? "providers" : "all";
-  return { kind: "doctor", json, only, ...(Object.keys(features).length > 0 ? { features } : {}) };
+  return { kind: "doctor", json, only, ...(liveFlag ? { live: true } : {}), ...(Object.keys(features).length > 0 ? { features } : {}) };
 }
 
 /**
@@ -700,7 +713,7 @@ export async function main(argv: readonly string[]): Promise<number> {
         return ExitCode.OK;
       }
       case "doctor": {
-        const { report, exitCode } = await runDoctor(process.cwd(), { json: command.json, only: command.only, ...(command.features !== undefined ? { features: command.features } : {}) });
+        const { report, exitCode } = await runDoctor(process.cwd(), doctorOptionsOf(command));
         process.stdout.write(command.json ? JSON.stringify(report, null, 2) + "\n" : renderHumanReport(report));
         return exitCode;
       }

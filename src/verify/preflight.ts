@@ -21,6 +21,8 @@ import { join } from "node:path";
 import { gitVersion } from "./git.ts";
 
 const CLI_PROBE_TIMEOUT_MS = 15_000;
+/** The second, patient try of a `--version` probe that timed out (see {@link checkProviderCli}). */
+const CLI_VERSION_RETRY_TIMEOUT_MS = 60_000;
 
 /** Per-provider CLI version acceptance range (min inclusive, max exclusive). §2.3. */
 export const PROVIDER_VERSION_RANGES: Readonly<Record<ProviderId, { min: string; maxExclusive: string }>> = {
@@ -359,14 +361,16 @@ async function observeCopilotAuth(env: Readonly<Record<string, string | undefine
   return interpretCopilotAuthInputs(env);
 }
 
-/** Runs `<cli> --version` for `id` and reports whether the CLI was found and its raw version banner. */
-export async function checkProviderCli(id: ProviderId): Promise<{ found: boolean; version: string | null }> {
-  const result = await runProcess({
-    command: PROVIDER_COMMAND[id],
-    args: ["--version"],
-    cwd: process.cwd(),
-    timeoutMs: CLI_PROBE_TIMEOUT_MS,
-  });
+/**
+ * Runs `<cli> --version` for `id` and reports whether the CLI was found and its raw version banner. A probe that TIMES OUT is tried once more with
+ * a much longer limit before the CLI is called missing: a CLI that is merely slow to start (Antigravity's takes 1.4 to 10 s alone, and `doctor` starts
+ * every provider's probe at once) was reported as "not found on PATH". A CLI that is really absent fails at once, so it never pays the second wait.
+ * `run` is injectable for tests; the signature stays `(id)` for every existing caller.
+ */
+export async function checkProviderCli(id: ProviderId, run: typeof runProcess = runProcess): Promise<{ found: boolean; version: string | null }> {
+  const probe = (timeoutMs: number): ReturnType<typeof runProcess> => run({ command: PROVIDER_COMMAND[id], args: ["--version"], cwd: process.cwd(), timeoutMs });
+  let result = await probe(CLI_PROBE_TIMEOUT_MS);
+  if (result.timedOut) result = await probe(CLI_VERSION_RETRY_TIMEOUT_MS);
   return parseProviderCliVersionResult(result);
 }
 

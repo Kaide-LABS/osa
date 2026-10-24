@@ -23,6 +23,7 @@ npm install -g @kaide-labs/osa
 #   or, from a clone:   git clone https://github.com/Kaide-LABS/osa && cd osa && npm ci && npm run build && npm link
 
 osa doctor                                 # shows which of your tools OSA can use
+osa doctor --live                          # also makes one tiny real call to each, to catch an expired sign-in
 cd your-project                            # a git repository with at least one commit
 osa "Build a command line tool that counts the words in text files and prints a total"
 ```

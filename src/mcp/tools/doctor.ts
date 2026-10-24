@@ -7,7 +7,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
-import { OsaError } from "../../domain/errors.ts";
+import { OsaError, UsageError } from "../../domain/errors.ts";
 import { DoctorReport, runDoctor } from "../../cli/doctor.ts";
 
 /**
@@ -23,6 +23,8 @@ export const DoctorToolInput = z.strictObject({
   /** Same three-way choice `DoctorOptions.only` already offers; defaults to `"all"`, the same
    * default `doctor` (no flags) already has on the CLI. */
   only: z.enum(["all", "boundary", "providers"]).default("all"),
+  /** Make one tiny real call to each provider that passed the static checks, to catch an expired sign-in. Costs seconds and a little of each provider's quota. Not allowed with `only: "boundary"`. */
+  live: z.boolean().default(false),
 });
 
 /** The inferred type of {@link DoctorToolInput}. */
@@ -31,7 +33,8 @@ export type DoctorToolInput = z.infer<typeof DoctorToolInput>;
 /** Tool description surfaced in `tools/list`, per PHASE_8_SPEC.md §4.4. */
 export const DOCTOR_TOOL_DESCRIPTION =
   "Full health check (or, with only set, boundary scan or provider preflight alone): toolchain, both " +
-  "providers, the boundary scan, and a lock smoke test. Equivalent to `osa doctor --json`.";
+  "providers, the boundary scan, and a lock smoke test. Equivalent to `osa doctor --json`. A provider's sign-in is " +
+  "judged from a saved file unless live is true, which makes one tiny real call to each usable provider and so catches an expired login.";
 
 /**
  * Translates a `DoctorReport` into a successful `CallToolResult`. Pure -- exported for direct unit
@@ -67,7 +70,8 @@ export function registerDoctorTool(server: McpServer): void {
     { description: DOCTOR_TOOL_DESCRIPTION, inputSchema: DoctorToolInput, outputSchema: DoctorReport },
     async (input) => {
       try {
-        const { report } = await runDoctor(input.repo_dir, { json: true, only: input.only });
+        if (input.live && input.only === "boundary") throw new UsageError("doctor live checks providers, so it cannot be combined with only: \"boundary\".");
+        const { report } = await runDoctor(input.repo_dir, { json: true, only: input.only, ...(input.live ? { live: true } : {}) });
         return doctorReportToCallToolResult(report);
       } catch (err) {
         return errorToCallToolResult(err);
