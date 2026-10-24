@@ -1,7 +1,11 @@
-# OSA memory dashboard (GitHub Pages)
+# OSA site (GitHub Pages)
 
-This branch holds ONE file, index.html, written by `osa memory dashboard`. It is served at https://kaide-labs.github.io/osa/.
+Served at https://kaide-labs.github.io/osa/.
 
-Redeploy: run `osa memory dashboard --out index.html` in this branch's folder, review the page, commit and push.
+- `index.html` -- the OSA project page. Static and self-contained: it loads nothing from elsewhere and sends nothing. Its "What OSA read" section lists the
+  documentation sources and papers from two real OSA research runs, generated from those runs' `research/report.md`.
+- `memory/index.html` -- the memory dashboard, written by `osa memory dashboard`. It holds ONLY facts loaded from those two research runs (documentation and
+  papers used, plus a run note each), kept in a separate memory database; it is not a copy of anyone's personal `~/.osa/memory.db`.
 
-The page shows whatever the memory database held when it was generated. Review it before publishing: memory can contain a project's decisions and goals, and the secret filter is pattern-based, not a guarantee.
+Redeploy the dashboard: `OSA_MEMORY_DB=<that database> osa memory dashboard --out memory/index.html`, review the page, commit and push. Review before
+publishing: memory can contain a project's decisions and goals, and the secret filter is pattern-based, not a guarantee.

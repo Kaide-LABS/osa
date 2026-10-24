@@ -3,113 +3,156 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
-<title>OSA memory</title>
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+<meta name="description" content="OSA turns one prompt into a researched, specified, built and checked project, using the AI coding tools you already have.">
+<title>OSA — One-Shot Anything</title>
 <style>
-:root { color-scheme: light dark; --bg: #fafaf9; --fg: #1c1917; --muted: #6b6560; --line: #e0dcd6; --card: #ffffff; --accent: #2f6f5e; }
-@media (prefers-color-scheme: dark) { :root { --bg: #161513; --fg: #ece8e2; --muted: #9a948b; --line: #34312d; --card: #1f1d1a; --accent: #6fbfa8; } }
+:root { color-scheme: light dark; --bg: #fafaf9; --fg: #1c1917; --muted: #6b6560; --line: #e0dcd6; --card: #ffffff; --accent: #2f6f5e; --accent-soft: #e6f0ec; --code: #f2efea; }
+@media (prefers-color-scheme: dark) { :root { --bg: #161513; --fg: #ece8e2; --muted: #9a948b; --line: #34312d; --card: #1f1d1a; --accent: #6fbfa8; --accent-soft: #1d2b27; --code: #26231f; } }
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; }
-main { max-width: 960px; margin: 0 auto; padding: 24px 16px 64px; }
-h1 { font-size: 22px; margin: 0 0 4px; }
-.sub { color: var(--muted); margin: 0 0 20px; }
-.bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
-input, select, button { font: inherit; color: inherit; background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
-input { flex: 1 1 260px; }
-#count { color: var(--muted); margin: 8px 0 12px; }
-ul { list-style: none; margin: 0; padding: 0; }
-li { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; overflow-wrap: anywhere; white-space: pre-wrap; }
-.meta { color: var(--muted); font-size: 12.5px; margin-bottom: 4px; white-space: normal; }
-table { width: 100%; border-collapse: collapse; margin: 0 0 24px; }
-th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
-th { color: var(--muted); font-weight: 500; font-size: 13px; }
-tbody tr { cursor: pointer; }
-tbody tr:hover { background: var(--card); }
-.hint { color: var(--muted); font-size: 13.5px; margin-top: 28px; }
-code { background: var(--card); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+main { max-width: 920px; margin: 0 auto; padding: 32px 16px 80px; }
+a { color: var(--accent); }
+h1 { font-size: clamp(30px, 6vw, 44px); line-height: 1.1; margin: 0 0 10px; letter-spacing: -0.02em; }
+h2 { font-size: 22px; margin: 48px 0 12px; letter-spacing: -0.01em; }
+h3 { font-size: 17px; margin: 22px 0 6px; }
+h4 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 16px 0 6px; }
+p { margin: 0 0 12px; }
+.lede { font-size: 19px; color: var(--muted); max-width: 680px; }
+.muted { color: var(--muted); }
+.links { display: flex; flex-wrap: wrap; gap: 10px; margin: 20px 0 8px; }
+.btn { display: inline-block; padding: 9px 14px; border-radius: 8px; border: 1px solid var(--line); background: var(--card); color: var(--fg); text-decoration: none; font-weight: 500; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+@media (prefers-color-scheme: dark) { .btn.primary { color: #0f1a17; } }
+pre, code { font: 14px/1.5 ui-monospace, "SF Mono", Consolas, monospace; }
+code { background: var(--code); border-radius: 4px; padding: 1px 5px; }
+pre { background: var(--code); border: 1px solid var(--line); border-radius: 8px; padding: 12px 14px; overflow-x: auto; margin: 0 0 12px; }
+pre code { background: none; padding: 0; }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+ol.stages { list-style: none; counter-reset: s; padding: 0; margin: 0; display: grid; gap: 8px; }
+ol.stages li { counter-increment: s; background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px 12px 52px; position: relative; }
+ol.stages li::before { content: counter(s); position: absolute; left: 14px; top: 12px; width: 26px; height: 26px; border-radius: 50%; background: var(--accent-soft); color: var(--accent); font-weight: 600; display: grid; place-items: center; font-size: 14px; }
+.guarantee { display: block; color: var(--muted); font-size: 14.5px; margin-top: 2px; }
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; background: var(--card); margin: 0 0 10px; }
+table { width: 100%; border-collapse: collapse; font-size: 15px; }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+tr:last-child td { border-bottom: none; }
+th { color: var(--muted); font-weight: 500; font-size: 13.5px; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+tr.hl td { background: var(--accent-soft); }
+.note { font-size: 14px; color: var(--muted); }
+ul.plain { padding-left: 20px; margin: 0 0 12px; }
+ul.plain li { margin-bottom: 6px; }
+details.run { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 16px; margin-bottom: 10px; }
+details.run summary { cursor: pointer; }
+ul.src { padding-left: 18px; margin: 0 0 6px; columns: 2 300px; column-gap: 28px; }
+ul.src li { break-inside: avoid; margin-bottom: 4px; font-size: 14.5px; overflow-wrap: anywhere; }
+.tag { display: inline-block; font-size: 12px; font-weight: 600; letter-spacing: .04em; text-transform: uppercase; color: var(--accent); background: var(--accent-soft); padding: 2px 8px; border-radius: 999px; margin-bottom: 10px; }
+footer { margin-top: 64px; padding-top: 18px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
 </style>
 </head>
 <body>
 <main>
-<h1>OSA memory</h1>
-<p class="sub">What OSA remembers across your projects. This page is a snapshot from 2026-10-24T12:34:03.833Z; it reads nothing and sends nothing.</p>
-<p class="sub" style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--card)"><strong>Sample data.</strong> These facts are invented to show the layout; they are not from real runs. Real runs fill this page from <code>osa memory dashboard</code>.</p>
-<table>
-<thead><tr><th>Project</th><th>Facts</th><th>Last change</th></tr></thead>
-<tbody id="projects"></tbody>
-</table>
-<div class="bar">
-<input id="q" type="search" placeholder="Search facts, projects and sources" autocomplete="off" aria-label="Search">
-<select id="project" aria-label="Project"><option value="">All projects</option></select>
-<select id="kind" aria-label="Kind"><option value="">All kinds</option></select>
+
+<span class="tag">Open source &middot; MIT</span>
+<h1>OSA — One-Shot Anything</h1>
+<p class="lede">One prompt in, a researched, specified, built and checked project out. OSA drives the AI coding tools you already have signed in, and leaves evidence at every step: a hash-locked plan, mandatory documentation, a reviewer that is a different model from the author, and a final check that runs the project.</p>
+<div class="links">
+  <a class="btn primary" href="https://github.com/Kaide-LABS/osa" rel="noopener">GitHub</a>
+  <a class="btn" href="https://www.npmjs.com/package/@kaide-labs/osa" rel="noopener">npm</a>
+  <a class="btn" href="./memory/">Memory dashboard</a>
+  <a class="btn" href="#sources">What OSA read</a>
 </div>
-<div id="count"></div>
-<ul id="list"></ul>
-<button id="more" hidden>Show more</button>
-<p class="hint">This is a copy. To remove something, run <code>osa memory forget --project &lt;name&gt;</code> (or <code>--all --yes</code>) and write a new page with <code>osa memory dashboard</code>. To move your memory to another machine, use <code>osa memory export</code> and <code>osa memory import</code>.</p>
+
+<h2>Install</h2>
+<pre><code>npm install -g @kaide-labs/osa
+osa setup          # register OSA's MCP server with Claude Code
+osa mcp-config     # or print the entry for Cursor, VS Code, Windsurf, Claude Desktop, ...</code></pre>
+<p class="muted">Then, in any git repository: <code>osa "build me a command-line word counter"</code>, or ask your assistant to use OSA. OSA has no model or API key of its own: it drives Claude Code, Codex CLI, OpenCode, Antigravity or GitHub Copilot CLI. One is enough.</p>
+
+<h2>How it works</h2>
+<ol class="stages">
+  <li><strong>Intake.</strong> A plain-language plan: TL;DR, scope, testable acceptance criteria, and every assumption tagged risky, defaulted or safe. A broad request gets up to 3 suggested questions with default answers. Answering is optional but recommended.<span class="guarantee">Nothing is assumed silently.</span></li>
+  <li><strong>Automatic lock.</strong> The plan is hashed (SHA-256) and committed.<span class="guarantee">Any later change to it is a hard failure.</span></li>
+  <li><strong>Research.</strong> Official documentation for every library named, academic papers (arXiv, OpenAlex), GitHub prior art; then a second model checks the report's claims.<span class="guarantee">A spec with no documentation source fails.</span></li>
+  <li><strong>Spec.</strong> Phase specs; gaps become logged decisions, never questions.<span class="guarantee">Every decision made for you is on record.</span></li>
+  <li><strong>Agents.</strong> A lateral-architecture agent proposes a different design; an implication agent adds second-order acceptance criteria.<span class="guarantee">The architecture choice and its reason are recorded.</span></li>
+  <li><strong>The one confirmation.</strong> A TL;DR built from the spec, its decisions, what research could not confirm, and the risky assumptions, assembled without another model call and tied to a hash of the spec. You approve once.<span class="guarantee">The spec you approve is the spec that gets built.</span></li>
+  <li><strong>Build.</strong> Per phase: two executor turns and a reviewer turn, verified through git, file hashes and continuity checks.<span class="guarantee">The reviewer is a different seat from the author.</span></li>
+  <li><strong>Application check.</strong> An agent runs the finished project in a disposable copy and tries each acceptance criterion; it has no file-edit tool.<span class="guarantee">No pass without a command and its observed output.</span></li>
+  <li><strong>Summary and memory.</strong> A plain-language summary (what was built, decided, uncertain, and how it was checked), and facts saved for the next run.<span class="guarantee">Secrets are rejected; memory comes from the run record, not model prose.</span></li>
+</ol>
+
+<h2>Over MCP: four tools</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Tool</th><th>What it does</th></tr></thead>
+<tbody>
+<tr><td><code>osa_plan</code></td><td>Writes the plan and its fingerprint. Builds nothing. Returns any recommended questions for a broad request.</td></tr>
+<tr><td><code>osa_spec</code></td><td>Locks the plan automatically and runs research and the spec in the background, then waits.</td></tr>
+<tr><td><code>osa_status</code></td><td>Progress; when the spec is ready, <code>awaiting_confirmation</code> with the TL;DR, a spec hash and the risky assumptions.</td></tr>
+<tr><td><code>osa_build</code></td><td>The one confirmation. Refuses a hash that is not the spec you saw, a spec file changed afterwards, or risky assumptions nobody accepted.</td></tr>
+</tbody></table></div>
+<p class="note">Unattended on the command line: <code>--yes</code> builds only when nothing is risky; <code>--yes --accept-risky</code> is fully hands-off and records every risky and defaulted item. New in <a href="https://github.com/Kaide-LABS/osa/releases/tag/v0.5.0" rel="noopener">v0.5.0</a>.</p>
+
+<h2>Review independence, measured by model</h2>
+<div class="grid">
+  <div class="card"><h3>A seat is a provider and a model</h3><p class="muted">The bias a review is meant to remove belongs to the model, not the vendor's tool. So one subscription is enough: a cheaper model writes, a stronger one reviews.</p></div>
+  <div class="card"><h3>Reported, never refused</h3><p class="muted">Six levels, strongest first: different model family, different capability class, different provider, different model, unverified, same model. OSA picks the strongest arrangement available and says plainly which one it got.</p></div>
+</div>
+
+<h2>Measured, with the caveats</h2>
+<h3>Finding code: the optional index versus grep</h3>
+<div class="table-wrap"><table>
+<thead><tr><th>Approach</th><th class="num">Correct</th><th class="num">Tokens per question</th></tr></thead>
+<tbody>
+<tr><td>grep, then read the top 3 files</td><td class="num">62.9%</td><td class="num">11,980</td></tr>
+<tr class="hl"><td>Code index (CBM) first, grep as fallback</td><td class="num">75.7%</td><td class="num">5,037</td></tr>
+<tr><td>Code index (CBM) alone</td><td class="num">58.6%</td><td class="num">644</td></tr>
+<tr><td>OSA's default lexical index</td><td class="num">31.4%</td><td class="num">608</td></tr>
+</tbody></table></div>
+<p class="note">70 questions about OSA's own code, answered by Claude Haiku from the retrieved text only, graded on naming the right file. Tokens, not dollars; one question is 1.4 points, so differences under about 5 points mean nothing; questions only, not a coding task; little gain on a brand-new, empty repository. The index is off by default.</p>
+<h3>Other numbers</h3>
+<ul class="plain">
+  <li>The independent research checker caught <strong>13 of 15</strong> planted false facts with 0 false alarms (a small planted-fact test).</li>
+  <li>A spec-only run on a library prompt: about <strong>22 minutes and 27 model calls</strong> (research about 14 minutes, spec about 6).</li>
+  <li>The test suite at v0.5.0: <strong>1,243 of 1,257 pass, 0 fail</strong>; 14 are skipped live tests that need real provider tools. An automated architecture-boundary scan finds 0 violations in 148 files.</li>
+  <li>Dependencies: two (zod and the MCP SDK).</li>
+</ul>
+
+<h2>Built with itself</h2>
+<p>OSA's own one-confirmation gate (v0.5.0) was planned, researched and specified by OSA. The build ran with <strong>Claude Haiku</strong>, the smallest and cheapest Claude model, writing the code and <strong>Claude Opus</strong> reviewing. Haiku wrote most of the change. The run also crashed three times and left real bugs, a lock that refused too eagerly and a gate that never cleared, which the checking caught and which were fixed by hand. That is the design working as intended: a cheap model writes, a different model checks, and nothing ships on the writer's word.</p>
+
+<h2>Found by running it for real</h2>
+<ul class="plain">
+  <li>arXiv returned no papers for long queries because it requires every word to match. A query that finds nothing is now retried with fewer words.</li>
+  <li>A provider that exited before reading its prompt took the whole harness down. It is now one failed call.</li>
+  <li>Codex on Windows wrote a byte-order mark that broke a valid record. OpenCode's headless web search never worked, so OSA does not claim it.</li>
+  <li>GitHub search returned nothing for long queries; a stopped run's summary leaked engineering text; the repository's own config file was invalid JSON, caught by the new doctor report.</li>
+</ul>
+
+<h2 id="sources">What OSA read</h2>
+<p>Every OSA run records the official documentation and papers its research used, with links. Below are the sources from two real research runs (59 documentation sources, 8 papers). The same facts are searchable in the <a href="./memory/">memory dashboard</a>.</p>
+<details class="run"><summary><strong>Rate limiters as a thread-safe Python library</strong> <span class="muted">run 725ad13a, 2026-10-24 &middot; 38 documentation sources &middot; 8 papers</span></summary>
+<p class="muted">15 research items; 7 of 7 documentation targets covered; a second model checked 17 claims and flagged 1 as unsupported.</p>
+<h4>Papers (found via OpenAlex)</h4><ul class="src"><li><a href="https://doi.org/10.1109/49.611158" rel="noopener">Rate control for VBR video coders in broad-band networks</a> <span class="muted">(1997, cited 87&times;)</span></li><li><a href="https://openalex.org/W198328412" rel="noopener">Trickle: rate limiting YouTube video streaming</a> <span class="muted">(2012, cited 85&times;)</span></li><li><a href="https://doi.org/10.1016/j.future.2019.10.026" rel="noopener">Adaptive sliding windows for improved estimation of data center resource utilization</a> <span class="muted">(2019, cited 84&times;)</span></li><li><a href="https://doi.org/10.1109/tvt.2017.2748345" rel="noopener">Detecting Flooding Attack and Accommodating Burst Traffic in Delay-Tolerant Networks</a> <span class="muted">(2017, cited 34&times;)</span></li><li><a href="https://doi.org/10.52783/jisem.v10i35s.6158" rel="noopener">Dynamic Traffic Padding Management: Leveraging the Token Bucket Algorithm – A Comparative Study with Mathematical Insights</a> <span class="muted">(2025, cited 2&times;)</span></li><li><a href="https://doi.org/10.1109/cscwd61410.2024.10580549" rel="noopener">PFTB: A Prediction-Based Fair Token Bucket Algorithm based on CRDT</a> <span class="muted">(2024, cited 1&times;)</span></li><li><a href="https://doi.org/10.20944/preprints202602.1689.v1" rel="noopener">Design, Security Analysis, and Evaluation of Endpoint-Aware Token-Bucket Rate Limiting for Web APIs Using Database-Configured Policies</a> <span class="muted">(2026, cited 0&times;)</span></li><li><a href="https://doi.org/10.21203/rs.3.rs-10948293/v1" rel="noopener">A Comparative Survey of API Rate-Limiting Algorithms: Token Bucket, Leaky Bucket, and Sliding Window</a> <span class="muted">(2026, cited 0&times;)</span></li></ul>
+<h4>Official documentation</h4><ul class="src"><li><a href="https://docs.python.org/3/library/threading.html" rel="noopener">threading — Thread-based parallelism — Python 3.15.1 documentation</a></li><li><a href="https://www.python.org/downloads/" rel="noopener">Download Python | Python.org</a></li><li><a href="https://docs.python.org/3/whatsnew/3.13.html" rel="noopener">What's New In Python 3.13</a></li><li><a href="https://docs.python.org/3.12/deprecations/index.html" rel="noopener">Deprecations — Python 3.12.15 documentation</a></li><li><a href="https://bugs.python.org/issue37804" rel="noopener">Issue 37804: Remove Thread.isAlive in Python 3.9 - Python tracker</a></li><li><a href="https://bugs.python.org/issue43723" rel="noopener">Issue 43723: Deprecate camelCase aliases from threading.py - Python tracker</a></li><li><a href="https://docs.python.org/3/library/time.html" rel="noopener">time — Time access and conversions — Python 3.15.1 documentation</a></li><li><a href="https://docs.python.org/3/whatsnew/3.15.html" rel="noopener">What's New In Python 3.15 — Python 3.15.1 documentation</a></li><li><a href="https://docs.python.org/3/library/tracemalloc.html" rel="noopener">tracemalloc — Trace memory allocations</a></li><li><a href="https://www.python.org/downloads/release/python-3151/" rel="noopener">Python Release Python 3.15.1</a></li><li><a href="https://docs.python.org/3/library/collections.html#collections.deque" rel="noopener">collections — Container datatypes: collections.deque</a></li><li><a href="https://docs.python.org/3/whatsnew/3.14.html" rel="noopener">What's New In Python 3.14</a></li><li><a href="https://docs.pytest.org/en/stable/" rel="noopener">pytest documentation (stable)</a></li><li><a href="https://docs.pytest.org/en/stable/changelog.html" rel="noopener">pytest changelog</a></li><li><a href="https://pypi.org/project/pytest/" rel="noopener">pytest · PyPI</a></li><li><a href="https://docs.pytest.org/en/stable/how-to/fixtures.html" rel="noopener">How to use fixtures — pytest documentation</a></li><li><a href="https://setuptools.pypa.io/en/latest/" rel="noopener">setuptools documentation (latest)</a></li><li><a href="https://setuptools.pypa.io/en/latest/userguide/pyproject_config.html" rel="noopener">Configuring setuptools using pyproject.toml files</a></li><li><a href="https://setuptools.pypa.io/en/latest/userguide/quickstart.html" rel="noopener">Quickstart - setuptools documentation</a></li><li><a href="https://setuptools.pypa.io/en/latest/build_meta.html" rel="noopener">Build System Support - setuptools documentation</a></li><li><a href="https://setuptools.pypa.io/en/latest/history.html" rel="noopener">setuptools Changelog/History</a></li><li><a href="https://pypi.org/project/setuptools/" rel="noopener">setuptools · PyPI</a></li><li><a href="https://packaging.python.org/en/latest/guides/writing-pyproject-toml/" rel="noopener">Writing your pyproject.toml — Python Packaging User Guide</a></li><li><a href="https://packaging.python.org/en/latest/specifications/pyproject-toml/" rel="noopener">pyproject.toml specification — Python Packaging User Guide</a></li><li><a href="https://setuptools.pypa.io/en/latest/userguide/license_migration.html" rel="noopener">Migrating to PEP 639 License Expressions - setuptools documentation</a></li><li><a href="https://peps.python.org/pep-0794/" rel="noopener">PEP 794 – Import name metadata</a></li><li><a href="https://redis.io/tutorials/howtos/ratelimiting/" rel="noopener">Build 5 Rate Limiters with Redis: Fixed Window, Sliding Window, Token Bucket, and Leaky Bucket</a></li><li><a href="https://docs.python.org/3/faq/library.html#what-kinds-of-global-value-mutation-are-thread-safe" rel="noopener">Python FAQ: What kinds of global value mutation are thread-safe?</a></li><li><a href="https://docs.python.org/3/howto/free-threading-python.html" rel="noopener">Python support for free threading — Python HOWTO</a></li><li><a href="https://docs.python.org/3/library/abc.html" rel="noopener">abc — Abstract Base Classes — Python 3 documentation</a></li><li><a href="https://docs.python.org/3/library/typing.html#typing.Protocol" rel="noopener">typing — Support for type hints — Python 3 documentation</a></li><li><a href="https://docs.python.org/3/library/tracemalloc.html#tracemalloc.get_traced_memory" rel="noopener">tracemalloc.get_traced_memory() — Python documentation</a></li><li><a href="https://docs.python.org/3/library/resource.html" rel="noopener">resource — Resource usage information — Python documentation</a></li><li><a href="https://docs.python.org/3/library/sys.html#sys.getsizeof" rel="noopener">sys — System-specific parameters and functions — Python documentation</a></li><li><a href="https://packaging.python.org/en/latest/tutorials/packaging-projects/" rel="noopener">Packaging Python Projects - Python Packaging User Guide</a></li><li><a href="https://packaging.python.org/en/latest/discussions/src-layout-vs-flat-layout/" rel="noopener">src layout vs flat layout - Python Packaging User Guide</a></li><li><a href="https://docs.pytest.org/en/stable/explanation/goodpractices.html" rel="noopener">Good Integration Practices - pytest documentation</a></li><li><a href="https://limits.readthedocs.io/" rel="noopener">limits documentation</a></li></ul>
+</details><details class="run"><summary><strong>OSA researching its own gate redesign</strong> <span class="muted">run 3e4f9eec, 2026-10-24 &middot; 21 documentation sources &middot; 0 papers</span></summary>
+<p class="muted">15 research items; 7 of 7 documentation targets covered; the checker (Gemini, no web access, so consistency only) flagged 8 of 33 claims as unsupported and 3 as contradicted. No academic queries were planned for an internal engineering change.</p>
+
+<h4>Official documentation</h4><ul class="src"><li><a href="https://zod.dev" rel="noopener">Zod — Introduction (official docs)</a></li><li><a href="https://zod.dev/v4/changelog" rel="noopener">Zod v4 Migration guide / changelog (official docs)</a></li><li><a href="https://ts.sdk.modelcontextprotocol.io/" rel="noopener">MCP TypeScript SDK v1 documentation (overview/install)</a></li><li><a href="https://ts.sdk.modelcontextprotocol.io/quickstart" rel="noopener">MCP TypeScript SDK v1 quickstart (zod peer dependency)</a></li><li><a href="https://raw.githubusercontent.com/modelcontextprotocol/typescript-sdk/v1.x/docs/server.md" rel="noopener">typescript-sdk v1.x docs/server.md (API surface)</a></li><li><a href="https://www.npmjs.com/package/@modelcontextprotocol/sdk" rel="noopener">@modelcontextprotocol/sdk - npm (version listing)</a></li><li><a href="https://registry.npmjs.org/@modelcontextprotocol/sdk/latest" rel="noopener">@modelcontextprotocol/sdk latest package metadata (npm registry)</a></li><li><a href="https://github.com/modelcontextprotocol/modelcontextprotocol/releases" rel="noopener">Releases / spec version timeline (modelcontextprotocol)</a></li><li><a href="https://nodejs.org/api/typescript.html" rel="noopener">Modules: TypeScript — Node.js API Documentation</a></li><li><a href="https://nodejs.org/en/blog/announcements/evolving-the-nodejs-release-schedule" rel="noopener">Evolving the Node.js Release Schedule / Node.js Releases</a></li><li><a href="https://www.typescriptlang.org/tsconfig/erasableSyntaxOnly.html" rel="noopener">TypeScript: TSConfig Option: erasableSyntaxOnly</a></li><li><a href="https://devblogs.microsoft.com/typescript/announcing-typescript-5-9/" rel="noopener">Announcing TypeScript 5.9 - TypeScript DevBlog</a></li><li><a href="https://devblogs.microsoft.com/typescript/announcing-typescript-6-0/" rel="noopener">Announcing TypeScript 6.0 - TypeScript DevBlog</a></li><li><a href="https://nodejs.org/dist/latest-v24.x/docs/api/crypto.html" rel="noopener">Crypto | Node.js v24.x Documentation</a></li><li><a href="https://nodejs.org/api/crypto.html" rel="noopener">Crypto | Node.js Documentation (crypto.html)</a></li><li><a href="https://nodejs.org/docs/latest/api/test.html" rel="noopener">Test runner | Node.js v26.x Documentation (latest)</a></li><li><a href="https://nodejs.org/api/test.html" rel="noopener">Test runner | Node.js API Documentation</a></li><li><a href="https://zod.dev/api" rel="noopener">Zod — Defining schemas (API reference)</a></li><li><a href="https://ts.sdk.modelcontextprotocol.io/v2/servers/tools.html" rel="noopener">Tools — MCP TypeScript SDK (v2 docs)</a></li><li><a href="https://modelcontextprotocol.io/docs/develop/build-server" rel="noopener">Build an MCP server - Model Context Protocol</a></li><li><a href="https://kotlin.sdk.modelcontextprotocol.io/kotlin-sdk-client/io.modelcontextprotocol.kotlin.sdk.client/-client/list-tools.html" rel="noopener">listTools - Kotlin MCP SDK</a></li></ul>
+</details>
+
+<h2>Honest limits</h2>
+<ul class="plain">
+  <li>Recorded end-to-end runs were on a Claude Code and Codex pair; a full build on the newest release with one provider has not yet been documented.</li>
+  <li>The Copilot adapter is experimental and untested against the real tool; Antigravity's text calls were slow and unreliable in our runs.</li>
+  <li>Prompt-injection screening of web text reduces the risk; it does not eliminate it.</li>
+  <li>Visual checks of user interfaces are not done; the strongest fit today is command-line tools, libraries and APIs.</li>
+</ul>
+
+<footer>OSA is MIT-licensed. Source: <a href="https://github.com/Kaide-LABS/osa" rel="noopener">github.com/Kaide-LABS/osa</a>. This page is static: it loads nothing from anywhere else and sends nothing.</footer>
 </main>
-<script type="application/json" id="osa-data">{"projects":[{"project":"invoice-api","count":4,"updatedAt":"2026-10-24T09:49:55.716Z"},{"project":"notes-app","count":2,"updatedAt":"2026-10-24T09:50:16.520Z"},{"project":"word-counter","count":3,"updatedAt":"2026-10-24T09:49:26.471Z"}],"facts":[{"id":"9c7d8cbe-e04b-479d-894e-b0a5b17fcaa0","project":"notes-app","kind":"fact","source":null,"text":"Wanted in scope: tagging notes. Did not want in scope: user accounts.","createdAt":"2026-10-24T09:50:16.520Z","updatedAt":"2026-10-24T09:50:16.520Z"},{"id":"dc98d362-29ea-48d6-a5ec-9209a4bde8f8","project":"notes-app","kind":"decision","source":null,"text":"Spec decision: use Express with better-sqlite3 for the notes API.","createdAt":"2026-10-24T09:50:06.296Z","updatedAt":"2026-10-24T09:50:06.296Z"},{"id":"dfa41adb-8c42-4b5e-9b0f-ae8647998d7e","project":"invoice-api","kind":"fact","source":null,"text":"Phase 2 did not complete: the second executor had nothing to commit.","createdAt":"2026-10-24T09:49:55.716Z","updatedAt":"2026-10-24T09:49:55.716Z"},{"id":"abd42ca3-1f27-4270-a293-d2efc0ec73ff","project":"invoice-api","kind":"note","source":null,"text":"Run stopped (The build stopped after a phase failed twice in a row). Phases passed: 1/3. Final check not run. Goal: A small REST API that creates and lists invoices.","createdAt":"2026-10-24T09:49:47.067Z","updatedAt":"2026-10-24T09:49:47.067Z"},{"id":"f4758997-11d4-4a42-afa4-a4e4af290614","project":"invoice-api","kind":"fact","source":null,"text":"Constraint: no network access at test time.","createdAt":"2026-10-24T09:49:39.981Z","updatedAt":"2026-10-24T09:49:39.981Z"},{"id":"05869f77-7a25-43ec-919d-54587102917b","project":"invoice-api","kind":"decision","source":null,"text":"Accepted risky assumption: invoices are stored in SQLite, not a hosted database.","createdAt":"2026-10-24T09:49:33.908Z","updatedAt":"2026-10-24T09:49:33.908Z"},{"id":"67f4605c-c105-4951-b9fb-e73c34b4670c","project":"word-counter","kind":"note","source":null,"text":"Run finished. Phases passed: 2/2. Unmet requirements: 0. Architecture: kept the planned architecture. Goal: A command line tool that counts words in text files and prints a total.","createdAt":"2026-10-24T09:49:26.471Z","updatedAt":"2026-10-24T09:49:26.471Z"},{"id":"3cb07f20-69b9-4ecc-931d-c5189bd88fb9","project":"word-counter","kind":"fact","source":null,"text":"Technologies this project documents and relies on: Node.js, commander.","createdAt":"2026-10-24T09:49:18.658Z","updatedAt":"2026-10-24T09:49:18.658Z"},{"id":"b627a39d-67d7-4e39-80ed-5285eaf9063a","project":"word-counter","kind":"decision","source":null,"text":"Architecture: kept the planned architecture -- a single-file Node CLI with no dependencies.","createdAt":"2026-10-24T09:49:09.017Z","updatedAt":"2026-10-24T09:49:09.017Z"}],"total":9}</script>
-<script>
-(function () {
-  var data = JSON.parse(document.getElementById('osa-data').textContent);
-  var q = document.getElementById('q');
-  var sp = document.getElementById('project');
-  var sk = document.getElementById('kind');
-  var list = document.getElementById('list');
-  var count = document.getElementById('count');
-  var more = document.getElementById('more');
-  var shown = 200;
-  function fill(select, values) {
-    values.forEach(function (v) {
-      var o = document.createElement('option');
-      o.value = v;
-      o.textContent = v;
-      select.appendChild(o);
-    });
-  }
-  fill(sp, data.projects.map(function (p) { return p.project; }));
-  fill(sk, ['fact', 'decision', 'note']);
-  var tbody = document.getElementById('projects');
-  data.projects.forEach(function (p) {
-    var tr = document.createElement('tr');
-    [p.project, String(p.count), p.updatedAt.slice(0, 10)].forEach(function (cell) {
-      var td = document.createElement('td');
-      td.textContent = cell;
-      tr.appendChild(td);
-    });
-    tr.addEventListener('click', function () { sp.value = p.project; shown = 200; render(); });
-    tbody.appendChild(tr);
-  });
-  function matches(f, terms) {
-    var hay = (f.text + ' ' + f.project + ' ' + (f.source || '')).toLowerCase();
-    for (var i = 0; i < terms.length; i++) { if (hay.indexOf(terms[i]) < 0) return false; }
-    return true;
-  }
-  function render() {
-    var terms = q.value.toLowerCase().split(' ').filter(function (t) { return t !== ''; });
-    var rows = data.facts.filter(function (f) {
-      return (sp.value === '' || f.project === sp.value) && (sk.value === '' || f.kind === sk.value) && matches(f, terms);
-    });
-    var left = data.total - data.facts.length;
-    count.textContent = rows.length + ' shown of ' + data.total + ' fact' + (data.total === 1 ? '' : 's') + (left > 0 ? ' (' + left + ' older ones are not in this page)' : '');
-    list.textContent = '';
-    rows.slice(0, shown).forEach(function (f) {
-      var li = document.createElement('li');
-      var meta = document.createElement('div');
-      meta.className = 'meta';
-      meta.textContent = f.kind + ' \u00b7 ' + f.project + ' \u00b7 ' + f.createdAt.slice(0, 10) + (f.source ? ' \u00b7 ' + f.source : '');
-      var body = document.createElement('div');
-      body.textContent = f.text;
-      li.appendChild(meta);
-      li.appendChild(body);
-      list.appendChild(li);
-    });
-    more.hidden = rows.length <= shown;
-  }
-  more.addEventListener('click', function () { shown += 200; render(); });
-  [q, sp, sk].forEach(function (el) { el.addEventListener('input', function () { shown = 200; render(); }); });
-  render();
-})();
-</script>
 </body>
 </html>
