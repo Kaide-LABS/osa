@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>OSA memory</title>
+<style>
+:root { color-scheme: light dark; --bg: #fafaf9; --fg: #1c1917; --muted: #6b6560; --line: #e0dcd6; --card: #ffffff; --accent: #2f6f5e; }
+@media (prefers-color-scheme: dark) { :root { --bg: #161513; --fg: #ece8e2; --muted: #9a948b; --line: #34312d; --card: #1f1d1a; --accent: #6fbfa8; } }
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.5 system-ui, -apple-system, 'Segoe UI', sans-serif; }
+main { max-width: 960px; margin: 0 auto; padding: 24px 16px 64px; }
+h1 { font-size: 22px; margin: 0 0 4px; }
+.sub { color: var(--muted); margin: 0 0 20px; }
+.bar { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+input, select, button { font: inherit; color: inherit; background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+input { flex: 1 1 260px; }
+#count { color: var(--muted); margin: 8px 0 12px; }
+ul { list-style: none; margin: 0; padding: 0; }
+li { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.meta { color: var(--muted); font-size: 12.5px; margin-bottom: 4px; white-space: normal; }
+table { width: 100%; border-collapse: collapse; margin: 0 0 24px; }
+th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); }
+th { color: var(--muted); font-weight: 500; font-size: 13px; }
+tbody tr { cursor: pointer; }
+tbody tr:hover { background: var(--card); }
+.hint { color: var(--muted); font-size: 13.5px; margin-top: 28px; }
+code { background: var(--card); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+</style>
+</head>
+<body>
+<main>
+<h1>OSA memory</h1>
+<p class="sub">What OSA remembers across your projects. This page is a snapshot from 2026-10-24T12:34:03.833Z; it reads nothing and sends nothing.</p>
+<p class="sub" style="border:1px solid var(--line);border-radius:8px;padding:10px 12px;background:var(--card)"><strong>Sample data.</strong> These facts are invented to show the layout; they are not from real runs. Real runs fill this page from <code>osa memory dashboard</code>.</p>
+<table>
+<thead><tr><th>Project</th><th>Facts</th><th>Last change</th></tr></thead>
+<tbody id="projects"></tbody>
+</table>
+<div class="bar">
+<input id="q" type="search" placeholder="Search facts, projects and sources" autocomplete="off" aria-label="Search">
+<select id="project" aria-label="Project"><option value="">All projects</option></select>
+<select id="kind" aria-label="Kind"><option value="">All kinds</option></select>
+</div>
+<div id="count"></div>
+<ul id="list"></ul>
+<button id="more" hidden>Show more</button>
+<p class="hint">This is a copy. To remove something, run <code>osa memory forget --project &lt;name&gt;</code> (or <code>--all --yes</code>) and write a new page with <code>osa memory dashboard</code>. To move your memory to another machine, use <code>osa memory export</code> and <code>osa memory import</code>.</p>
+</main>
+<script type="application/json" id="osa-data">{"projects":[{"project":"invoice-api","count":4,"updatedAt":"2026-10-24T09:49:55.716Z"},{"project":"notes-app","count":2,"updatedAt":"2026-10-24T09:50:16.520Z"},{"project":"word-counter","count":3,"updatedAt":"2026-10-24T09:49:26.471Z"}],"facts":[{"id":"9c7d8cbe-e04b-479d-894e-b0a5b17fcaa0","project":"notes-app","kind":"fact","source":null,"text":"Wanted in scope: tagging notes. Did not want in scope: user accounts.","createdAt":"2026-10-24T09:50:16.520Z","updatedAt":"2026-10-24T09:50:16.520Z"},{"id":"dc98d362-29ea-48d6-a5ec-9209a4bde8f8","project":"notes-app","kind":"decision","source":null,"text":"Spec decision: use Express with better-sqlite3 for the notes API.","createdAt":"2026-10-24T09:50:06.296Z","updatedAt":"2026-10-24T09:50:06.296Z"},{"id":"dfa41adb-8c42-4b5e-9b0f-ae8647998d7e","project":"invoice-api","kind":"fact","source":null,"text":"Phase 2 did not complete: the second executor had nothing to commit.","createdAt":"2026-10-24T09:49:55.716Z","updatedAt":"2026-10-24T09:49:55.716Z"},{"id":"abd42ca3-1f27-4270-a293-d2efc0ec73ff","project":"invoice-api","kind":"note","source":null,"text":"Run stopped (The build stopped after a phase failed twice in a row). Phases passed: 1/3. Final check not run. Goal: A small REST API that creates and lists invoices.","createdAt":"2026-10-24T09:49:47.067Z","updatedAt":"2026-10-24T09:49:47.067Z"},{"id":"f4758997-11d4-4a42-afa4-a4e4af290614","project":"invoice-api","kind":"fact","source":null,"text":"Constraint: no network access at test time.","createdAt":"2026-10-24T09:49:39.981Z","updatedAt":"2026-10-24T09:49:39.981Z"},{"id":"05869f77-7a25-43ec-919d-54587102917b","project":"invoice-api","kind":"decision","source":null,"text":"Accepted risky assumption: invoices are stored in SQLite, not a hosted database.","createdAt":"2026-10-24T09:49:33.908Z","updatedAt":"2026-10-24T09:49:33.908Z"},{"id":"67f4605c-c105-4951-b9fb-e73c34b4670c","project":"word-counter","kind":"note","source":null,"text":"Run finished. Phases passed: 2/2. Unmet requirements: 0. Architecture: kept the planned architecture. Goal: A command line tool that counts words in text files and prints a total.","createdAt":"2026-10-24T09:49:26.471Z","updatedAt":"2026-10-24T09:49:26.471Z"},{"id":"3cb07f20-69b9-4ecc-931d-c5189bd88fb9","project":"word-counter","kind":"fact","source":null,"text":"Technologies this project documents and relies on: Node.js, commander.","createdAt":"2026-10-24T09:49:18.658Z","updatedAt":"2026-10-24T09:49:18.658Z"},{"id":"b627a39d-67d7-4e39-80ed-5285eaf9063a","project":"word-counter","kind":"decision","source":null,"text":"Architecture: kept the planned architecture -- a single-file Node CLI with no dependencies.","createdAt":"2026-10-24T09:49:09.017Z","updatedAt":"2026-10-24T09:49:09.017Z"}],"total":9}</script>
+<script>
+(function () {
+  var data = JSON.parse(document.getElementById('osa-data').textContent);
+  var q = document.getElementById('q');
+  var sp = document.getElementById('project');
+  var sk = document.getElementById('kind');
+  var list = document.getElementById('list');
+  var count = document.getElementById('count');
+  var more = document.getElementById('more');
+  var shown = 200;
+  function fill(select, values) {
+    values.forEach(function (v) {
+      var o = document.createElement('option');
+      o.value = v;
+      o.textContent = v;
+      select.appendChild(o);
+    });
+  }
+  fill(sp, data.projects.map(function (p) { return p.project; }));
+  fill(sk, ['fact', 'decision', 'note']);
+  var tbody = document.getElementById('projects');
+  data.projects.forEach(function (p) {
+    var tr = document.createElement('tr');
+    [p.project, String(p.count), p.updatedAt.slice(0, 10)].forEach(function (cell) {
+      var td = document.createElement('td');
+      td.textContent = cell;
+      tr.appendChild(td);
+    });
+    tr.addEventListener('click', function () { sp.value = p.project; shown = 200; render(); });
+    tbody.appendChild(tr);
+  });
+  function matches(f, terms) {
+    var hay = (f.text + ' ' + f.project + ' ' + (f.source || '')).toLowerCase();
+    for (var i = 0; i < terms.length; i++) { if (hay.indexOf(terms[i]) < 0) return false; }
+    return true;
+  }
+  function render() {
+    var terms = q.value.toLowerCase().split(' ').filter(function (t) { return t !== ''; });
+    var rows = data.facts.filter(function (f) {
+      return (sp.value === '' || f.project === sp.value) && (sk.value === '' || f.kind === sk.value) && matches(f, terms);
+    });
+    var left = data.total - data.facts.length;
+    count.textContent = rows.length + ' shown of ' + data.total + ' fact' + (data.total === 1 ? '' : 's') + (left > 0 ? ' (' + left + ' older ones are not in this page)' : '');
+    list.textContent = '';
+    rows.slice(0, shown).forEach(function (f) {
+      var li = document.createElement('li');
+      var meta = document.createElement('div');
+      meta.className = 'meta';
+      meta.textContent = f.kind + ' \u00b7 ' + f.project + ' \u00b7 ' + f.createdAt.slice(0, 10) + (f.source ? ' \u00b7 ' + f.source : '');
+      var body = document.createElement('div');
+      body.textContent = f.text;
+      li.appendChild(meta);
+      li.appendChild(body);
+      list.appendChild(li);
+    });
+    more.hidden = rows.length <= shown;
+  }
+  more.addEventListener('click', function () { shown += 200; render(); });
+  [q, sp, sk].forEach(function (el) { el.addEventListener('input', function () { shown = 200; render(); }); });
+  render();
+})();
+</script>
+</body>
+</html>
