@@ -60,3 +60,20 @@ test("no retry when the first query already matched, or when simplifying changes
   assert.equal(seen.length, 1, "an HTTP failure is reported, not retried with a different query");
   assert.ok(r.problems.length > 0);
 });
+
+test("the GitHub token is OSA_GITHUB_TOKEN first and GITHUB_TOKEN second, sent as a bearer token; with neither the note says which names to use", async () => {
+  const auth: (string | null)[] = [];
+  const fetchFn = ((url: string, init?: RequestInit) => {
+    auth.push(new Headers(init?.headers).get("authorization"));
+    return Promise.resolve(new Response(JSON.stringify({ total_count: 0, items: [] }), { status: 200, headers: { "content-type": "application/json" } }));
+  }) as never;
+  const http = { fetchFn, sleepFn: () => Promise.resolve() };
+  const allAre = (v: string): boolean => auth.length > 0 && auth.every((a) => (a as string | null) === v);
+  await runGithubLookup({ queries: ["node cli"], events: new MemoryEventSink(), env: { OSA_GITHUB_TOKEN: "osa-token", GITHUB_TOKEN: "global-token" }, http });
+  assert.ok(allAre("Bearer osa-token"), `OSA_GITHUB_TOKEN wins: ${JSON.stringify(auth)}`);
+  auth.length = 0;
+  await runGithubLookup({ queries: ["node cli"], events: new MemoryEventSink(), env: { GITHUB_TOKEN: "global-token" }, http });
+  assert.ok(allAre("Bearer global-token"), "the global name still works");
+  const none = await runGithubLookup({ queries: ["node cli"], events: new MemoryEventSink(), env: {}, http });
+  assert.match(none.notes.join(" "), /OSA_GITHUB_TOKEN or GITHUB_TOKEN/);
+});

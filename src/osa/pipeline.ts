@@ -18,7 +18,7 @@ import { loadOsaConfig } from "../util/config-file.ts";
 import { NO_EXPLICIT_KEYS, applyFeatureFlags, describeFeatures } from "../features/features.ts";
 import type { FeatureFlags } from "../features/features.ts";
 import { repoRelToAbs } from "../util/paths.ts";
-import { renderBabyPrd } from "./baby-prd.ts";
+import { parseBabyPrd, renderBabyPrd } from "./baby-prd.ts";
 import { FileEventSink } from "./events.ts";
 import type { EventSink } from "./events.ts";
 import { InjectionTracker } from "./untrusted.ts";
@@ -60,7 +60,8 @@ import { readMemoryForPrompt } from "../memory/store.ts";
 import { renderIndexContext } from "../code-index/search.ts";
 import { nextPhaseSpecPath } from "../dispatch/artifacts.ts";
 import type { StageNote } from "./summary.ts";
-import { applySeatPlan, healthyProviders, modelFor, planSeats, seatKey } from "./seats.ts";
+import { applySeatPlan, healthyProviders, liveProbe, modelFor, planSeats, probeProviders, seatKey } from "./seats.ts";
+import type { ProviderProbe } from "./seats.ts";
 import { describeIndependence } from "../domain/independence.ts";
 import type { Seat } from "../domain/independence.ts";
 import { runPreflight } from "../verify/preflight.ts";
@@ -79,12 +80,27 @@ export interface OsaCommandOptions {
   readonly build?: boolean;
   /** Per-run overrides of the optional plug-ins (`--index-engine`, `--trim` / `--no-trim`, `--quote-stated-rules`); they win over `osa.config.json`. */
   readonly features?: FeatureFlags;
+  /**
+   * Stop right after intake: the draft plan is written to `runs/<id>/baby-prd.md` and the report says stage "intake", lock "not-reached". Nothing is
+   * locked or run. This is the first half of the two-step flow the MCP tools use (`osa_plan`), where the person confirms in their own chat.
+   */
+  readonly stopAfterPlan?: boolean;
+  /**
+   * Continue from the draft plan already at `runs/<id>/baby-prd.md` (the run id comes from `deps.runId`) instead of running intake again, so the
+   * plan that is locked is exactly the plan the person was shown. The second half of the two-step flow (`osa_build`).
+   */
+  readonly fromDraft?: boolean;
 }
 
 /** Collaborators; every field defaults to the real thing. */
 export interface OsaDeps {
   /** Test seam: which providers are usable (default: a real preflight of every provider). Only consulted when the config file sets no `providers.pair`. */
   readonly preflightFn?: () => Promise<Pick<PreflightSummary, "providers">>;
+  /**
+   * Test seam: asks one provider a tiny question; null = it answered. When OSA chooses the providers itself it probes each candidate first (a provider can
+   * be installed and signed in yet fail every call). Default: a real call; skipped when a fake `textCall` is injected and no probe is.
+   */
+  readonly probeProvider?: ProviderProbe;
   readonly textCall?: TextCall;
   readonly io?: LockIO;
   readonly events?: EventSink;
@@ -199,8 +215,17 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
   const featureStates = describeFeatures(baseConfig, loaded.explicit, opts.features ?? {});
   // Who sits where (src/osa/seats.ts): the providers are chosen from what is installed unless the config names a pair, and two seats on
   // one provider get different models. Nothing here refuses a configuration.
-  const healthy = loaded.pairSet ? [] : healthyProviders(await (deps.preflightFn ?? (() => runPreflight(opts.repoDir)))());
-  const seatPlan = planSeats({ config: baseConfig, pairSet: loaded.pairSet, healthy });
+  let healthy = loaded.pairSet ? [] : healthyProviders(await (deps.preflightFn ?? (() => runPreflight(opts.repoDir)))());
+  let skipped: { provider: ProviderId; reason: string }[] = [];
+  if (!loaded.pairSet && healthy.length > 0) {
+    const probe = deps.probeProvider ?? (deps.textCall === undefined ? liveProbe({ cwd: opts.repoDir, ...(baseConfig.providers.modelOverrides !== undefined ? { modelOverrides: baseConfig.providers.modelOverrides } : {}) }) : null);
+    if (probe !== null) {
+      const probed = await probeProviders(healthy, probe);
+      healthy = probed.live;
+      skipped = probed.skipped;
+    }
+  }
+  const seatPlan = planSeats({ config: baseConfig, pairSet: loaded.pairSet, healthy, skipped });
   const config = applySeatPlan(baseConfig, seatPlan);
   const seatCandidates = seatPlan.candidates;
   // Every stage logs through a tracker so planted-instruction evidence (`injection_flagged`) reaches the cross-check and the summary.
@@ -241,15 +266,42 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
   const readMemory = deps.readMemory ?? ((dir: string) => readMemoryForPrompt(dir, config.memory.readBudgetChars));
   const memory = config.memory.enabled ? await readMemory(opts.repoDir) : null;
 
-  // ---- intake ----
-  const { prd } = await runIntake(
-    { prompt: opts.prompt, files, memory, maxItems: config.research.maxItems, quoteStatedRules: config.intake.quoteStatedRules },
-    { textCall, provider: config.providers.pair[0], model: modelFor(config, config.providers.pair[0], 0), cwd: opts.repoDir, timeoutMs: config.providers.textTimeoutMs, events },
-  );
+  // ---- intake (or, when continuing a confirmed plan, the draft the person was shown) ----
   const prdPath = babyPrdRelPath(runId);
   const prdAbs = repoRelToAbs(opts.repoDir, prdPath);
-  await mkdir(dirname(prdAbs), { recursive: true });
-  await writeFile(prdAbs, renderBabyPrd(prd), "utf8");
+  let prd: BabyPrd;
+  if (opts.fromDraft === true) {
+    prd = parseBabyPrd(await readFile(prdAbs, "utf8"));
+  } else {
+    ({ prd } = await runIntake(
+      { prompt: opts.prompt, files, memory, maxItems: config.research.maxItems, quoteStatedRules: config.intake.quoteStatedRules },
+      { textCall, provider: config.providers.pair[0], model: modelFor(config, config.providers.pair[0], 0), cwd: opts.repoDir, timeoutMs: config.providers.textTimeoutMs, events },
+    ));
+    await mkdir(dirname(prdAbs), { recursive: true });
+    await writeFile(prdAbs, renderBabyPrd(prd), "utf8");
+  }
+  if (opts.stopAfterPlan === true) {
+    return {
+      schema_version: 1,
+      generated_at: new Date().toISOString(),
+      run_id: runId,
+      ok: true,
+      exit_code: ExitCode.OK,
+      stage: "intake",
+      lock: "not-reached",
+      prd_path: prdPath,
+      prd_sha256: null,
+      assumptions: counts(prd),
+      research: null,
+      spec: null,
+      build: null,
+      agents: null,
+      review: { author: seatKey(seatPlan.review.author), reviewer: seatKey(seatPlan.review.reviewer), level: seatPlan.review.level, text: reviewText },
+      summary_path: null,
+      warnings,
+      problems: [],
+    };
+  }
 
   // ---- lock ----
   const outcome = await lockBabyPrd({

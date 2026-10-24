@@ -87,7 +87,7 @@ export function buildPriorArtPrompt(prdBrief: string, repos: readonly PriorArtRe
 /** Runs the prior-art lookup. Never throws. Emits `github_lookup`. */
 export async function runGithubLookup(opts: GithubLookupOptions): Promise<PriorArtResult> {
   const env = opts.env ?? process.env;
-  const token = env["GITHUB_TOKEN"];
+  const token = env["OSA_GITHUB_TOKEN"] ?? env["GITHUB_TOKEN"];
   const gh = token !== undefined && token !== "" ? { token } : {};
   const maxRepos = opts.maxRepos ?? 3;
   const problems: string[] = [];
@@ -121,7 +121,7 @@ export async function runGithubLookup(opts: GithubLookupOptions): Promise<PriorA
     repos.push({ ...hit, description: await screenUntrusted({ text: hit.description, kind: "repository description", source: `github:${hit.fullName}`, events: opts.events, grow: false }), readmeExcerpt, keyFiles });
   }
 
-  if (token === undefined || token === "") notes.push("GITHUB_TOKEN is not set: unauthenticated GitHub limits apply and code search was not used.");
+  if (token === undefined || token === "") notes.push("No GitHub token (OSA_GITHUB_TOKEN or GITHUB_TOKEN) is set: unauthenticated GitHub limits apply and code search was not used.");
   let summary: string | null = null;
   if (repos.length === 0) {
     const limited = problems.some((p) => /rate limited/.test(p));

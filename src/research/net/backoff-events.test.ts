@@ -94,6 +94,6 @@ test("with GITHUB_TOKEN set, the lookup reports authenticated and sends the toke
     const r = await runGithubLookup({ queries: ["x tool"], events, env, http: { fetchFn, ...noSleep } });
     assert.equal(events.events.find((e) => e.event === "github_lookup")?.data["authenticated"], authed);
     assert.equal(seen[0] !== undefined, authed);
-    assert.equal(r.notes.some((n) => /GITHUB_TOKEN is not set/.test(n)), !authed);
+    assert.equal(r.notes.some((n) => /No GitHub token \(OSA_GITHUB_TOKEN or GITHUB_TOKEN\) is set/.test(n)), !authed);
   }
 });

@@ -4,7 +4,7 @@
 // build turns) get a stricter scrub: anything that looks like a credential is dropped unless it is the provider's own.
 
 /** Variables only OSA's research clients use. Never passed to any provider process. */
-export const OSA_ONLY_SECRETS: readonly string[] = ["GITHUB_TOKEN", "GH_TOKEN", "GITHUB_PAT", "OPENALEX_API_KEY", "S2_API_KEY", "SEMANTIC_SCHOLAR_API_KEY", "NPM_TOKEN"];
+export const OSA_ONLY_SECRETS: readonly string[] = ["OSA_GITHUB_TOKEN", "OSA_EMBEDDINGS_API_KEY", "GITHUB_TOKEN", "GH_TOKEN", "GITHUB_PAT", "OPENALEX_API_KEY", "S2_API_KEY", "SEMANTIC_SCHOLAR_API_KEY", "NPM_TOKEN"];
 
 const CREDENTIAL_LOOKING = /(?:SECRET|TOKEN|PASSWORD|PASSWD|PRIVATE_?KEY|CREDENTIAL|API_?KEY|ACCESS_?KEY|SESSION_?KEY|AUTH)/i;
 /** A provider's own credentials and settings keep working. */

@@ -84,3 +84,34 @@ test("role pins that remove an executor are refused too", async () => {
   assert.deepEqual(dispatched, []);
   assert.ok(error !== null || report?.ok === false);
 });
+
+test("when OSA chooses the providers itself, one that is installed and signed in but fails its test call is left out of the run (the MCP round trip found Codex failing every call)", async () => {
+  const { writeFile } = await import("node:fs/promises");
+  const repoDir = await tempGitRepo();
+  await writeFile(`${repoDir}/osa.config.json`, "{}");
+  const healthy = (provider: "claude-code" | "codex-cli") => ({ provider, cliFound: true, version: "1.0.0", versionInRange: true, authenticated: true, authState: "authenticated" as const, problems: [] });
+  const events = new MemoryEventSink(RUN);
+  const asked: string[] = [];
+  const report = await runOsaCommand(
+    { prompt: "make a word counter", files: [], repoDir, yes: false, json: true, build: false, stopAfterPlan: true },
+    {
+      events,
+      io,
+      interactive: true,
+      runId: RUN,
+      textCall: fakeModel().call,
+      preflightFn: () => Promise.resolve({ providers: [healthy("claude-code"), healthy("codex-cli")] }),
+      probeProvider: (p) => {
+        asked.push(p);
+        return Promise.resolve(p === "codex-cli" ? "codex-cli: The AI provider stopped with an error (it exited with code 1)." : null);
+      },
+    },
+  );
+  assert.deepEqual(asked.sort(), ["claude-code", "codex-cli"], "every healthy candidate was asked");
+  assert.equal(report.ok, true);
+  const seats = events.events.find((e) => e.event === "seats_resolved");
+  assert.deepEqual(seats?.data["pair"], ["claude-code", "claude-code"], "Codex was dropped, so both seats are Claude Code on different models");
+  assert.match(String((seats?.data["notes"] as string[]).join(" ")), /codex-cli is installed and signed in but did not answer a test call/);
+  assert.ok(report.warnings.some((w) => /did not answer a test call/.test(w)), "and the person is told");
+  assert.equal(report.review?.level, "different-class");
+});

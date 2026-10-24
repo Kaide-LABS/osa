@@ -14,7 +14,7 @@ import pkg from "../../package.json" with { type: "json" };
 import { PROVIDER_IDS } from "../domain/run.ts";
 import { runProcess } from "../util/exec.ts";
 import { DoctorReport } from "./doctor.ts";
-import { renderHumanReport, renderRunHumanReport } from "./main.ts";
+import { renderHumanReport, renderMcpConfig, renderRunHumanReport } from "./main.ts";
 import { RunReport } from "./run.ts";
 
 const MAIN_TS_PATH = fileURLToPath(new URL("./main.ts", import.meta.url));
@@ -254,4 +254,24 @@ test("any unrecognized flag passed to setup is a usage error (exit 2)", async ()
 test("USAGE_TEXT contains an osa setup line", async () => {
   const { stdout } = await runMain(["--help"]);
   assert.match(stdout, /osa setup \[--json\]\s+Register osa's own MCP server/);
+});
+
+test("mcp-config prints a paste-ready MCP entry for the installation it runs from, and takes no flags", async () => {
+  const text = renderMcpConfig("/home/me/lib/node_modules/@kaide-labs/osa/dist/cli/main.js");
+  const json = text.slice(text.indexOf("{"), text.indexOf("\n}\n") + 2);
+  const parsed = JSON.parse(json) as { mcpServers: { osa: { command: string; args: string[] } } };
+  assert.equal(parsed.mcpServers.osa.command, "node");
+  assert.deepEqual(parsed.mcpServers.osa.args.slice(1), ["mcp"]);
+  assert.match(parsed.mcpServers.osa.args[0] ?? "", /@kaide-labs.osa.dist.cli.main\.js$/);
+  assert.match(text, /claude mcp add --scope user --transport stdio osa -- node /);
+  assert.match(renderMcpConfig("/opt/with space/main.js"), /node "\/opt\/with space\/main\.js" mcp/, "a path with a space is quoted in the command line");
+  const ok = await runMain(["mcp-config"]);
+  assert.equal(ok.exitCode, 0);
+  assert.match(ok.stdout, /"mcpServers"/);
+  const bad = await runMain(["mcp-config", "--nope"]);
+  assert.equal(bad.exitCode, 2);
+  assert.match(bad.stderr, /Unknown flag for mcp-config/);
+  const help = await runMain(["--help"]);
+  assert.match(help.stdout, /osa mcp-config/);
+  assert.match(help.stdout, /osa_plan \/ osa_build \/ osa_status/);
 });

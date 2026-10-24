@@ -93,7 +93,7 @@ test("a web-enabled Claude call: web tools only, runs in an EMPTY scratch direct
   assert.equal(await exists(s.opts.cwd), false, "and is gone afterwards");
   assert.equal(s.opts.args[s.opts.args.indexOf("--tools") + 1], "WebSearch,WebFetch");
   const env = s.opts.env as Record<string, string>;
-  for (const k of ["GITHUB_TOKEN", "GH_TOKEN", "OPENALEX_API_KEY", "S2_API_KEY", "AWS_SECRET_ACCESS_KEY", "STRIPE_API_KEY", "DB_PASSWORD", "SSH_AUTH_SOCK"]) assert.equal(env[k], undefined, `${k} must not reach a web-reading provider`);
+  for (const k of ["OSA_GITHUB_TOKEN", "OSA_EMBEDDINGS_API_KEY", "GITHUB_TOKEN", "GH_TOKEN", "OPENALEX_API_KEY", "S2_API_KEY", "AWS_SECRET_ACCESS_KEY", "STRIPE_API_KEY", "DB_PASSWORD", "SSH_AUTH_SOCK"]) assert.equal(env[k], undefined, `${k} must not reach a web-reading provider`);
   assert.equal(env["ANTHROPIC_API_KEY"], "sk-ant-own-provider-key", "the provider's own credential still works");
   assert.ok(env["PATH"] !== undefined || env["Path"] !== undefined, "PATH is kept");
   assert.equal(events.events.find((e) => e.event === "text_call")?.data["isolatedCwd"], true);

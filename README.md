@@ -27,8 +27,28 @@ cd your-project                            # a git repository with at least one 
 osa "Build a command line tool that counts the words in text files and prints a total"
 ```
 
-OSA shows a plain-language plan and asks you to confirm once; after that it runs on its own. To use it from an AI tool instead, run `osa setup`
-once (it registers OSA's MCP server with Claude Code). `npm install -g github:Kaide-LABS/osa` does not work: the compiled files are not committed.
+OSA shows a plain-language plan and asks you to confirm once; after that it runs on its own.
+
+## Use OSA from your AI tool (MCP)
+
+OSA is also a local MCP server, so you can build from inside Claude Code, Cursor, VS Code or any MCP client instead of the terminal.
+
+```
+npm install -g @kaide-labs/osa
+osa setup            # registers the server with Claude Code (user scope); safe to run twice
+osa mcp-config       # any other client: prints the entry to paste into its MCP settings
+```
+
+Then, in a git project, ask your assistant: *"Use OSA to build a command line word counter"*. Three tools do the one-shot flow:
+
+| Tool | What it does |
+|---|---|
+| `osa_plan` | Turns the request into a plain-language plan (TL;DR, scope, acceptance criteria, risky and safe assumptions). **Builds nothing.** The assistant shows you the plan and asks. |
+| `osa_build` | Only after your explicit yes: locks exactly that plan (it must echo the plan's fingerprint) and runs research, spec, build and a final check **in the background**. It returns at once. Risky assumptions must be accepted explicitly. `decision: "cancel"` discards the plan. |
+| `osa_status` | State (`running`, `finished`, `stopped`, `interrupted`, ...), stage, recent events, and, at the end, the report and the plain-language summary. A build takes 15 to 60 minutes: poll every few minutes. |
+
+The build runs inside the MCP server process, so keep the client open until it finishes. If the server is restarted mid-build, `osa_status` reports `interrupted` and the files written so far stay under `runs/` and `.osa/runs/`. The server also offers `run`, `drive`, `evidence`, `doctor`, `code_search`, `memory_read` and `memory_append`.
+`npm install -g github:Kaide-LABS/osa` does not work: the compiled files are not committed.
 
 ## What happens, in order
 
@@ -90,7 +110,7 @@ falls back to the lexical index whenever the endpoint is unset or fails, and was
 `node scripts/embeddings-smoke.ts` against your endpoint first. See `docs/osa/SEMANTIC.md`.
 
 Optional environment variables (see `.env.example`; none is required, each feature degrades gracefully):
-`GITHUB_TOKEN` (raises GitHub limits, enables code search), `OPENALEX_API_KEY` (OpenAlex now gives unauthenticated
+`OSA_GITHUB_TOKEN` (or `GITHUB_TOKEN`; raises GitHub limits and enables code search; prefer `OSA_GITHUB_TOKEN`, because a global `GITHUB_TOKEN` also takes over the `gh` command's login), `OPENALEX_API_KEY` (OpenAlex now gives unauthenticated
 callers only a small shared daily budget; `mailto` no longer raises it), `S2_API_KEY` (only with `research.semanticScholar`), `OSA_EMBEDDINGS_API_KEY` (only with `index.engine: "hybrid"` and a hosted embeddings API).
 
 ## Providers, models and review independence

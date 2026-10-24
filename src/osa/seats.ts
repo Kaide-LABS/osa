@@ -13,9 +13,18 @@ import type { OsaConfig } from "../domain/osa-config.ts";
 import type { ProviderId } from "../domain/run.ts";
 import { classifyModel, knownModels } from "../adapters/model-classes.ts";
 import type { PreflightSummary } from "../verify/preflight.ts";
+import { makeTextCall } from "../dispatch/text-call.ts";
+import type { TextCall } from "../ports/text-provider.ts";
 
 /** Tie-break order when several providers are usable: the ones OSA has been verified against first. */
 export const PROVIDER_PREFERENCE: readonly ProviderId[] = ["claude-code", "codex-cli", "opencode-cli", "copilot-cli", "antigravity-cli"];
+
+/**
+ * The providers OSA's AUTOMATIC choice uses when it has any of them: the ones whose build turns have been run end to end. The others (OpenCode,
+ * Copilot, Antigravity) work when the person names them in `providers.pair`, and are chosen automatically only when no provider from this list is usable,
+ * because a build that stops half way on a provider nobody has run a build on is a worse surprise than a slightly less varied pair.
+ */
+export const AUTO_PROVIDERS: readonly ProviderId[] = ["claude-code", "codex-cli"];
 
 /** The providers that passed preflight, in {@link PROVIDER_PREFERENCE} order. Pure. */
 export function healthyProviders(summary: Pick<PreflightSummary, "providers">): ProviderId[] {
@@ -32,6 +41,8 @@ export interface SeatInput {
   /** Models a provider reported (e.g. `opencode models`). Used when neither the config nor the adapter names any. */
   readonly discovered?: Readonly<Partial<Record<ProviderId, readonly string[]>>>;
   readonly classify?: ModelClassifier;
+  /** Providers that passed preflight but did not answer a test call, with why (see {@link probeProviders}). Reported in the notes. */
+  readonly skipped?: readonly { readonly provider: ProviderId; readonly reason: string }[];
 }
 
 export interface SeatPlan {
@@ -106,9 +117,22 @@ export function planSeats(input: SeatInput): SeatPlan {
 
   if (auto) {
     if (input.healthy.length === 0) {
-      throw new UsageError("No AI provider is usable: install and sign in to at least one of Claude Code, Codex CLI, Antigravity CLI, OpenCode or GitHub Copilot CLI (run `osa doctor` to see what is missing).");
+      const why = (input.skipped ?? []).map((s) => (s.reason.startsWith(s.provider) ? s.reason : `${s.provider}: ${s.reason}`)).join("; ");
+      throw new UsageError(
+        why === ""
+          ? "No AI provider is usable: install and sign in to at least one of Claude Code, Codex CLI, Antigravity CLI, OpenCode or GitHub Copilot CLI (run `osa doctor` to see what is missing)."
+          : `No AI provider answered a test call (${why}). If a provider's default model is not available to your account, name one in osa.config.json (providers.modelOverrides); run \`osa doctor\` to see what is installed.`,
+      );
     }
-    usable = [...input.healthy];
+    for (const s of input.skipped ?? []) {
+      notes.push(`${s.provider} is installed and signed in but did not answer a test call (${s.reason}), so it was left out. If its default model is not available to your account, name one in osa.config.json: providers.modelOverrides.`);
+    }
+    const verified = input.healthy.filter((p) => AUTO_PROVIDERS.includes(p));
+    usable = verified.length > 0 ? verified : [...input.healthy];
+    const aside = input.healthy.filter((p) => !usable.includes(p));
+    if (aside.length > 0) {
+      notes.push(`${aside.join(" and ")} also answered, but OSA only chooses providers it has run builds on by itself (${AUTO_PROVIDERS.join(", ")}) unless they are the only ones; name ${aside.length === 1 ? "it" : "them"} in providers.pair to use ${aside.length === 1 ? "it" : "them"}.`);
+    }
     if (usable.length >= 2) {
       const [a, b] = bestProviderPair(usable, classify);
       seat0 = { provider: a, model: providers.seatModels[0] };
@@ -117,7 +141,7 @@ export function planSeats(input: SeatInput): SeatPlan {
     } else {
       const only = usable[0] as ProviderId;
       [seat0, seat1] = providers.independence === "off" ? [{ provider: only, model: providers.seatModels[0] }, { provider: only, model: providers.seatModels[1] }] : sameProviderSeats(only, seatsOf(input, only), providers.seatModels, classify);
-      notes.push(`Only ${only} is installed and signed in, so one provider fills both seats; the review is separated by model instead.`);
+      notes.push(`${aside.length > 0 ? `Only ${only} is among the providers OSA chooses on its own` : `Only ${only} is installed and signed in`}, so one provider fills both seats; the review is separated by model instead.`);
     }
   } else {
     const [p0, p1] = providers.pair;
@@ -156,6 +180,32 @@ export function planSeats(input: SeatInput): SeatPlan {
 /** The config with the chosen seats written into `providers`. */
 export function applySeatPlan(config: OsaConfig, plan: SeatPlan): OsaConfig {
   return { ...config, providers: { ...config.providers, pair: [plan.pair[0], plan.pair[1]], seatModels: [plan.seatModels[0], plan.seatModels[1]] } };
+}
+
+/** What a probe returns: `null` = the provider answered; otherwise why it did not. */
+export type ProviderProbe = (provider: ProviderId) => Promise<string | null>;
+
+/** Asks each provider a tiny question, in parallel. Never throws; a probe that throws counts as "did not answer". */
+export async function probeProviders(providers: readonly ProviderId[], probe: ProviderProbe): Promise<{ readonly live: ProviderId[]; readonly skipped: { readonly provider: ProviderId; readonly reason: string }[] }> {
+  const results = await Promise.all(
+    providers.map(async (provider) => {
+      try {
+        return { provider, reason: await probe(provider) };
+      } catch (err) {
+        return { provider, reason: err instanceof Error ? err.message : String(err) };
+      }
+    }),
+  );
+  return { live: results.filter((r) => r.reason === null).map((r) => r.provider), skipped: results.filter((r) => r.reason !== null).map((r) => ({ provider: r.provider, reason: r.reason as string })) };
+}
+
+/** The real probe: one tiny text call to the provider (no tools, no web, a minute at most). `reason` is the plain failure message. */
+export function liveProbe(opts: { readonly cwd: string; readonly modelOverrides?: OsaConfig["providers"]["modelOverrides"]; readonly textCall?: TextCall; readonly timeoutMs?: number }): ProviderProbe {
+  const call = opts.textCall ?? makeTextCall(opts.modelOverrides !== undefined ? { modelOverrides: opts.modelOverrides } : {});
+  return async (provider) => {
+    const r = await call(provider, { prompt: "Reply with exactly the single word OK and nothing else.", cwd: opts.cwd, timeoutMs: opts.timeoutMs ?? 60_000, tier: "high-volume-low-effort", webSearch: false, modelOverride: opts.modelOverrides?.[provider] ?? null }, "provider-probe");
+    return r.outcome.ok ? null : (r.outcome.failure?.message ?? "no answer");
+  };
 }
 
 /**

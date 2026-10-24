@@ -72,10 +72,34 @@ Commands:
                                             runDispatch() call per phase, halting on the first
                                             ambiguous or incoherent filesystem read.
   osa mcp                                   Start a local, stdio-only Model Context Protocol server
-                                            exposing run/drive/doctor/evidence as MCP tools.
+                                            exposing osa_plan / osa_build / osa_status (the one-shot
+                                            flow) and run/drive/doctor/evidence/code_search/memory.
   osa setup [--json]                        Register osa's own MCP server into your Claude Code
                                             configuration, at user scope.
+  osa mcp-config                            Print the MCP server entry (JSON, plus the Claude Code
+                                            command) to paste into any other MCP client.
 `;
+
+/**
+ * The MCP server entry for clients `osa setup` does not configure (everything except Claude Code): the JSON block most clients accept under
+ * `mcpServers`, and the equivalent Claude Code command. The path is this installation's own entry file, so it keeps working however npm laid it out.
+ * Pure.
+ */
+export function renderMcpConfig(entryPath: string): string {
+  const entry = { mcpServers: { osa: { command: "node", args: [entryPath, "mcp"] } } };
+  const quoted = entryPath.includes(" ") ? `"${entryPath}"` : entryPath;
+  return [
+    "Add this to your MCP client's configuration (Cursor, VS Code, Windsurf, Claude Desktop and most others use an \"mcpServers\" block):",
+    "",
+    JSON.stringify(entry, null, 2),
+    "",
+    "For Claude Code, `osa setup` does this for you; the equivalent command is:",
+    `  claude mcp add --scope user --transport stdio osa -- node ${quoted} mcp`,
+    "",
+    "Then ask your assistant to build something with OSA (it will show you a plan and ask before anything is built).",
+    "",
+  ].join("\n");
+}
 
 type Command =
   | { readonly kind: "version" }
@@ -90,7 +114,8 @@ type Command =
   | ({ readonly kind: "search" } & SearchCommandOptions)
   | ({ readonly kind: "memory" } & MemoryCommandOptions)
   | { readonly kind: "features"; readonly repoDir: string; readonly json: boolean; readonly features: FeatureFlags }
-  | { readonly kind: "setup"; readonly json: boolean };
+  | { readonly kind: "setup"; readonly json: boolean }
+  | { readonly kind: "mcp-config" };
 
 function parseDoctorArgs(rest: readonly string[]): Command {
   let json = false;
@@ -436,6 +461,10 @@ export function parseArgs(argv: readonly string[]): Command {
   if (first === "setup") {
     return parseSetupArgs(args.slice(1));
   }
+  if (first === "mcp-config") {
+    if (args.length > 1) throw new UsageError(`Unknown flag for mcp-config: ${String(args[1])}`, { flag: args[1] ?? null });
+    return { kind: "mcp-config" };
+  }
   if (first === "index") {
     return parseIndexArgs(args.slice(1));
   }
@@ -687,6 +716,10 @@ export async function main(argv: readonly string[]): Promise<number> {
         const report = await runOsaCommand(command);
         await writeFlushed(process.stdout, command.json ? JSON.stringify(report, null, 2) + "\n" : renderOsaRunReport(report));
         return report.exit_code;
+      }
+      case "mcp-config": {
+        process.stdout.write(renderMcpConfig(fileURLToPath(import.meta.url)));
+        return ExitCode.OK;
       }
       case "setup": {
         const { report, exitCode } = await runSetupCommand({
