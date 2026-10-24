@@ -27,9 +27,10 @@ import { TOKEN_CATEGORIES, TokenAccountant, accountedRunProcess, accountedTextCa
 import { screenHits } from "../code-index/guard.ts";
 import { runIntake } from "./intake.ts";
 import type { IntakeFile } from "./intake.ts";
-import { assertPrdUnchanged, exitCodeForLockOutcome, lockBabyPrd } from "./lock.ts";
-import type { LockIO, LockOutcome } from "./lock.ts";
+import { assertPrdUnchanged, exitCodeForLockOutcome, lockBabyPrd, runGate, exitCodeForGateOutcome } from "./lock.ts";
+import type { LockIO, LockOutcome, GateIO } from "./lock.ts";
 import { makeTerminalLockIO } from "./terminal.ts";
+import { writeSpecGate, verifySpecGate } from "./spec-gate.ts";
 import { runDrive } from "../dispatch/driver-loop.ts";
 import type { DriveDispatchDeps, DrivePhaseHooks } from "../dispatch/driver-loop.ts";
 import { DriveConfig } from "../domain/driver.ts";
@@ -90,6 +91,21 @@ export interface OsaCommandOptions {
    * plan that is locked is exactly the plan the person was shown. The second half of the two-step flow (`osa_build`).
    */
   readonly fromDraft?: boolean;
+  /**
+   * Stop right after the spec is written and spec-gate.json is committed. The report says stage "spec" with `spec_gate` populated.
+   * No build, no gate. The deterministic TL;DR is assembled and returned in the report.
+   */
+  readonly stopAfterSpec?: boolean;
+  /**
+   * Skip intake/research/spec: read the locked PRD and verify the spec-gate hashes before resuming at the gate/build.
+   * Requires the run to already have both `.osa/runs/<id>/prd.lock.json` and `.osa/runs/<id>/spec-gate.json`.
+   */
+  readonly fromSpec?: boolean;
+  /**
+   * For the post-spec gate: proceed only if zero risky assumptions (default --yes behaviour); with this flag, proceed regardless
+   * of risky items and record them in the report/summary. `--accept-risky` without `--yes` is a usage error (exit 2).
+   */
+  readonly acceptRisky?: boolean;
 }
 
 /** Collaborators; every field defaults to the real thing. */
@@ -154,6 +170,10 @@ export interface OsaRunReport {
   readonly research: { readonly skipped: boolean; readonly items: number; readonly docSources: number; readonly papers: number; readonly repos: number; readonly crossChecked: boolean } | null;
   /** Spec artifacts, `null` until the spec stage has run. */
   readonly spec: { readonly spec_path: string; readonly context_path: string; readonly total_phases: number; readonly assumptions: number } | null;
+  /** Spec gate record: holds prd_sha256 and spec_gate_sha256, null until the spec gate is written. */
+  readonly spec_gate: { readonly spec_gate_sha256: string; readonly prd_sha256: string } | null;
+  /** Deterministic TL;DR assembled for the post-spec approval gate, null until assembled. */
+  readonly tldr: readonly string[] | null;
   /** Build summary, `null` until the build stage has run (or when `--spec-only`). */
   readonly build: { readonly ok: boolean; readonly exit_code: number; readonly phases_run: number; readonly final_state: string } | null;
   /** What the agents between spec and build, and the application check, did; `null` until they have run. */
@@ -296,6 +316,8 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
       assumptions: counts(prd),
       research: null,
       spec: null,
+      spec_gate: null,
+      tldr: null,
       build: null,
       agents: null,
       review: { author: seatKey(seatPlan.review.author), reviewer: seatKey(seatPlan.review.reviewer), level: seatPlan.review.level, text: reviewText },
@@ -305,18 +327,20 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
     };
   }
 
-  // ---- lock ----
+  // ---- lock (now auto-lock before research, no prompt; risky gate moves to post-spec) ----
+  // Auto-lock the PRD with no prompt; the gate moved the risky-refusal to the post-spec gate.
   const outcome = await lockBabyPrd({
     repoDir: opts.repoDir,
     runId,
     prdPath,
     io: deps.io ?? makeTerminalLockIO(opts.repoDir),
     events,
-    unattended: opts.yes,
-    autoLockWhenNoRisky: config.intake.autoLockWhenNoRisky,
+    unattended: true, // Always unattended for auto-lock; no human interaction.
+    autoLockWhenNoRisky: true, // Always lock (the gate never refuses here).
   });
 
   if (outcome.kind !== "locked") {
+    // This should never happen in auto-lock mode (unattended always locks), but handle it for safety.
     return {
       schema_version: 1,
       generated_at: new Date().toISOString(),
@@ -330,6 +354,8 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
       assumptions: counts(prd),
       research: null,
       spec: null,
+      spec_gate: null,
+      tldr: null,
       build: null,
       agents: null,
       summary_path: null,
@@ -344,6 +370,60 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
 
   // The harness hashes artifacts_read at head_before, so the locked PRD must be committed before dispatch.
   await commitPaths(opts.repoDir, `chore: lock baby PRD for OSA run ${runId}`, [prdPath]);
+
+  // ---- fromSpec: skip research/spec, verify spec-gate, resume at gate/build ----
+  // TODO (Part B): fromSpec currently returns a scaffold. Complete: read spec artifacts,
+  // assemble TL;DR, and wire the real gate.
+  if (opts.fromSpec === true) {
+    try {
+      const specGateRecord = await verifySpecGate(opts.repoDir, runId, outcome.record.sha256);
+      return {
+        schema_version: 1,
+        generated_at: new Date().toISOString(),
+        run_id: runId,
+        ok: false, // Part B wires the real gate
+        exit_code: ExitCode.OK,
+        stage: "spec",
+        lock: "locked",
+        prd_path: prdPath,
+        prd_sha256: outcome.record.sha256,
+        assumptions: counts(prd),
+        research: null,
+        spec: null,
+        spec_gate: { spec_gate_sha256: specGateRecord.spec_gate_sha256, prd_sha256: specGateRecord.prd_sha256 },
+        tldr: null,
+        build: null,
+        agents: null,
+        review: { author: seatKey(seatPlan.review.author), reviewer: seatKey(seatPlan.review.reviewer), level: seatPlan.review.level, text: reviewText },
+        summary_path: null,
+        warnings,
+        problems: [],
+      };
+    } catch (err) {
+      return {
+        schema_version: 1,
+        generated_at: new Date().toISOString(),
+        run_id: runId,
+        ok: false,
+        exit_code: ExitCode.STAGE_FAILED,
+        stage: "spec",
+        lock: "locked",
+        prd_path: prdPath,
+        prd_sha256: outcome.record.sha256,
+        assumptions: counts(prd),
+        research: null,
+        spec: null,
+        spec_gate: null,
+        tldr: null,
+        build: null,
+        agents: null,
+        review: { author: seatKey(seatPlan.review.author), reviewer: seatKey(seatPlan.review.reviewer), level: seatPlan.review.level, text: reviewText },
+        summary_path: null,
+        warnings,
+        problems: [err instanceof Error ? err.message : String(err)],
+      };
+    }
+  }
 
   // ---- trimming engine, resolved once: used for every handoff from here on ----
   const resolved = deps.trimmer ?? (await resolveTrimmerLazily(config.trim, { cwd: opts.repoDir, ...(deps.trimSpawn !== undefined ? { runProcessFn: deps.trimSpawn } : {}) }));
@@ -447,6 +527,9 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
   await commitPaths(opts.repoDir, `chore: spec for OSA run ${runId}`, [specDirRel(runId)]);
   await assertPrdUnchanged(opts.repoDir, runId, "after spec", events, pinned);
 
+  // Write spec-gate.json after the spec is finalized (not committed, per AC 15).
+  const specGateRecord = await writeSpecGate(opts.repoDir, runId, outcome.record.sha256);
+
   const researchSummary: NonNullable<OsaRunReport["research"]> = {
     skipped: research.skipped,
     items: research.outcomes.length,
@@ -502,9 +585,41 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
     }
   };
 
+  // stopAfterSpec returns early with the spec-gate written but no gate/build.
+  if (opts.stopAfterSpec === true) {
+    await recordMemory({ outcome: "finished", stoppedBecause: null, application: null });
+    return {
+      ...base,
+      generated_at: new Date().toISOString(),
+      ok: true,
+      exit_code: ExitCode.OK,
+      stage: "spec",
+      spec_gate: { spec_gate_sha256: specGateRecord.spec_gate_sha256, prd_sha256: specGateRecord.prd_sha256 },
+      tldr: null, // Part B supplies deterministic TL;DR
+      build: null,
+      agents: { architecture, implications, application: null },
+      summary_path: null,
+      warnings,
+      problems: [],
+    };
+  }
+
   if (opts.build === false) {
     await recordMemory({ outcome: "finished", stoppedBecause: null, application: null });
-    return { ...base, generated_at: new Date().toISOString(), ok: true, exit_code: ExitCode.OK, stage: "spec", build: null, agents: { architecture, implications, application: null }, summary_path: null, warnings, problems: [] };
+    return {
+      ...base,
+      generated_at: new Date().toISOString(),
+      ok: true,
+      exit_code: ExitCode.OK,
+      stage: "spec",
+      spec_gate: { spec_gate_sha256: specGateRecord.spec_gate_sha256, prd_sha256: specGateRecord.prd_sha256 },
+      tldr: null, // Part B supplies deterministic TL;DR
+      build: null,
+      agents: { architecture, implications, application: null },
+      summary_path: null,
+      warnings,
+      problems: [],
+    };
   }
 
   // ---- build: the existing cross-provider driver, with PRD-integrity and step-14 hooks around every phase ----
@@ -688,6 +803,8 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
     ok: driven.ok && !applicationFailed,
     exit_code: exitCode,
     stage: !driven.ok ? "build" : applicationFailed ? "verify" : "done",
+    spec_gate: { spec_gate_sha256: specGateRecord.spec_gate_sha256, prd_sha256: specGateRecord.prd_sha256 },
+    tldr: null, // Part B supplies deterministic TL;DR
     build: { ok: driven.ok, exit_code: driven.exitCode, phases_run: new Set(driven.phases.map((p) => p.dispatched_run_id).filter((id): id is string => id !== null)).size, final_state: driven.finalStateId },
     agents: {
       architecture,
@@ -758,7 +875,7 @@ export function renderOsaRunReport(report: OsaRunReport): string {
           : "not started";
   lines.push(`osa run -- ${report.ok ? "OK" : "STOPPED"} (${state}, run ${report.run_id})`);
   if (report.prd_path !== null) lines.push(`PRD: ${report.prd_path}${report.prd_sha256 !== null ? ` (sha256 ${report.prd_sha256.slice(0, 12)}...)` : ""}`);
-  lines.push(`Assumptions: ${String(report.assumptions.risky)} risky, ${String(report.assumptions.safe)} safe`);
+  lines.push(`Assumptions: ${String(report.assumptions.risky)} risky, ${String(report.assumptions.safe)} safe${report.assumptions.defaulted > 0 ? `, ${String(report.assumptions.defaulted)} defaulted` : ""}`);
   if (report.research !== null) {
     const r = report.research;
     lines.push(

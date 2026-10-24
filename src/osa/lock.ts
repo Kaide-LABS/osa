@@ -150,6 +150,79 @@ export interface PinnedLock {
   readonly prd_path: string;
 }
 
+/** The terminal side of the gate (show text, ask y/N). Simpler than LockIO: no edit loop. */
+export interface GateIO {
+  show(text: string): void;
+  confirm(): Promise<boolean>; // y/N, default false on empty/EOF
+}
+
+/** How the gate should behave. */
+export type GateMode =
+  | { readonly kind: "auto-lock" }
+  | { readonly kind: "unattended"; readonly acceptRisky: boolean }
+  | { readonly kind: "interactive" };
+
+/** Input of {@link runGate}. */
+export interface GateInput {
+  readonly repoDir: string;
+  readonly runId: string;
+  /** Repo-relative path of the artifact being gated (e.g., `runs/<id>/baby-prd.md`). */
+  readonly artifactPath: string;
+  /** The risky assumptions that force a human (empty = nothing risky). */
+  readonly risky: readonly Assumption[];
+  readonly io: GateIO;
+  readonly events: EventSink;
+  readonly mode: GateMode;
+}
+
+/** The three ways the gate can end. */
+export type GateOutcome =
+  | { readonly kind: "locked"; readonly sha256: string }
+  | { readonly kind: "cancelled" }
+  | { readonly kind: "refused"; readonly message: string };
+
+/** Exit code for a gate outcome (mirrors LockOutcome). */
+export function exitCodeForGateOutcome(outcome: GateOutcome): number {
+  if (outcome.kind === "locked") return ExitCode.OK;
+  return outcome.kind === "cancelled" ? ExitCode.LOCK_CANCELLED : ExitCode.PRD_LOCK_REFUSED;
+}
+
+/** Runs the generalised gate logic. */
+export async function runGate(input: GateInput): Promise<GateOutcome> {
+  const abs = repoRelToAbs(input.repoDir, input.artifactPath);
+  const content = await readFile(abs, "utf8");
+  const artifactHash = await sha256File(abs);
+
+  if (input.mode.kind === "auto-lock") {
+    // auto-lock: always lock, never refuse (risky gate moves to spec gate).
+    await input.events.emit("prd_locked", { path: input.artifactPath, sha256: artifactHash, unattended: false });
+    return { kind: "locked", sha256: artifactHash };
+  }
+
+  if (input.mode.kind === "unattended") {
+    // unattended: lock only when zero risky, otherwise refuse.
+    if (input.mode.acceptRisky === false && input.risky.length > 0) {
+      const message = `Stopped at the gate: ${String(input.risky.length)} risky assumption(s) need review. ` +
+        `Rerun with \`--accept-risky\` to proceed, or refine your prompt and try again.`;
+      await input.events.emit("prd_lock_refused", { risky: input.risky.map((a) => a.text), reason: message });
+      return { kind: "refused", message };
+    }
+    // acceptRisky===true or no risky: lock now (hands-off).
+    await input.events.emit("prd_locked", { path: input.artifactPath, sha256: artifactHash, unattended: true });
+    return { kind: "locked", sha256: artifactHash };
+  }
+
+  // interactive: show TL;DR, ask y/N.
+  input.io.show(content);
+  const confirmed = await input.io.confirm();
+  if (confirmed) {
+    await input.events.emit("prd_locked", { path: input.artifactPath, sha256: artifactHash, unattended: false });
+    return { kind: "locked", sha256: artifactHash };
+  }
+  await input.events.emit("prd_lock_cancelled", {});
+  return { kind: "cancelled" };
+}
+
 /**
  * Hard-fails if the locked PRD changed (or vanished) since `prd_locked`. Call before every build phase and
  * at the end of the run. The mismatch is {@link PrdLockViolationError}: never retried, never repaired.
