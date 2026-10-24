@@ -221,3 +221,47 @@ test("intake normalizes recommended questions: narrow clears them, broad truncat
   assert.deepEqual(r2.prd.recommendedQuestions, [], "cleared when narrow");
   assert.equal(r2.prd.assumptions.filter((a) => a.risk === "defaulted").length, 0);
 });
+
+test("intake with answers to some recommended questions creates defaulted for unanswered ones", async () => {
+  const reply = {
+    ...samplePrd({ broad: true }),
+    recommendedQuestions: [
+      { question: "Should it count words, characters, or lines?", default: "words" },
+      { question: "How should it handle non-ASCII text?", default: "Count all characters as words if separated by whitespace" },
+    ],
+  };
+  const { call } = scriptedTextCall([JSON.stringify(reply)]);
+  const events = new MemoryEventSink();
+  const r = await runIntake(
+    { ...input, answers: { "Should it count words, characters, or lines?": "lines" } },
+    deps(call, events),
+  );
+  const defaulted = r.prd.assumptions.filter((a) => a.risk === "defaulted");
+  assert.equal(defaulted.length, 1, "one question was answered, so only one defaulted assumption");
+  assert.equal(defaulted[0]?.text, "Count all characters as words if separated by whitespace", "the unanswered question's default becomes the defaulted assumption text");
+});
+
+test("intake with non-matching answer keys ignores them; all questions still become defaulted", async () => {
+  const reply = samplePrd({ broad: true });
+  const { call } = scriptedTextCall([JSON.stringify(reply)]);
+  const events = new MemoryEventSink();
+  const r = await runIntake(
+    { ...input, answers: { "Question with no match": "ignored answer" } },
+    deps(call, events),
+  );
+  assert.equal(r.prd.assumptions.filter((a) => a.risk === "defaulted").length, r.prd.recommendedQuestions.length, "all questions become defaulted when no answers match");
+});
+
+test("buildIntakePrompt includes the built prompt in the request when answers are provided", async () => {
+  const { call, requests } = scriptedTextCall([JSON.stringify(samplePrd({ broad: true }))]);
+  await runIntake(
+    {
+      ...input,
+      answers: { "Should it count words, characters, or lines?": "lines" },
+    },
+    deps(call),
+  );
+  const builtPrompt = requests[0]?.req.prompt ?? "";
+  assert.match(builtPrompt, /=== CLARIFICATIONS FROM THE PERSON ===/);
+  assert.match(builtPrompt, /Should it count words, characters, or lines\?: lines/);
+});

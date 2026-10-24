@@ -154,3 +154,20 @@ test("if anything rewrites the locked PRD during research, the run hard-fails (P
   };
   await assert.rejects(runOsaCommand({ prompt: "a b", files: [], repoDir, yes: true, json: false, build: false }, deps({ textCall: tamper })), (e: unknown) => e instanceof PrdLockViolationError && e.exitCode === ExitCode.PRD_LOCK_VIOLATION);
 });
+
+test("counts() in the report correctly separates risky, safe, and defaulted assumptions", async () => {
+  const repoDir = await tempGitRepo();
+  const prd = {
+    ...samplePrd(),
+    assumptions: [
+      { text: "Safe assumption 1", risk: "safe" as const },
+      { text: "Safe assumption 2", risk: "safe" as const },
+      { text: "Risky assumption", risk: "risky" as const },
+      { text: "Defaulted assumption", risk: "defaulted" as const },
+    ],
+  };
+  const report = await runOsaCommand({ prompt: "a b", files: [], repoDir, yes: true, json: false, build: false }, deps({ textCall: fakeModel({ prd }).call }));
+  assert.equal(report.assumptions.risky, 1);
+  assert.equal(report.assumptions.safe, 2);
+  assert.equal(report.assumptions.defaulted, 1);
+});

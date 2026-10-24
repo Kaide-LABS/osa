@@ -156,3 +156,27 @@ test("applyRiskBackstop never upgrades defaulted assumptions to risky, even if t
     "defaulted assumptions unchanged",
   );
 });
+
+test("renderBabyPrd output with all three risk values and broad scope round-trips byte-for-byte through parse", () => {
+  const prd = {
+    ...samplePrd({ broad: true }),
+    assumptions: [
+      { text: "safe one", risk: "safe" as const },
+      { text: "risky one", risk: "risky" as const },
+      { text: "defaulted one", risk: "defaulted" as const },
+    ],
+  };
+  const rendered1 = renderBabyPrd(prd);
+  const parsed = parseBabyPrd(rendered1);
+  const rendered2 = renderBabyPrd(parsed);
+  assert.equal(rendered2, rendered1, "renderBabyPrd(parseBabyPrd(renderBabyPrd(prd))) is byte-identical to renderBabyPrd(prd)");
+});
+
+test("parseBabyPrd rejects an invalid Scope value via schema validation", () => {
+  const base = renderBabyPrd(samplePrd({ broad: true }));
+  const withInvalidScope = base.replace(/^## Scope\nbroad$/m, "## Scope\ninvalid-scope");
+  assert.throws(
+    () => parseBabyPrd(withInvalidScope),
+    (e: unknown) => e instanceof IntakeError && /not valid/.test(e.message),
+  );
+});
