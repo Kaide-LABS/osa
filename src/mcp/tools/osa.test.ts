@@ -4,14 +4,14 @@ import assert from "node:assert/strict";
 import { appendFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { test } from "node:test";
 import { OsaConfig } from "../../domain/osa-config.ts";
-import { renderBabyPrd } from "../../osa/baby-prd.ts";
+import { parseBabyPrd, renderBabyPrd } from "../../osa/baby-prd.ts";
 import { fakeModel, researchFetch, samplePrd, tempGitRepo } from "../../osa/fixtures.test.ts";
 import type { OsaDeps, OsaRunReport } from "../../osa/pipeline.ts";
 import { MinIntervalLimiter } from "../../research/net/http.ts";
 import { NoopTrimmer } from "../../trim/trimmer.ts";
 import { sha256String } from "../../util/hash.ts";
 import { buildMcpServer } from "../server.ts";
-import { osaRunStatus, planOsaRun, runningJobs, startOsaBuild, waitForJobs } from "./osa.ts";
+import { osaRunStatus, planOsaRun, runningJobs, startOsaBuild, startOsaSpec, waitForJobs } from "./osa.ts";
 import type { OsaToolDeps } from "./osa.ts";
 
 /** The real pipeline with a scripted model and fake research HTTP; the config names a pair so no real provider is probed. */
@@ -30,7 +30,7 @@ const eventNames = async (repoDir: string, runId: string): Promise<string[]> =>
 test("osa_plan: returns the plan and its fingerprint, writes the request, and locks, researches and builds NOTHING", async () => {
   const repoDir = await tempGitRepo();
   const head = (await readFile(`${repoDir}/.git/HEAD`, "utf8")).trim();
-  const plan = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [] }, realDeps());
+  const plan = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [], answers: {} }, realDeps());
   assert.match(plan.run_id, /^[0-9a-f-]{36}$/);
   const onDisk = await readFile(`${repoDir}/runs/${plan.run_id}/baby-prd.md`, "utf8");
   assert.equal(plan.plan_sha256, sha256String(onDisk), "the fingerprint is the hash of exactly the file on disk");
@@ -54,13 +54,13 @@ test("osa_plan: a folder that is not a git repository is a plain error, not a cr
   const { mkdtemp } = await import("node:fs/promises");
   const { tmpdir } = await import("node:os");
   const dir = await mkdtemp(`${tmpdir()}/osa-notgit-`);
-  await assert.rejects(planOsaRun({ repo_dir: dir, prompt: "x", files: [] }, realDeps()), /not a git repository/);
+  await assert.rejects(planOsaRun({ repo_dir: dir, prompt: "x", files: [], answers: {} }, realDeps()), /not a git repository/);
 });
 
 test("osa_build refuses, and locks nothing, when the confirmation cannot be applied to the plan the person saw", async () => {
   const repoDir = await tempGitRepo();
   const deps = realDeps();
-  const plan = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [] }, deps);
+  const plan = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [], answers: {} }, deps);
   const base = { repo_dir: repoDir, run_id: plan.run_id, plan_sha256: plan.plan_sha256, decision: "lock" as const, accept_risky_assumptions: true, spec_only: true };
 
   const unknown = await startOsaBuild({ ...base, run_id: "11111111-1111-4111-8111-111111111111" }, deps);
@@ -84,7 +84,7 @@ test("osa_build refuses, and locks nothing, when the confirmation cannot be appl
 test("osa_build 'cancel' discards the plan; the decision is final", async () => {
   const repoDir = await tempGitRepo();
   const deps = realDeps(false);
-  const plan = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [] }, deps);
+  const plan = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [], answers: {} }, deps);
   const cancelled = await startOsaBuild({ repo_dir: repoDir, run_id: plan.run_id, plan_sha256: plan.plan_sha256, decision: "cancel", accept_risky_assumptions: false, spec_only: false }, deps);
   assert.ok(!("refusal" in cancelled) && cancelled.status === "cancelled");
   const st = await osaRunStatus({ repo_dir: repoDir, run_id: plan.run_id });
@@ -96,7 +96,7 @@ test("osa_build 'cancel' discards the plan; the decision is final", async () => 
 test("osa_build locks EXACTLY the plan that was shown, starts at once, and osa_status follows the run to its report", async () => {
   const repoDir = await tempGitRepo();
   const deps = realDeps();
-  const plan = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [] }, deps);
+  const plan = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [], answers: {} }, deps);
   const t0 = Date.now();
   const started = await startOsaBuild({ repo_dir: repoDir, run_id: plan.run_id, plan_sha256: plan.plan_sha256, decision: "lock", accept_risky_assumptions: true, spec_only: true }, deps);
   assert.ok(!("refusal" in started) && started.status === "started");
@@ -170,12 +170,96 @@ test("osa_status: a run that locked but has no result and no live job (server re
   assert.equal(st.recent_events.at(-1)?.event, "research_item_done");
 });
 
-test("the three tools are registered on the server with the descriptions that tell the assistant to ask the person first", () => {
+test("the tools are registered on the server with the descriptions that tell the assistant to ask the person first", () => {
   const server = buildMcpServer() as unknown as { _registeredTools: Record<string, { description?: string }> };
   const tools = server._registeredTools;
-  assert.match(tools["osa_plan"]?.description ?? "", /MUST show the person the plan/);
+  assert.match(tools["osa_plan"]?.description ?? "", /show the person the plan/);
   assert.match(tools["osa_plan"]?.description ?? "", /NOTHING is built or locked/);
-  assert.match(tools["osa_build"]?.description ?? "", /Only after the person has approved/);
+  assert.match(tools["osa_plan"]?.description ?? "", /recommended questions/);
+  assert.match(tools["osa_spec"]?.description ?? "", /start research and spec in the background/);
+  assert.match(tools["osa_spec"]?.description ?? "", /After the person has seen the plan/);
+  assert.match(tools["osa_build"]?.description ?? "", /Only after osa_status shows awaiting_confirmation/);
   assert.match(tools["osa_build"]?.description ?? "", /accept_risky_assumptions/);
-  assert.match(tools["osa_status"]?.description ?? "", /tens of minutes/);
+  assert.match(tools["osa_status"]?.description ?? "", /awaiting_confirmation/);
+});
+
+test("osa_plan returns scope, recommended_questions, and defaulted_assumptions; safe_assumptions excludes defaulted", async () => {
+  const repoDir = await tempGitRepo();
+  const plan = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [], answers: {} }, realDeps());
+  assert.match(plan.scope, /^(narrow|broad)$/);
+  assert.ok(Array.isArray(plan.recommended_questions));
+  assert.ok(Array.isArray(plan.defaulted_assumptions));
+  assert.ok(Array.isArray(plan.safe_assumptions));
+  // safe_assumptions should exclude defaulted ones
+  const allDefaultedTexts = new Set(plan.defaulted_assumptions);
+  for (const safe of plan.safe_assumptions) {
+    assert.ok(!allDefaultedTexts.has(safe), `safe assumption should not be a defaulted one: ${safe}`);
+  }
+  const markdown = await readFile(`${repoDir}/runs/${plan.run_id}/baby-prd.md`, "utf8");
+  const prd = parseBabyPrd(markdown);
+  assert.equal(prd.scope, plan.scope);
+  assert.deepEqual(prd.recommendedQuestions, plan.recommended_questions);
+});
+
+test("osa_plan: answers reach run() and are persisted in plan-request.json", async () => {
+  const repoDir = await tempGitRepo();
+  const answers = { "Why?": "Because", "What?": "Everything" };
+  const plan = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [], answers }, realDeps());
+  const requestFile = await readFile(`${repoDir}/.osa/runs/${plan.run_id}/plan-request.json`, "utf8");
+  const request = JSON.parse(requestFile);
+  assert.deepEqual(request.answers, answers);
+});
+
+test("osa_spec refuses on wrong plan_sha256, on unknown run, and while another job runs", async () => {
+  const repoDir = await tempGitRepo();
+  const deps = realDeps(false);
+  const plan = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [], answers: {} }, deps);
+
+  const unknown = await startOsaSpec({ repo_dir: repoDir, run_id: "11111111-1111-4111-8111-111111111111", plan_sha256: plan.plan_sha256, decision: "go" }, deps);
+  assert.ok("refusal" in unknown && /no plan/.test(unknown.refusal));
+
+  const wrong = await startOsaSpec({ repo_dir: repoDir, run_id: plan.run_id, plan_sha256: "0".repeat(64), decision: "go" }, deps);
+  assert.ok("refusal" in wrong && /does not match/.test(wrong.refusal));
+
+  // Start a job and try to start another
+  const first = await startOsaSpec({ repo_dir: repoDir, run_id: plan.run_id, plan_sha256: plan.plan_sha256, decision: "go" }, deps);
+  assert.ok(!("refusal" in first) && first.status === "started");
+  const second = await startOsaSpec({ repo_dir: repoDir, run_id: plan.run_id, plan_sha256: plan.plan_sha256, decision: "go" }, deps);
+  assert.ok("refusal" in second && /already waiting/.test(second.refusal));
+  await waitForJobs();
+});
+
+test("osa_spec 'cancel' discards the plan without building", async () => {
+  const repoDir = await tempGitRepo();
+  const deps = realDeps(false);
+  const plan = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [], answers: {} }, deps);
+  const cancelled = await startOsaSpec({ repo_dir: repoDir, run_id: plan.run_id, plan_sha256: plan.plan_sha256, decision: "cancel" }, deps);
+  assert.ok(!("refusal" in cancelled) && cancelled.status === "cancelled");
+  const st = await osaRunStatus({ repo_dir: repoDir, run_id: plan.run_id });
+  assert.ok(!("refusal" in st) && st.state === "cancelled");
+});
+
+test("osa_spec starts a background job that reaches the gate, and osa_status returns awaiting_confirmation with tldr and spec_sha256", async () => {
+  const repoDir = await tempGitRepo();
+  const deps = realDeps(false);
+  const plan = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [], answers: {} }, deps);
+  const t0 = Date.now();
+  const started = await startOsaSpec({ repo_dir: repoDir, run_id: plan.run_id, plan_sha256: plan.plan_sha256, decision: "go" }, deps);
+  assert.ok(!("refusal" in started) && started.status === "started");
+  assert.ok(Date.now() - t0 < 3000, "returns at once");
+  assert.deepEqual(runningJobs(), [plan.run_id]);
+
+  await waitForJobs();
+  assert.deepEqual(runningJobs(), []);
+  const st = await osaRunStatus({ repo_dir: repoDir, run_id: plan.run_id });
+  assert.ok(!("refusal" in st));
+  assert.equal(st.state, "awaiting_confirmation");
+  assert.equal(st.stage, "spec");
+  assert.ok(Array.isArray(st.tldr) && st.tldr.length > 0, "tldr should be present and non-empty");
+  assert.match(st.spec_sha256 ?? "", /^[0-9a-f]{64}$/);
+  assert.ok(Array.isArray(st.risky_assumptions));
+  assert.ok(Array.isArray(st.defaulted_assumptions));
+  const gateFile = await readFile(`${repoDir}/.osa/runs/${plan.run_id}/mcp-gate.json`, "utf8");
+  const gateData = JSON.parse(gateFile);
+  assert.deepEqual(gateData.tldr, st.tldr);
 });

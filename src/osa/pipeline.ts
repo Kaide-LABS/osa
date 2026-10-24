@@ -107,6 +107,8 @@ export interface OsaCommandOptions {
    * of risky items and record them in the report/summary. `--accept-risky` without `--yes` is a usage error (exit 2).
    */
   readonly acceptRisky?: boolean;
+  /** Answers to intake's recommended questions, keyed by the question text. */
+  readonly answers?: Readonly<Record<string, string>>;
 }
 
 /** Collaborators; every field defaults to the real thing. */
@@ -298,7 +300,7 @@ export async function runOsaCommand(opts: OsaCommandOptions, deps: OsaDeps = {})
     prd = parseBabyPrd(await readFile(prdAbs, "utf8"));
   } else {
     ({ prd } = await runIntake(
-      { prompt: opts.prompt, files, memory, maxItems: config.research.maxItems, quoteStatedRules: config.intake.quoteStatedRules },
+      { prompt: opts.prompt, files, memory, maxItems: config.research.maxItems, quoteStatedRules: config.intake.quoteStatedRules, ...(opts.answers && { answers: opts.answers }) },
       { textCall, provider: config.providers.pair[0], model: modelFor(config, config.providers.pair[0], 0), cwd: opts.repoDir, timeoutMs: config.providers.textTimeoutMs, events },
     ));
     await mkdir(dirname(prdAbs), { recursive: true });
