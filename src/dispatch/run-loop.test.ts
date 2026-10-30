@@ -8,7 +8,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { BoundaryViolationError, InternalError, LooprArtifactBypassError, TurnTimeoutError } from "../domain/errors.ts";
+import { BoundaryViolationError, ExitCode, InternalError, LooprArtifactBypassError, TurnTimeoutError } from "../domain/errors.ts";
 import type { FileRef, HaltSignal, HandoffRecord } from "../domain/relay.ts";
 import { readHandoffRecord, writeHandoffRecord } from "../domain/relay.ts";
 import type { ProviderId, RawInvocationResult, RunConfig, TurnOutcome, TurnRequest } from "../domain/run.ts";
@@ -431,6 +431,115 @@ test("runDispatch: a continuity failure retries exactly once and succeeds", asyn
         [3, "completed", "CONTINUED", false],
       ],
     );
+  } finally {
+    await cleanup(dir);
+  }
+});
+
+test("runDispatch: a first turn that ends without its hand-over record is re-prompted once, keeps its work, and the reviewer still sees that work in the diff", async () => {
+  const dir = await freshRepoWithSpec();
+  try {
+    const config = baseConfig(dir);
+    const claude = new RecordingFakeAdapter("claude-code");
+    const codex = new RecordingFakeAdapter("codex-cli");
+    const adapters: Partial<AdapterRegistry> = { "claude-code": claude, "codex-cli": codex };
+    const artifacts = await looprArtifactRefs(dir);
+
+    let call = 0;
+    const runProcessFn: typeof runProcess = async () => {
+      const step = call;
+      call += 1;
+      if (step === 0) {
+        // Does real work, then ends its turn without writing the hand-over record.
+        await commitFile(dir, "foo.txt", "v1\n", "turn0 (no hand-over record)");
+      } else if (step === 1) {
+        await writeHandoffRecord(
+          handoffPath(dir, RUN_ID, 1, 1, "executor", "claude-code"),
+          draft({
+            artifactsRead: [artifacts.babyPrd, artifacts.context, artifacts.spec],
+            artifactsWritten: [{ path: "foo.txt", sha256: "a".repeat(64) }],
+          }),
+        );
+      } else if (step === 2) {
+        await commitFile(dir, "bar.txt", "v1\n", "turn2");
+        await writeHandoffRecord(
+          handoffPath(dir, RUN_ID, 1, 2, "executor", "codex-cli"),
+          draft({
+            artifactsRead: [artifacts.babyPrd, artifacts.context, artifacts.spec, { path: "foo.txt", sha256: "a".repeat(64) }],
+            artifactsWritten: [{ path: "bar.txt", sha256: "a".repeat(64) }],
+          }),
+        );
+      } else {
+        await commitFile(dir, "PHASE_2_SPEC.md", "phase 2 spec content\n", "turn3");
+        const nextSpecSha256 = await sha256File(`${dir}/PHASE_2_SPEC.md`);
+        await writeHandoffRecord(
+          handoffPath(dir, RUN_ID, 1, 3, "reviewer", "claude-code"),
+          draft({
+            role: "reviewer",
+            artifactsRead: [artifacts.babyPrd, artifacts.context, artifacts.spec, { path: "bar.txt", sha256: "a".repeat(64) }],
+            artifactsWritten: [{ path: "PHASE_2_SPEC.md", sha256: nextSpecSha256 }],
+          }),
+        );
+      }
+      return { exitCode: 0, signal: null, stdout: "", stderr: "", durationMs: 1, timedOut: false };
+    };
+
+    const result = await runDispatch(config, { adapters, runProcessFn, preflightFn: fakeHealthyPreflight });
+
+    assert.equal(result.ok, true);
+    assert.deepStrictEqual(
+      result.turns.map((t) => [t.turnIndex, t.status, t.retried]),
+      [
+        [0, "failed", false],
+        [1, "completed", true],
+        [2, "completed", false],
+        [3, "completed", false],
+      ],
+    );
+
+    // The re-prompt carries the notice; the first attempt did not.
+    assert.ok(!claude.seenRequests[0]?.prompt.includes("RETRY NOTICE"));
+    assert.ok(claude.seenRequests[1]?.prompt.includes("RETRY NOTICE"));
+    assert.ok(claude.seenRequests[1]?.prompt.includes("background"));
+
+    // The work the failed attempt committed was not rewound...
+    assert.equal(await readFile(`${dir}/foo.txt`, "utf8"), "v1\n");
+    // ...and the reviewer's diff still starts before it, not at the retry's own starting commit.
+    const reviewerPrompt = claude.seenRequests[2]?.prompt ?? "";
+    assert.ok(reviewerPrompt.includes("foo.txt"));
+  } finally {
+    await cleanup(dir);
+  }
+});
+
+test("runDispatch: a first turn that ends without its hand-over record twice stops the run with HANDOFF_MISSING after exactly one re-prompt", async () => {
+  const dir = await freshRepoWithSpec();
+  try {
+    const config = baseConfig(dir);
+    const claude = new RecordingFakeAdapter("claude-code");
+    const codex = new RecordingFakeAdapter("codex-cli");
+    const adapters: Partial<AdapterRegistry> = { "claude-code": claude, "codex-cli": codex };
+
+    let calls = 0;
+    const runProcessFn: typeof runProcess = () => {
+      calls += 1;
+      return Promise.resolve({ exitCode: 0, signal: null, stdout: "", stderr: "", durationMs: 1, timedOut: false });
+    };
+
+    const result = await runDispatch(config, { adapters, runProcessFn, preflightFn: fakeHealthyPreflight });
+
+    assert.equal(calls, 2);
+    assert.equal(result.ok, false);
+    assert.equal(result.exitCode, ExitCode.RELAY_SCHEMA_INVALID);
+    assert.deepStrictEqual(
+      result.turns.map((t) => [t.turnIndex, t.status, t.retried]),
+      [
+        [0, "failed", false],
+        [1, "failed", true],
+      ],
+    );
+    assert.ok(result.problems[0]?.includes("hand-over record"));
+    assert.equal(await readRunLock(dir), null);
   } finally {
     await cleanup(dir);
   }

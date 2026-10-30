@@ -381,6 +381,27 @@ export async function resetHard(repoDir: string, rev: string): Promise<void> {
 }
 
 /**
+ * `git reset --soft <rev>`: move `HEAD` back to `rev` but keep every change from the commits it
+ * steps over staged in the index and the working tree. Used when a turn ended without its
+ * hand-over record: the work is not judged invalid (unlike {@link resetHard}'s caller), so it is
+ * kept, while the retry is made to start from the commit the slot began at -- its own commit then
+ * covers all of that work, and its `head_before` is the baseline the continuity checks expect.
+ *
+ * A non-zero exit throws {@link InternalError}, as {@link resetHard} does.
+ */
+export async function resetSoft(repoDir: string, rev: string): Promise<void> {
+  const result = await git(repoDir, ["reset", "--soft", "--quiet", rev]);
+  if (result.exitCode !== 0) {
+    throw new InternalError(`git reset --soft ${rev} failed in ${repoDir}: ${result.stderr.trim()}`, {
+      repoDir,
+      rev,
+      exitCode: result.exitCode,
+      stderr: result.stderr,
+    });
+  }
+}
+
+/**
  * `git show -s --format=%B <oid>`, called once per OID (never batched with a separator, which
  * could appear inside a message body). Returns each commit's full raw message body, in the same
  * order as `oids`.
