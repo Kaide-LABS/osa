@@ -19,6 +19,7 @@ import { checkBuildFreshness } from "../verify/build-stamp.ts";
 import type { PreflightSummary, ToolCheck } from "../verify/preflight.ts";
 import { MIN_HEALTHY_PROVIDERS, experimentalProviderWarnings, runPreflight } from "../verify/preflight.ts";
 import type { ProviderProbe } from "../osa/seats.ts";
+import { projectDependencyWarnings } from "../verify/project-deps.ts";
 import { acquireRunLock, releaseRunLock } from "../util/lock.ts";
 import { loadOsaConfig } from "../util/config-file.ts";
 import { applyFeatureFlags, describeFeatures } from "../features/features.ts";
@@ -340,6 +341,7 @@ export async function runDoctor(
   warnings.push(...experimentalProviderWarnings(providerReports));
   const featureInfo = await featureReport(repoRoot, opts.features ?? {});
   warnings.push(...featureInfo.warnings);
+  if (opts.only === "all") warnings.push(...projectDependencyWarnings(repoRoot));
 
   let lockAcquirable = true;
   let lockDetail = "not checked";
