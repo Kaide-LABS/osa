@@ -92,6 +92,17 @@ export class RelaySchemaError extends OsaError {
   readonly code = "RELAY_SCHEMA_INVALID";
 }
 
+/**
+ * A dispatched turn finished without writing its hand-over record. Usually the agent stopped to
+ * wait on a command it had started in the background (a headless session ends when the agent's
+ * turn ends), so the record it owed was never written. A modelled failure, not an internal one:
+ * the run stops with this message instead of an unexplained `ENOENT` from a file read.
+ */
+export class MissingHandoffError extends OsaError {
+  readonly exitCode = ExitCode.RELAY_SCHEMA_INVALID;
+  readonly code = "HANDOFF_MISSING";
+}
+
 /** A transcript-shaped key was found in a relay payload before schema parsing (PRD §9 FM2, §7 I5). */
 export class IsolationLeakError extends OsaError {
   readonly exitCode = ExitCode.ISOLATION_LEAK;
