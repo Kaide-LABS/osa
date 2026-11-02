@@ -1,7 +1,7 @@
 # OSA improvements log
 
 Observations from a real build (PAU Muslim Ummah inventory module, two OSA runs, Haiku/Sonnet/Opus seats) and what has been done about them.
-Branch: `fix/handoff-recovery` (from `origin/main`, v0.5.0). Nothing here is pushed or merged yet.
+Branch: `fix/handoff-recovery` (from `origin/main`, v0.5.0). Pushed to origin; not merged into main yet.
 
 ## Done on `fix/handoff-recovery`
 
