@@ -745,11 +745,32 @@ async function runStatusWithoutSeats(input: StatusInput): Promise<Omit<StatusOut
     return { run_id: runId, state: "awaiting_confirmation", stage: "plan", message: "A plan exists but has not been locked. Call osa_spec to start research and spec, or call osa_plan again to refine it.", recent_events: recent, report: null, summary_markdown: null, tldr: null, spec_sha256: null, risky_assumptions: [], defaulted_assumptions: [] };
   }
   if (events.length === 0) return { refusal: `Run ${runId} has no events in ${input.repo_dir}.` };
+  // Lost before its build began and its plan is still on file: osa_spec on the same run carries it on (the research that finished is kept, only the
+  // rest is redone), so starting over would throw away work. A build that had begun is different: the repository has moved on.
+  const buildBegun = events.some((e) => e.event === "build_started") || stage === "build" || stage === "verify" || stage === "summary";
+  if (request !== null && !buildBegun) {
+    return {
+      run_id: runId,
+      state: "interrupted",
+      stage,
+      message:
+        `The run stopped at the ${stage} stage without recording a result (the MCP server was probably restarted, the process was killed, or a step hung). ` +
+        `Its plan and the work finished so far are kept, and the build had not begun, so it can be carried on instead of redone: with the person's go-ahead, call osa_spec again with ` +
+        `run_id ${runId} and plan_sha256 ${request.plan_sha256}. Research items that already finished are not repeated; the rest of research and the spec are run again.`,
+      recent_events: recent,
+      report: null,
+      summary_markdown: null,
+      tldr: null,
+      spec_sha256: null,
+      risky_assumptions: [],
+      defaulted_assumptions: [],
+    };
+  }
   return {
     run_id: runId,
     state: "interrupted",
     stage,
-    message: "The run stopped without recording a result (the MCP server was probably restarted, or the process was killed) after its build had begun, or before it had a finished spec. Its files up to the last stage are under runs/ and .osa/runs/; start again with osa_plan.",
+    message: "The run stopped without recording a result (the MCP server was probably restarted, or the process was killed) after its build had begun, or without a saved plan to carry on from. Its files up to the last stage are under runs/ and .osa/runs/; start again with osa_plan.",
     recent_events: recent,
     report: null,
     summary_markdown: null,

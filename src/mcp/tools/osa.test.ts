@@ -288,6 +288,8 @@ test("a restarted run is NOT carried on when the spec changed since it was shown
   await appendFile(events, JSON.stringify({ schema_version: 1, at: new Date().toISOString(), run_id: plan.run_id, event: "build_started", data: {} }) + "\n", "utf8");
   const interrupted = await osaRunStatus({ repo_dir: repoDir, run_id: plan.run_id });
   assert.ok(!("refusal" in interrupted) && interrupted.state === "interrupted");
+  assert.match(interrupted.message, /start again with osa_plan/, "a build that had begun is not offered a carry-on");
+  assert.doesNotMatch(interrupted.message, /call osa_spec again/);
   const refused = await startOsaBuild(base, deps);
   assert.ok("refusal" in refused && /No spec is waiting/.test(refused.refusal));
   await writeFile(events, saved, "utf8");
@@ -334,7 +336,10 @@ test("a run lost mid-research (no result, no live job) is carried on by calling 
 
   forgetJobsAsIfRestarted();
   const lost = await osaRunStatus({ repo_dir: repoDir, run_id: plan.run_id });
-  assert.ok(!("refusal" in lost));
+  assert.ok(!("refusal" in lost) && lost.state === "interrupted");
+  assert.match(lost.message, /call osa_spec again/, "the status points at what works, not at starting over");
+  assert.ok(lost.message.includes(plan.plan_sha256) && lost.message.includes(plan.run_id), "and gives the exact arguments to use");
+  assert.doesNotMatch(lost.message, /start again with osa_plan/);
 
   const researched: string[] = [];
   const second = realDeps(false);
