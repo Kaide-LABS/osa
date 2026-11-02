@@ -485,6 +485,49 @@ test("osa_spec still refuses a run that is final: a discarded plan, a cancel aft
   assert.ok("refusal" in redo && final.test(redo.refusal), "a declined spec stays declined");
 });
 
+test("osa_cancel on a job stuck on something that is not a child process gives the repository back, and the stuck job cannot disturb a run started afterwards", async () => {
+  const repoDir = await tempGitRepo();
+  const id = "99999999-9999-4999-8999-999999999999";
+  const md = renderBabyPrd(samplePrd());
+  const sha = sha256String(md);
+  await mkdir(`${repoDir}/runs/${id}`, { recursive: true });
+  await mkdir(`${repoDir}/.osa/runs/${id}`, { recursive: true });
+  await writeFile(`${repoDir}/runs/${id}/baby-prd.md`, md, "utf8");
+  await writeFile(`${repoDir}/.osa/runs/${id}/plan-request.json`, JSON.stringify({ prompt: "p", files: [], plan_sha256: sha, created_at: "t" }), "utf8");
+  await writeFile(`${repoDir}/.osa/runs/${id}/events.jsonl`, JSON.stringify({ schema_version: 1, at: "2026-01-01T00:00:00.000Z", run_id: id, event: "prd_locked", data: {} }) + "\n", "utf8");
+
+  // A pipeline waiting on something no abort can interrupt (a hung network request, say): it only ends when released.
+  let releaseFirst: () => void = () => undefined;
+  const first: OsaToolDeps = { run: (() => new Promise<OsaRunReport>((resolve) => (releaseFirst = () => resolve({} as OsaRunReport)))) as never };
+  const started = await startOsaSpec({ repo_dir: repoDir, run_id: id, plan_sha256: sha, decision: "go" }, first);
+  assert.ok(!("refusal" in started));
+
+  const began = Date.now();
+  const stopped = await cancelOsaRun({ repo_dir: repoDir, run_id: id }, { waitMs: 300 });
+  assert.ok(Date.now() - began < 5_000);
+  assert.equal(stopped.status, "cancelled");
+  assert.match(stopped.message, /repository is free/);
+  assert.deepStrictEqual(runningJobs(), [], "the stuck job is off the table");
+  const st = await osaRunStatus({ repo_dir: repoDir, run_id: id });
+  assert.ok(!("refusal" in st) && st.state === "cancelled", "and the run reads as cancelled, not running");
+
+  // a new job on the same run is accepted at once (the run was cancelled before its build)
+  let releaseSecond: () => void = () => undefined;
+  const second: OsaToolDeps = { run: (() => new Promise<OsaRunReport>((resolve) => (releaseSecond = () => resolve({} as OsaRunReport)))) as never };
+  const carried = await startOsaSpec({ repo_dir: repoDir, run_id: id, plan_sha256: sha, decision: "go" }, second);
+  assert.ok(!("refusal" in carried) && carried.status === "started");
+  assert.deepStrictEqual(runningJobs(), [id]);
+
+  // the abandoned job finally unwinds: it must not drop the new job, write a result over the new run, or answer its gate
+  releaseFirst();
+  await new Promise((r) => setTimeout(r, 300));
+  assert.deepStrictEqual(runningJobs(), [id], "the new job is still the live one");
+  await assert.rejects(readFile(`${repoDir}/.osa/runs/${id}/mcp-result.json`, "utf8"), "no result was written over the new run");
+
+  releaseSecond();
+  await waitForJobs();
+});
+
 test("only one run per repository at a time; a second must wait", async () => {
   const repoDir = await tempGitRepo();
   let release: () => void = () => undefined;
@@ -663,4 +706,12 @@ test("osa_cancel: a run parked at the post-spec gate is released and ends; an un
 
   const none = await cancelOsaRun({ repo_dir: repoDir, run_id: "88888888-8888-4888-8888-888888888888" });
   assert.equal(none.status, "not_running");
+
+  // the repository is free again: a new run starts at once, it is not refused as "still working"
+  const next = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [], answers: {} }, deps);
+  const nextStarted = await startOsaSpec({ repo_dir: repoDir, run_id: next.run_id, plan_sha256: next.plan_sha256, decision: "go" }, deps);
+  assert.ok(!("refusal" in nextStarted) && nextStarted.status === "started", "a cancel at the gate leaves the repository free");
+  const nextGate = await awaitingGate(repoDir, next.run_id);
+  await startOsaBuild({ repo_dir: repoDir, run_id: next.run_id, spec_sha256: nextGate.spec_sha256 as string, decision: "cancel", accept_risky_assumptions: false }, deps);
+  await waitForJobs();
 });

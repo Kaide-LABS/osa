@@ -8,13 +8,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { BoundaryViolationError, ExitCode, InternalError, LooprArtifactBypassError, TurnTimeoutError } from "../domain/errors.ts";
+import { BoundaryViolationError, ExitCode, InternalError, LooprArtifactBypassError, RunCancelledError, TurnTimeoutError } from "../domain/errors.ts";
 import type { FileRef, HaltSignal, HandoffRecord } from "../domain/relay.ts";
 import { readHandoffRecord, writeHandoffRecord } from "../domain/relay.ts";
 import type { ProviderId, RawInvocationResult, RunConfig, TurnOutcome, TurnRequest } from "../domain/run.ts";
 import { ChatLogEntry } from "../domain/chat-log.ts";
 import type { AdapterRegistry, Invocation, PreflightReport, ProviderAdapter } from "../ports/provider-adapter.ts";
-import { runProcess } from "../util/exec.ts";
+import { runCancelScope, runProcess } from "../util/exec.ts";
 import { acquireRunLock, readRunLock, releaseRunLock } from "../util/lock.ts";
 import { chatLogPath, handoffPath } from "../util/paths.ts";
 import { sha256File } from "../util/hash.ts";
@@ -1008,6 +1008,48 @@ test("runDispatch: an unexpected throw (BoundaryViolationError from assertNeutra
     );
 
     // The lock must be released even though runDispatch threw rather than returning a RunResult.
+    assert.equal(await readRunLock(dir), null);
+  } finally {
+    await cleanup(dir);
+  }
+});
+
+test("runDispatch: osa_cancel (an abort of the cancel scope) while a turn's agent process is running kills it, ends the run, and releases the lock so the next run can start", async () => {
+  // A leaked lock here would be held by a LIVE pid (the MCP server itself), which is never reclaimed: every later run in this repository would be
+  // refused until the server was restarted.
+  const dir = await freshRepoWithSpec();
+  try {
+    const config = baseConfig(dir);
+    const adapters: Partial<AdapterRegistry> = { "claude-code": new RecordingFakeAdapter("claude-code"), "codex-cli": new RecordingFakeAdapter("codex-cli") };
+    // The turn's agent is a real child process that would run for a minute; the adapter's own command is ignored.
+    const stuck: typeof runProcess = (o) => runProcess({ command: process.execPath, args: ["-e", "setTimeout(() => undefined, 60000)"], cwd: o.cwd, timeoutMs: 120_000 });
+
+    const controller = new AbortController();
+    const began = Date.now();
+    const settled = await runCancelScope(controller.signal, () => {
+      const pending = runDispatch(config, { adapters, runProcessFn: stuck, preflightFn: fakeHealthyPreflight }).then(
+        (r) => ({ threw: false as const, result: r }),
+        (err: unknown) => ({ threw: true as const, err }),
+      );
+      setTimeout(() => controller.abort(), 700);
+      return pending;
+    });
+    assert.ok(Date.now() - began < 30_000, "the run ended because of the cancel, not after the child's 60 s sleep or the turn timeout");
+    assert.ok(settled.threw || !settled.result.ok, "a cancelled run is not reported as a success");
+    assert.equal(await readRunLock(dir), null, "the run lock was released");
+
+    // the next run in this repository can take the lock
+    await acquireRunLock(dir, "22222222-2222-4222-8222-222222222222");
+    await releaseRunLock(dir, "22222222-2222-4222-8222-222222222222");
+
+    // a dispatch started after the abort stops at its first spawn and still leaves no lock behind
+    const afterAbort = await runCancelScope(controller.signal, () =>
+      runDispatch(config, { adapters, runProcessFn: runProcess, preflightFn: fakeHealthyPreflight }).then(
+        (r) => ({ threw: false as const, result: r }),
+        (err: unknown) => ({ threw: true as const, err }),
+      ),
+    );
+    assert.ok(afterAbort.threw ? afterAbort.err instanceof RunCancelledError : !afterAbort.result.ok);
     assert.equal(await readRunLock(dir), null);
   } finally {
     await cleanup(dir);

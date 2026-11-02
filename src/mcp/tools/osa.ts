@@ -437,6 +437,9 @@ function launchRunJob(a: { readonly repoDir: string; readonly runId: string; rea
   const startedAt = new Date().toISOString();
   const resultPath = `${runDir(a.repoDir, a.runId)}/mcp-result.json`;
   const abort = new AbortController();
+  let job: Job | undefined;
+  // After a cancel the run's gate answers "declined" at once: a pipeline that reaches the gate late must not park there.
+  const gateIo: GateIO = { show: (text) => a.gateIo.show(text), confirm: () => (abort.signal.aborted ? Promise.resolve(false) : a.gateIo.confirm()) };
 
   const promise = (async (): Promise<void> => {
     let report: OsaRunReport | null = null;
@@ -456,12 +459,15 @@ function launchRunJob(a: { readonly repoDir: string; readonly runId: string; rea
       report = await runCancelScope(abort.signal, () =>
         run(
           opts,
-          { runId: a.runId, interactive: true, io: { ...NO_TERMINAL, choose: () => Promise.resolve("lock" as const) }, gateIo: a.gateIo, ...(a.deps.pipeline ?? {}) },
+          { runId: a.runId, interactive: true, io: { ...NO_TERMINAL, choose: () => Promise.resolve("lock" as const) }, gateIo, ...(a.deps.pipeline ?? {}) },
         ),
       );
     } catch (err) {
       error = err instanceof OsaError ? err.message : err instanceof Error ? err.message : String(err);
     }
+    // A job that osa_cancel gave up on (see abandonJob) is no longer the live job of this run: a run may have been carried on since, so this late
+    // finish must not write its result, drop its entry or answer its gate.
+    if (job !== undefined && jobs.get(a.runId) !== job) return;
     try {
       // A cancel wins over whatever the pipeline reported as it unwound (usually a RunCancelledError or a killed turn).
       const cancelled = abort.signal.aborted;
@@ -474,7 +480,8 @@ function launchRunJob(a: { readonly repoDir: string; readonly runId: string; rea
     }
   })();
 
-  jobs.set(a.runId, { runId: a.runId, repoDir: a.repoDir, startedAt, promise, abort });
+  job = { runId: a.runId, repoDir: a.repoDir, startedAt, promise, abort };
+  jobs.set(a.runId, job);
 }
 
 /**
@@ -603,11 +610,19 @@ export async function startOsaBuild(input: BuildInput, deps: OsaToolDeps = {}): 
 /** How long osa_cancel waits for the job to finish unwinding before it answers anyway. */
 const CANCEL_WAIT_MS = 15_000;
 
+/** Records the run as cancelled and takes its job off the table, for a job that did not unwind after osa_cancel. */
+async function abandonJob(job: Job, repoDir: string): Promise<void> {
+  await writeFile(`${runDir(repoDir, job.runId)}/mcp-result.json`, JSON.stringify({ finished_at: new Date().toISOString(), report: null, error: null, cancelled: true }, null, 2) + "\n", "utf8");
+  jobs.delete(job.runId);
+  pendingGates.get(job.runId)?.resolve(false);
+  pendingGates.delete(job.runId);
+}
+
 /**
  * Stops a run this process is working on: aborts its child processes, declines its pending gate, and waits (briefly) for the job to record the
  * cancelled result. Nothing already committed is undone.
  */
-export async function cancelOsaRun(input: CancelInput): Promise<CancelOutput> {
+export async function cancelOsaRun(input: CancelInput, opts: { readonly waitMs?: number } = {}): Promise<CancelOutput> {
   const job = jobs.get(input.run_id);
   if (job === undefined || normRepo(job.repoDir) !== normRepo(input.repo_dir)) {
     return {
@@ -623,10 +638,22 @@ export async function cancelOsaRun(input: CancelInput): Promise<CancelOutput> {
   const ended = await Promise.race([
     job.promise.then(() => true),
     new Promise<boolean>((resolve) => {
-      timer = setTimeout(() => resolve(false), CANCEL_WAIT_MS);
+      timer = setTimeout(() => resolve(false), opts.waitMs ?? CANCEL_WAIT_MS);
     }),
   ]);
   if (timer !== undefined) clearTimeout(timer);
+  if (!ended) {
+    // The job is stuck on something the abort cannot interrupt (not a child process: a hung network request, say). Leaving it on the table would keep
+    // the repository "busy" and the run "running" until the server restarted, so the cancel is made final here and the job abandoned: when it does
+    // unwind it finds it is no longer the live job and does nothing (see launchRunJob).
+    await abandonJob(job, input.repo_dir);
+    return {
+      run_id: input.run_id,
+      status: "cancelled",
+      message:
+        "The stop was sent and the agent processes were killed, but one step that is not an agent process did not stop. The run is recorded as cancelled and the repository is free for a new run; the stuck step may finish in the background but can start nothing further.",
+    };
+  }
   let carryOn = "";
   if (ended) {
     const request = await readJson(`${runDir(input.repo_dir, input.run_id)}/plan-request.json`, PlanRequestFile);
@@ -636,9 +663,7 @@ export async function cancelOsaRun(input: CancelInput): Promise<CancelOutput> {
   return {
     run_id: input.run_id,
     status: "cancelled",
-    message: ended
-      ? `The run was stopped. Work already committed to the repository stays; research and spec files are kept under runs/.${carryOn}`
-      : "The stop was sent and the agent processes were killed, but the run had not finished unwinding after 15 seconds. Check osa_status.",
+    message: `The run was stopped. Work already committed to the repository stays; research and spec files are kept under runs/.${carryOn}`,
   };
 }
 
