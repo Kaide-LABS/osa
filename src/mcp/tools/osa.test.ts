@@ -3,6 +3,7 @@
 import assert from "node:assert/strict";
 import { appendFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
 import { test } from "node:test";
+import { RunCancelledError } from "../../domain/errors.ts";
 import { OsaConfig } from "../../domain/osa-config.ts";
 import { parseBabyPrd, renderBabyPrd } from "../../osa/baby-prd.ts";
 import { fakeModel, researchFetch, samplePrd, tempGitRepo } from "../../osa/fixtures.test.ts";
@@ -364,6 +365,124 @@ test("a run lost mid-research (no result, no live job) is carried on by calling 
   const done = await startOsaBuild({ repo_dir: repoDir, run_id: plan.run_id, spec_sha256: st.spec_sha256 as string, decision: "cancel", accept_risky_assumptions: false }, again);
   assert.ok(!("refusal" in done));
   await waitForJobs();
+});
+
+test("a run stopped with osa_cancel before its build began is carried on by osa_spec: finished research is kept, the cancel record is kept, and cancel and status say how", async () => {
+  const repoDir = await tempGitRepo();
+  const first = realDeps(false);
+  const model = fakeModel({ prd: samplePrd({ risky: false }) });
+  let researchCalls = 0;
+  let cancelled = false;
+  // The third research call is a hung agent: a child process that would run for a minute. Once the cancel kills it, every later call fails the way a
+  // spawn after the abort does, so the pipeline unwinds.
+  const stuck: OsaToolDeps = {
+    pipeline: {
+      ...(first.pipeline ?? {}),
+      textCall: async (provider, req, purpose) => {
+        if (cancelled) throw new RunCancelledError("The run was cancelled; no further process was started.");
+        if (purpose.startsWith("research:") && ++researchCalls === 3) {
+          await runProcess({ command: process.execPath, args: ["-e", "setTimeout(() => undefined, 60000)"], cwd: repoDir, timeoutMs: 120_000 });
+          cancelled = true;
+          throw new RunCancelledError("The run was cancelled; no further process was started.");
+        }
+        return model.call(provider, req, purpose);
+      },
+    },
+  };
+  const plan = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [], answers: {} }, stuck);
+  const started = await startOsaSpec({ repo_dir: repoDir, run_id: plan.run_id, plan_sha256: plan.plan_sha256, decision: "go" }, stuck);
+  assert.ok(!("refusal" in started) && started.status === "started");
+
+  const resultsDir = `${repoDir}/runs/${plan.run_id}/research/results`;
+  const finished = async (): Promise<string[]> => {
+    try {
+      return (await readdir(resultsDir)).filter((f) => f.endsWith(".json") && f !== "academic-papers.json" && f !== "prior-art.json");
+    } catch {
+      return [];
+    }
+  };
+  for (let i = 0; i < 100 && (await finished()).length < 2; i++) await new Promise((r) => setTimeout(r, 100));
+  const survivors = await finished();
+  assert.equal(survivors.length, 2, "two research items finished before the hang");
+
+  const stopped = await cancelOsaRun({ repo_dir: repoDir, run_id: plan.run_id });
+  assert.equal(stopped.status, "cancelled");
+  assert.match(stopped.message, /call osa_spec again/);
+  assert.ok(stopped.message.includes(plan.plan_sha256) && stopped.message.includes(plan.run_id), "osa_cancel gives the exact arguments");
+  const after = await osaRunStatus({ repo_dir: repoDir, run_id: plan.run_id });
+  assert.ok(!("refusal" in after));
+  assert.equal(after.state, "cancelled");
+  assert.match(after.message, /call osa_spec again/, "osa_status says the same");
+
+  const researched: string[] = [];
+  const second = realDeps(false);
+  const secondModel = fakeModel({ prd: samplePrd({ risky: false }) });
+  const again: OsaToolDeps = {
+    pipeline: {
+      ...(second.pipeline ?? {}),
+      textCall: (provider, req, purpose) => {
+        if (purpose.startsWith("research:")) researched.push(purpose.slice("research:".length));
+        return secondModel.call(provider, req, purpose);
+      },
+    },
+  };
+  const carried = await startOsaSpec({ repo_dir: repoDir, run_id: plan.run_id, plan_sha256: plan.plan_sha256, decision: "go" }, again);
+  assert.ok(!("refusal" in carried) && carried.status === "started", "the cancelled run is accepted again");
+  assert.match(carried.message, /carried on/);
+  const st = await awaitingGate(repoDir, plan.run_id);
+  assert.ok(st.tldr !== null);
+  assert.ok(researched.every((slug) => !survivors.includes(`${slug}.json`)), "no finished item was researched again");
+  assert.equal(researched.length, 1, "only the item that had not finished reached a model");
+  const names = await eventNames(repoDir, plan.run_id);
+  assert.equal(names.filter((n) => n === "spec_written").length, 1, "the spec was written once");
+  await readFile(`${repoDir}/.osa/runs/${plan.run_id}/mcp-result.cancelled.json`, "utf8");
+  const done = await startOsaBuild({ repo_dir: repoDir, run_id: plan.run_id, spec_sha256: st.spec_sha256 as string, decision: "cancel", accept_risky_assumptions: false }, again);
+  assert.ok(!("refusal" in done));
+  await waitForJobs();
+});
+
+test("osa_spec still refuses a run that is final: a discarded plan, a cancel after the build began, a spec declined at the gate, and a 'cancel' decision on a cancelled run", async () => {
+  const final = /already decided/;
+
+  // a plan the person discarded
+  const repoA = await tempGitRepo();
+  const planA = await planOsaRun({ repo_dir: repoA, prompt: "make a word counter", files: [], answers: {} }, realDeps());
+  const discarded = await startOsaSpec({ repo_dir: repoA, run_id: planA.run_id, plan_sha256: planA.plan_sha256, decision: "cancel" }, realDeps());
+  assert.ok(!("refusal" in discarded) && discarded.status === "cancelled");
+  const reuse = await startOsaSpec({ repo_dir: repoA, run_id: planA.run_id, plan_sha256: planA.plan_sha256, decision: "go" }, realDeps());
+  assert.ok("refusal" in reuse && final.test(reuse.refusal), "a discarded plan stays discarded");
+
+  // a run cancelled before its build: a 'cancel' decision does not revive it, and one cancelled after its build began is final
+  const repoB = await tempGitRepo();
+  const id = "88888888-8888-4888-8888-888888888888";
+  const md = renderBabyPrd(samplePrd());
+  const sha = sha256String(md);
+  await mkdir(`${repoB}/runs/${id}`, { recursive: true });
+  await mkdir(`${repoB}/.osa/runs/${id}`, { recursive: true });
+  await writeFile(`${repoB}/runs/${id}/baby-prd.md`, md, "utf8");
+  await writeFile(`${repoB}/.osa/runs/${id}/plan-request.json`, JSON.stringify({ prompt: "p", files: [], plan_sha256: sha, created_at: "t" }), "utf8");
+  const line = (event: string): string => JSON.stringify({ schema_version: 1, at: "2026-01-01T00:00:00.000Z", run_id: id, event, data: {} }) + "\n";
+  await writeFile(`${repoB}/.osa/runs/${id}/events.jsonl`, line("prd_locked") + line("research_item_done"), "utf8");
+  await writeFile(`${repoB}/.osa/runs/${id}/mcp-result.json`, JSON.stringify({ finished_at: "t", report: null, error: null, cancelled: true }), "utf8");
+  const reviveByCancel = await startOsaSpec({ repo_dir: repoB, run_id: id, plan_sha256: sha, decision: "cancel" }, realDeps());
+  assert.ok("refusal" in reviveByCancel && final.test(reviveByCancel.refusal));
+  await appendFile(`${repoB}/.osa/runs/${id}/events.jsonl`, line("build_started"), "utf8");
+  const afterBuild = await startOsaSpec({ repo_dir: repoB, run_id: id, plan_sha256: sha, decision: "go" }, realDeps());
+  assert.ok("refusal" in afterBuild && final.test(afterBuild.refusal), "a build that began cannot be carried on from the spec");
+  const status = await osaRunStatus({ repo_dir: repoB, run_id: id });
+  assert.ok(!("refusal" in status) && status.state === "cancelled");
+  assert.doesNotMatch(status.message, /call osa_spec again/);
+
+  // a spec the person declined at the gate ends the run with a report, not a cancel
+  const repoC = await tempGitRepo();
+  const depsC = realDeps(false);
+  const planC = await planOsaRun({ repo_dir: repoC, prompt: "make a word counter", files: [], answers: {} }, depsC);
+  await startOsaSpec({ repo_dir: repoC, run_id: planC.run_id, plan_sha256: planC.plan_sha256, decision: "go" }, depsC);
+  const stC = await awaitingGate(repoC, planC.run_id);
+  await startOsaBuild({ repo_dir: repoC, run_id: planC.run_id, spec_sha256: stC.spec_sha256 as string, decision: "cancel", accept_risky_assumptions: false }, depsC);
+  await waitForJobs();
+  const redo = await startOsaSpec({ repo_dir: repoC, run_id: planC.run_id, plan_sha256: planC.plan_sha256, decision: "go" }, depsC);
+  assert.ok("refusal" in redo && final.test(redo.refusal), "a declined spec stays declined");
 });
 
 test("only one run per repository at a time; a second must wait", async () => {

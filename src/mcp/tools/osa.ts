@@ -9,7 +9,7 @@
 // assumptions were not explicitly accepted, and a fingerprint that does not match, so a confirmation cannot be applied to a different plan.
 
 import { mkdirSync, writeFileSync } from "node:fs";
-import { mkdir, readFile, readdir, stat, writeFile } from "node:fs/promises";
+import { mkdir, readFile, readdir, rename, stat, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
@@ -181,7 +181,9 @@ export const PLAN_TOOL_DESCRIPTION =
 export const SPEC_TOOL_DESCRIPTION =
   "Step 2 of OSA's one-shot build: start research and spec in the background after the person has seen the plan from osa_plan. Returns immediately; the " +
   "run reaches the post-spec gate and stops there waiting for approval. Follow progress with osa_status. Never call this step without the person's explicit yes. " +
-  "Typically takes 15 to 20 minutes. Once the spec is ready, osa_status shows awaiting_confirmation and the deterministic TL;DR; only then call osa_build.";
+  "Typically takes 15 to 20 minutes. Once the spec is ready, osa_status shows awaiting_confirmation and the deterministic TL;DR; only then call osa_build. " +
+  "Also carries on a run that was lost, or stopped with osa_cancel, before its build began (call it again with the same run_id and plan_sha256; research that " +
+  "already finished is kept). osa_status says when a run can be carried on this way.";
 export const BUILD_TOOL_DESCRIPTION =
   "Step 3 of OSA's one-shot build. Only after osa_status shows awaiting_confirmation at stage spec and the person has seen the TL;DR: lock the spec and " +
   "run the build in the background. Pass the spec_sha256 from osa_status; it must match the spec the person was shown. Show the person the TL;DR (risky " +
@@ -191,7 +193,8 @@ export const BUILD_TOOL_DESCRIPTION =
 export const CANCEL_TOOL_DESCRIPTION =
   "Stop a run that is working in the background (research, spec or build) right now: the agent processes it started are killed and nothing further is " +
   "started. Use it when the person says to stop, or a run is stuck. Work already committed to the repository stays there (it is not undone); research and spec " +
-  "files stay under runs/ for reference. A run that is only waiting for a decision can also be declined through osa_build or osa_spec with decision \"cancel\". " +
+  "files stay under runs/ for reference. If the build had not begun, the run is not lost: osa_spec on the same run carries it on and keeps the research that " +
+  "finished (use this when a step was stuck, not when the person wants the run abandoned). A run that is only waiting for a decision can also be declined through osa_build or osa_spec with decision \"cancel\". " +
   "Only works on runs started by this server process; after a server restart a run shows as interrupted and has nothing left to stop.";
 export const STATUS_TOOL_DESCRIPTION =
   "Progress and result of an OSA run: its state (awaiting_confirmation, running, finished, stopped, cancelled, interrupted), the stage, recent events, and, " +
@@ -389,6 +392,42 @@ export async function planOsaRun(input: PlanInput, deps: OsaToolDeps = {}): Prom
 
 type PlanRequest = z.infer<typeof PlanRequestFile>;
 
+/** Events that mean a run's build has begun: the repository has moved on from its spec, so the run can no longer be carried on from earlier. */
+const BUILD_BEGUN_EVENTS = ["build_started", "step14_done", "application_check"];
+
+/** The event names a run has recorded, oldest first; empty when there is no log. */
+async function readEventNames(repoDir: string, runId: string): Promise<string[]> {
+  try {
+    return (await readFile(`${runDir(repoDir, runId)}/events.jsonl`, "utf8"))
+      .split("\n")
+      .filter((l) => l !== "")
+      .flatMap((l) => {
+        try {
+          const e = JSON.parse(l) as { event?: unknown };
+          return typeof e.event === "string" ? [e.event] : [];
+        } catch {
+          return [];
+        }
+      });
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * True when a run was stopped with osa_cancel after it had started work (its plan was locked) and before its build began. Such a run is not final:
+ * osa_spec on the same run carries it on, keeping the research that finished. A discarded plan (never locked), a spec the person declined at the gate
+ * (the run ended with a report, not a cancel) and a run whose build had begun are final.
+ */
+function cancelledBeforeBuild(result: z.infer<typeof ResultFile> | null, eventNames: readonly string[]): boolean {
+  return result !== null && result.cancelled && eventNames.includes("prd_locked") && !BUILD_BEGUN_EVENTS.some((e) => eventNames.includes(e));
+}
+
+/** What to do next with a run that osa_cancel stopped before its build began; the exact arguments osa_spec needs. */
+function carryOnAdvice(runId: string, request: PlanRequest): string {
+  return `It can be carried on instead of redone: with the person's go-ahead, call osa_spec again with run_id ${runId} and plan_sha256 ${request.plan_sha256}. Research items that already finished are not repeated; the rest of research and the spec are run again. Or call osa_plan to start from scratch.`;
+}
+
 /**
  * Starts the pipeline for a run as a background job of this process and records its result when it ends. With `resume`, the pipeline skips intake,
  * research and spec and carries on from the post-spec gate using the state saved there (see osa/resume-state.ts).
@@ -471,7 +510,9 @@ export async function startOsaSpec(input: SpecInput, deps: OsaToolDeps = {}): Pr
     return { refusal: `Run ${input.run_id} is already waiting for a decision or is running. Use osa_status to see it, or osa_plan for a new plan.` };
   }
   const result = await readJson(`${runDir(input.repo_dir, input.run_id)}/mcp-result.json`, ResultFile);
-  if (result !== null) {
+  // A run that osa_cancel stopped before its build began is not final: "go" carries it on (see cancelledBeforeBuild).
+  const carryingOn = result !== null && input.decision === "go" && cancelledBeforeBuild(result, await readEventNames(input.repo_dir, input.run_id));
+  if (result !== null && !carryingOn) {
     return { refusal: `Run ${input.run_id} was already decided or is already running. Use osa_status to see it, or osa_plan for a new plan.` };
   }
 
@@ -483,11 +524,15 @@ export async function startOsaSpec(input: SpecInput, deps: OsaToolDeps = {}): Pr
   const busy = [...jobs.values()].find((j) => normRepo(j.repoDir) === normRepo(input.repo_dir));
   if (busy !== undefined) return { refusal: `Run ${busy.runId} is still working in this repository (started ${busy.startedAt}). Wait for it to end (osa_status) before starting another.` };
 
+  if (carryingOn) {
+    // Keep the record of the cancel beside the run; the run is live again.
+    await rename(`${runDir(input.repo_dir, input.run_id)}/mcp-result.json`, `${runDir(input.repo_dir, input.run_id)}/mcp-result.cancelled.json`);
+  }
   launchRunJob({ repoDir: input.repo_dir, runId: input.run_id, request, resume: false, gateIo: makeWaitingGate(input.repo_dir, input.run_id), deps });
   return {
     run_id: input.run_id,
     status: "started",
-    message: "Research and spec are running in the background (typically 15 to 20 minutes). Follow progress with osa_status, and once the spec is ready, call osa_build. The providers and models it resolved are shown by osa_status (seats) as soon as the job starts.",
+    message: (carryingOn ? "The cancelled run is carried on; research that finished before the cancel is kept. " : "") + "Research and spec are running in the background (typically 15 to 20 minutes). Follow progress with osa_status, and once the spec is ready, call osa_build. The providers and models it resolved are shown by osa_status (seats) as soon as the job starts.",
   };
 }
 
@@ -582,11 +627,17 @@ export async function cancelOsaRun(input: CancelInput): Promise<CancelOutput> {
     }),
   ]);
   if (timer !== undefined) clearTimeout(timer);
+  let carryOn = "";
+  if (ended) {
+    const request = await readJson(`${runDir(input.repo_dir, input.run_id)}/plan-request.json`, PlanRequestFile);
+    const result = await readJson(`${runDir(input.repo_dir, input.run_id)}/mcp-result.json`, ResultFile);
+    if (request !== null && cancelledBeforeBuild(result, await readEventNames(input.repo_dir, input.run_id))) carryOn = ` The build had not begun. ${carryOnAdvice(input.run_id, request)}`;
+  }
   return {
     run_id: input.run_id,
     status: "cancelled",
     message: ended
-      ? "The run was stopped. Work already committed to the repository stays; research and spec files are kept under runs/."
+      ? `The run was stopped. Work already committed to the repository stays; research and spec files are kept under runs/.${carryOn}`
       : "The stop was sent and the agent processes were killed, but the run had not finished unwinding after 15 seconds. Check osa_status.",
   };
 }
@@ -722,7 +773,8 @@ async function runStatusWithoutSeats(input: StatusInput): Promise<Omit<StatusOut
       }
     }
     const startedWork = events.some((e) => e.event === "prd_locked");
-    if (result.cancelled) return { run_id: runId, state: "cancelled", stage: startedWork ? stage : "plan", message: startedWork ? `The run was cancelled during the ${stage} stage. Work already committed stays in the repository; research and spec files are kept under runs/.` : "The plan was discarded; nothing was built.", recent_events: recent, report: null, summary_markdown: null, tldr: null, spec_sha256: null, risky_assumptions: [], defaulted_assumptions: [] };
+    const carryOn = request !== null && cancelledBeforeBuild(result, events.map((e) => e.event)) ? ` ${carryOnAdvice(runId, request)}` : "";
+    if (result.cancelled) return { run_id: runId, state: "cancelled", stage: startedWork ? stage : "plan", message: startedWork ? `The run was cancelled during the ${stage} stage. Work already committed stays in the repository; research and spec files are kept under runs/.${carryOn}` : "The plan was discarded; nothing was built.", recent_events: recent, report: null, summary_markdown: null, tldr: null, spec_sha256: null, risky_assumptions: [], defaulted_assumptions: [] };
     if (result.error !== null) return { run_id: runId, state: "stopped", stage, message: `The run stopped with an error: ${result.error}`, recent_events: recent, report: null, summary_markdown: null, tldr: null, spec_sha256: null, risky_assumptions: [], defaulted_assumptions: [] };
     const good = report?.ok === true;
     return {
