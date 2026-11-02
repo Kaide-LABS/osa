@@ -30,7 +30,8 @@ import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
-import { buildWindowsCmdRelaunch, quoteForWindowsCommandLine, runProcess } from "./exec.ts";
+import { ExitCode, RunCancelledError } from "../domain/errors.ts";
+import { buildWindowsCmdRelaunch, quoteForWindowsCommandLine, runCancelScope, runProcess } from "./exec.ts";
 
 const onlyWindows = { skip: process.platform !== "win32" };
 
@@ -322,4 +323,28 @@ test("a string stdin payload is written to the child and the pipe is closed", as
   });
   assert.equal(result.exitCode, 0);
   assert.equal(result.stdout, "hello from the parent");
+});
+
+test("runCancelScope: aborting kills a running child quickly (not after its timeout); a spawn started after the abort throws RunCancelledError; outside a scope nothing changes", async () => {
+  const controller = new AbortController();
+  const sleeper = { command: process.execPath, args: ["-e", "setTimeout(() => undefined, 60000)"], cwd: process.cwd(), timeoutMs: 120_000 };
+  const started = Date.now();
+  const running = runCancelScope(controller.signal, async () => {
+    const pending = runProcess(sleeper);
+    setTimeout(() => controller.abort(), 400);
+    return pending;
+  });
+  const result = await running;
+  assert.ok(Date.now() - started < 20_000, "the child was killed by the abort, not by its 120 s timeout");
+  assert.equal(result.timedOut, false);
+  assert.notEqual(result.exitCode, 0, "a killed child does not look like a success");
+
+  await assert.rejects(
+    runCancelScope(controller.signal, () => runProcess({ ...sleeper, args: ["-e", "0"] })),
+    (err: unknown) => err instanceof RunCancelledError && err.exitCode === ExitCode.RUN_CANCELLED,
+  );
+
+  const outside = await runProcess({ ...sleeper, args: ["-e", "process.stdout.write('ok')"] });
+  assert.equal(outside.exitCode, 0);
+  assert.equal(outside.stdout, "ok");
 });

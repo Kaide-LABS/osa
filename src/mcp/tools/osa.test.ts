@@ -11,7 +11,8 @@ import { MinIntervalLimiter } from "../../research/net/http.ts";
 import { NoopTrimmer } from "../../trim/trimmer.ts";
 import { sha256String } from "../../util/hash.ts";
 import { buildMcpServer } from "../server.ts";
-import { osaRunStatus, planOsaRun, runningJobs, startOsaBuild, startOsaSpec, waitForJobs } from "./osa.ts";
+import { runProcess } from "../../util/exec.ts";
+import { cancelOsaRun, osaRunStatus, planOsaRun, runningJobs, startOsaBuild, startOsaSpec, waitForJobs } from "./osa.ts";
 import type { OsaToolDeps } from "./osa.ts";
 
 /** The real pipeline with a scripted model and fake research HTTP; the config names a pair so no real provider is probed. */
@@ -306,4 +307,60 @@ test("osa_spec 'cancel' discards the plan without building", async () => {
   assert.ok(!("refusal" in cancelled) && cancelled.status === "cancelled");
   const st = await osaRunStatus({ repo_dir: repoDir, run_id: plan.run_id });
   assert.ok(!("refusal" in st) && st.state === "cancelled");
+});
+
+test("osa_cancel: a stuck run's child process is killed, the job ends, and osa_status reports cancelled (not stopped with an error)", async () => {
+  const repoDir = await tempGitRepo();
+  const id = "77777777-7777-4777-8777-777777777777";
+  const md = renderBabyPrd(samplePrd());
+  const sha = sha256String(md);
+  await mkdir(`${repoDir}/runs/${id}`, { recursive: true });
+  await mkdir(`${repoDir}/.osa/runs/${id}`, { recursive: true });
+  await writeFile(`${repoDir}/runs/${id}/baby-prd.md`, md, "utf8");
+  await writeFile(`${repoDir}/.osa/runs/${id}/plan-request.json`, JSON.stringify({ prompt: "p", files: [], plan_sha256: sha, created_at: "t" }), "utf8");
+  await writeFile(`${repoDir}/.osa/runs/${id}/events.jsonl`, JSON.stringify({ schema_version: 1, at: "2026-01-01T00:00:00.000Z", run_id: id, event: "prd_locked", data: {} }) + "\n", "utf8");
+
+  let childResult: { exitCode: number | null } | null = null;
+  // A pipeline stuck in a long agent call: it starts a child that would run for a minute, then reports whatever the killed child gave back.
+  const stuckRun = async (): Promise<OsaRunReport> => {
+    childResult = await runProcess({ command: process.execPath, args: ["-e", "setTimeout(() => undefined, 60000)"], cwd: repoDir, timeoutMs: 120_000 });
+    throw new Error("the agent call ended abnormally");
+  };
+  const deps: OsaToolDeps = { run: stuckRun as never };
+  const started = await startOsaSpec({ repo_dir: repoDir, run_id: id, plan_sha256: sha, decision: "go" }, deps);
+  assert.ok(!("refusal" in started) && started.status === "started");
+  await new Promise((r) => setTimeout(r, 500));
+  assert.deepStrictEqual(runningJobs(), [id]);
+
+  const began = Date.now();
+  const cancelled = await cancelOsaRun({ repo_dir: repoDir, run_id: id });
+  assert.equal(cancelled.status, "cancelled");
+  assert.match(cancelled.message, /stopped/);
+  assert.ok(Date.now() - began < 14_000, "it did not wait out the 15 s limit");
+  assert.deepStrictEqual(runningJobs(), []);
+  assert.ok(childResult !== null && (childResult as { exitCode: number | null }).exitCode !== 0, "the child was killed");
+
+  const st = await osaRunStatus({ repo_dir: repoDir, run_id: id });
+  assert.ok(!("refusal" in st));
+  assert.equal(st.state, "cancelled");
+  assert.match(st.message, /cancelled during/);
+});
+
+test("osa_cancel: a run parked at the post-spec gate is released and ends; an unknown run is reported as not running", async () => {
+  const repoDir = await tempGitRepo();
+  const deps = realDeps(false);
+  const plan = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [], answers: {} }, deps);
+  const started = await startOsaSpec({ repo_dir: repoDir, run_id: plan.run_id, plan_sha256: plan.plan_sha256, decision: "go" }, deps);
+  assert.ok(!("refusal" in started));
+  await awaitingGate(repoDir, plan.run_id);
+
+  const cancelled = await cancelOsaRun({ repo_dir: repoDir, run_id: plan.run_id });
+  assert.equal(cancelled.status, "cancelled");
+  await waitForJobs();
+  assert.deepStrictEqual(runningJobs(), []);
+  const st = await osaRunStatus({ repo_dir: repoDir, run_id: plan.run_id });
+  assert.ok(!("refusal" in st) && st.state === "cancelled");
+
+  const none = await cancelOsaRun({ repo_dir: repoDir, run_id: "88888888-8888-4888-8888-888888888888" });
+  assert.equal(none.status, "not_running");
 });

@@ -46,6 +46,8 @@ export const ExitCode = {
   STAGE_FAILED: 23,
   /** The application agent found unmet acceptance criteria, or could not verify them (OSA WS6). */
   APPLICATION_CHECK_FAILED: 24,
+  /** The person cancelled a running run (osa_cancel); child processes were stopped and nothing further was started. */
+  RUN_CANCELLED: 25,
 } as const;
 
 /** The type of a value in {@link ExitCode}. */
@@ -101,6 +103,15 @@ export class RelaySchemaError extends OsaError {
 export class MissingHandoffError extends OsaError {
   readonly exitCode = ExitCode.RELAY_SCHEMA_INVALID;
   readonly code = "HANDOFF_MISSING";
+}
+
+/**
+ * The run was cancelled on purpose (osa_cancel). Raised when something tries to start a new child process after the cancel, so a pipeline that
+ * would otherwise carry on into its next stage unwinds instead.
+ */
+export class RunCancelledError extends OsaError {
+  readonly exitCode = ExitCode.RUN_CANCELLED;
+  readonly code = "RUN_CANCELLED";
 }
 
 /** A transcript-shaped key was found in a relay payload before schema parsing (PRD §9 FM2, §7 I5). */

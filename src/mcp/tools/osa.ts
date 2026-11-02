@@ -21,6 +21,7 @@ import type { OsaCommandOptions, OsaDeps, OsaRunReport } from "../../osa/pipelin
 import { runOsaCommand } from "../../osa/pipeline.ts";
 import { SpecGateRecord, buildSpecManifest, specGateRecordPath } from "../../osa/spec-gate.ts";
 import { sha256String } from "../../util/hash.ts";
+import { runCancelScope } from "../../util/exec.ts";
 import { osaDir } from "../../util/paths.ts";
 
 // ---- schemas ---------------------------------------------------------------------------------------------------------------------
@@ -95,6 +96,20 @@ export const SpecOutput = z.strictObject({
 });
 export type SpecOutput = z.infer<typeof SpecOutput>;
 
+export const CancelInput = z.strictObject({
+  repo_dir: z.string().min(1),
+  /** The run to stop. */
+  run_id: z.uuid(),
+});
+export type CancelInput = z.infer<typeof CancelInput>;
+
+export const CancelOutput = z.strictObject({
+  run_id: z.uuid(),
+  status: z.enum(["cancelled", "not_running"]),
+  message: z.string(),
+});
+export type CancelOutput = z.infer<typeof CancelOutput>;
+
 export const StatusInput = z.strictObject({
   repo_dir: z.string().min(1),
   /** Omit for the most recent run in this repository. */
@@ -141,6 +156,11 @@ export const BUILD_TOOL_DESCRIPTION =
   "assumptions first) and call this only on their explicit yes. If risky assumptions are present, set accept_risky_assumptions to true only after the " +
   "person has read and accepted each one: never set accept_risky_assumptions yourself. decision \"cancel\" stops the run without building. Typically " +
   "30 to 60 minutes. Follow with osa_status.";
+export const CANCEL_TOOL_DESCRIPTION =
+  "Stop a run that is working in the background (research, spec or build) right now: the agent processes it started are killed and nothing further is " +
+  "started. Use it when the person says to stop, or a run is stuck. Work already committed to the repository stays there (it is not undone); research and spec " +
+  "files stay under runs/ for reference. A run that is only waiting for a decision can also be declined through osa_build or osa_spec with decision \"cancel\". " +
+  "Only works on runs started by this server process; after a server restart a run shows as interrupted and has nothing left to stop.";
 export const STATUS_TOOL_DESCRIPTION =
   "Progress and result of an OSA run: its state (awaiting_confirmation, running, finished, stopped, cancelled, interrupted), the stage, recent events, and, " +
   "when awaiting_confirmation at spec stage, the TL;DR, spec_sha256, and risky/defaulted assumptions. Once the run has ended, the report and the " +
@@ -169,6 +189,8 @@ interface Job {
   readonly repoDir: string;
   readonly startedAt: string;
   readonly promise: Promise<void>;
+  /** Aborting it stops the run's child processes (see runCancelScope in util/exec.ts). */
+  readonly abort: AbortController;
 }
 const jobs = new Map<string, Job>();
 const normRepo = (d: string): string => d.split(String.fromCharCode(92)).join("/").replace(/\/+$/, "").toLowerCase();
@@ -308,6 +330,7 @@ export async function startOsaSpec(input: SpecInput, deps: OsaToolDeps = {}): Pr
   const startedAt = new Date().toISOString();
   const resultPath = `${runDir(input.repo_dir, input.run_id)}/mcp-result.json`;
   const gateIo = makeWaitingGate(input.repo_dir, input.run_id);
+  const abort = new AbortController();
 
   const promise = (async (): Promise<void> => {
     let report: OsaRunReport | null = null;
@@ -323,15 +346,19 @@ export async function startOsaSpec(input: SpecInput, deps: OsaToolDeps = {}): Pr
         fromDraft: true,
       };
       const opts = Object.keys(request.answers ?? {}).length > 0 ? { ...baseOpts, answers: request.answers } : baseOpts;
-      report = await run(
-        opts,
-        { runId: input.run_id, interactive: true, io: { ...NO_TERMINAL, choose: () => Promise.resolve("lock" as const) }, gateIo, ...(deps.pipeline ?? {}) },
+      report = await runCancelScope(abort.signal, () =>
+        run(
+          opts,
+          { runId: input.run_id, interactive: true, io: { ...NO_TERMINAL, choose: () => Promise.resolve("lock" as const) }, gateIo, ...(deps.pipeline ?? {}) },
+        ),
       );
     } catch (err) {
       error = err instanceof OsaError ? err.message : err instanceof Error ? err.message : String(err);
     }
     try {
-      await writeFile(resultPath, JSON.stringify({ finished_at: new Date().toISOString(), report, error, cancelled: false }, null, 2) + "\n", "utf8");
+      // A cancel wins over whatever the pipeline reported as it unwound (usually a RunCancelledError or a killed turn).
+      const cancelled = abort.signal.aborted;
+      await writeFile(resultPath, JSON.stringify({ finished_at: new Date().toISOString(), report: cancelled ? null : report, error: cancelled ? null : error, cancelled }, null, 2) + "\n", "utf8");
     } finally {
       jobs.delete(input.run_id);
       // The pipeline has ended: nothing can be waiting on this gate any more (a still-pending one means it threw before the decision).
@@ -340,7 +367,7 @@ export async function startOsaSpec(input: SpecInput, deps: OsaToolDeps = {}): Pr
     }
   })();
 
-  jobs.set(input.run_id, { runId: input.run_id, repoDir: input.repo_dir, startedAt, promise });
+  jobs.set(input.run_id, { runId: input.run_id, repoDir: input.repo_dir, startedAt, promise, abort });
   return {
     run_id: input.run_id,
     status: "started",
@@ -388,6 +415,44 @@ export async function startOsaBuild(input: BuildInput): Promise<BuildOutput | { 
     run_id: input.run_id,
     status: "started",
     message: "The spec is confirmed and the build is running in the background (typically 30 to 60 minutes, then a final check). Follow it with osa_status.",
+  };
+}
+
+// ---- osa_cancel ------------------------------------------------------------------------------------------------------------------
+
+/** How long osa_cancel waits for the job to finish unwinding before it answers anyway. */
+const CANCEL_WAIT_MS = 15_000;
+
+/**
+ * Stops a run this process is working on: aborts its child processes, declines its pending gate, and waits (briefly) for the job to record the
+ * cancelled result. Nothing already committed is undone.
+ */
+export async function cancelOsaRun(input: CancelInput): Promise<CancelOutput> {
+  const job = jobs.get(input.run_id);
+  if (job === undefined || normRepo(job.repoDir) !== normRepo(input.repo_dir)) {
+    return {
+      run_id: input.run_id,
+      status: "not_running",
+      message: "This server process is not working on that run, so there is nothing to stop. If it shows as interrupted, the process that ran it is gone; check osa_status.",
+    };
+  }
+  job.abort.abort();
+  // A run parked at the post-spec gate has no child process to kill: release it as declined so its job can end.
+  pendingGates.get(input.run_id)?.resolve(false);
+  let timer: NodeJS.Timeout | undefined;
+  const ended = await Promise.race([
+    job.promise.then(() => true),
+    new Promise<boolean>((resolve) => {
+      timer = setTimeout(() => resolve(false), CANCEL_WAIT_MS);
+    }),
+  ]);
+  if (timer !== undefined) clearTimeout(timer);
+  return {
+    run_id: input.run_id,
+    status: "cancelled",
+    message: ended
+      ? "The run was stopped. Work already committed to the repository stays; research and spec files are kept under runs/."
+      : "The stop was sent and the agent processes were killed, but the run had not finished unwinding after 15 seconds. Check osa_status.",
   };
 }
 
@@ -513,7 +578,8 @@ export async function osaRunStatus(input: StatusInput): Promise<StatusOutput | {
         summary = null;
       }
     }
-    if (result.cancelled) return { run_id: runId, state: "cancelled", stage: "plan", message: "The plan was discarded; nothing was built.", recent_events: recent, report: null, summary_markdown: null, tldr: null, spec_sha256: null, risky_assumptions: [], defaulted_assumptions: [] };
+    const startedWork = events.some((e) => e.event === "prd_locked");
+    if (result.cancelled) return { run_id: runId, state: "cancelled", stage: startedWork ? stage : "plan", message: startedWork ? `The run was cancelled during the ${stage} stage. Work already committed stays in the repository; research and spec files are kept under runs/.` : "The plan was discarded; nothing was built.", recent_events: recent, report: null, summary_markdown: null, tldr: null, spec_sha256: null, risky_assumptions: [], defaulted_assumptions: [] };
     if (result.error !== null) return { run_id: runId, state: "stopped", stage, message: `The run stopped with an error: ${result.error}`, recent_events: recent, report: null, summary_markdown: null, tldr: null, spec_sha256: null, risky_assumptions: [], defaulted_assumptions: [] };
     const good = report?.ok === true;
     return {
@@ -553,7 +619,7 @@ export async function osaRunStatus(input: StatusInput): Promise<StatusOutput | {
 
 // ---- registration ----------------------------------------------------------------------------------------------------------------
 
-/** Registers osa_plan, osa_spec, osa_build and osa_status. */
+/** Registers osa_plan, osa_spec, osa_build, osa_cancel and osa_status. */
 export function registerOsaTools(server: McpServer, deps: OsaToolDeps = {}): void {
   server.registerTool("osa_plan", { description: PLAN_TOOL_DESCRIPTION, inputSchema: PlanInput, outputSchema: PlanOutput }, async (input) => {
     try {
@@ -574,6 +640,13 @@ export function registerOsaTools(server: McpServer, deps: OsaToolDeps = {}): voi
     try {
       const r = await startOsaBuild(input);
       return "refusal" in r ? refuse(r.refusal) : ok(r);
+    } catch (err) {
+      return errorResult(err);
+    }
+  });
+  server.registerTool("osa_cancel", { description: CANCEL_TOOL_DESCRIPTION, inputSchema: CancelInput, outputSchema: CancelOutput }, async (input) => {
+    try {
+      return ok(await cancelOsaRun(input));
     } catch (err) {
       return errorResult(err);
     }
