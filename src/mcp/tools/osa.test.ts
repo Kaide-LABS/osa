@@ -52,6 +52,14 @@ test("osa_plan: returns the plan and its fingerprint, writes the request, and lo
   assert.ok(!("refusal" in st) && st.state === "awaiting_confirmation");
 });
 
+test("osa_plan puts a stale-build warning first, so the person is told the running server is behind the source; no warning when the build is current", async () => {
+  const repoDir = await tempGitRepo();
+  const stale = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [], answers: {} }, { ...realDeps(), buildWarning: () => "OSA's compiled code is out of date: run npm run build" });
+  assert.equal(stale.warnings[0], "OSA's compiled code is out of date: run npm run build");
+  const current = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [], answers: {} }, { ...realDeps(), buildWarning: () => null });
+  assert.ok(!current.warnings.some((w) => /out of date/.test(w)));
+});
+
 test("osa_plan: a folder that is not a git repository is a plain error, not a crash", async () => {
   const { mkdtemp } = await import("node:fs/promises");
   const { tmpdir } = await import("node:os");

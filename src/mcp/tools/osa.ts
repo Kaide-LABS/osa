@@ -23,6 +23,7 @@ import { readResumeState } from "../../osa/resume-state.ts";
 import type { ResumeState } from "../../osa/resume-state.ts";
 import { SpecGateRecord, buildSpecManifest, specGateRecordPath } from "../../osa/spec-gate.ts";
 import { sha256String } from "../../util/hash.ts";
+import { buildFreshnessWarning } from "../../verify/build-stamp.ts";
 import { runCancelScope } from "../../util/exec.ts";
 import { osaDir } from "../../util/paths.ts";
 
@@ -177,7 +178,7 @@ export const PLAN_TOOL_DESCRIPTION =
   "Step 1 of OSA's one-shot build. Turns a request into a plain-language plan (TL;DR, scope, acceptance criteria, tagged assumptions) and writes it " +
   "into the repository. Show the person the plan (risky assumptions first) before proceeding. The plan lists up to 3 recommended questions when scope is broad; " +
   "answering them (by calling osa_plan again with answers) saves a ~20 minute research and spec run. NOTHING is built or locked. Skipping answers is fine: " +
-  "they become defaults listed as 'defaulted assumptions'. The result's seats say which provider and model will do the work (model null = that provider's own default): show them too. Only after the person has explicitly approved, call osa_spec to start research and spec. Takes about a minute.";
+  "they become defaults listed as 'defaulted assumptions'. Show the person any warnings; one saying OSA's compiled code is out of date means the running server is behind the source and needs a rebuild and restart. The result's seats say which provider and model will do the work (model null = that provider's own default): show them too. Only after the person has explicitly approved, call osa_spec to start research and spec. Takes about a minute.";
 export const SPEC_TOOL_DESCRIPTION =
   "Step 2 of OSA's one-shot build: start research and spec in the background after the person has seen the plan from osa_plan. Returns immediately; the " +
   "run reaches the post-spec gate and stops there waiting for approval. Follow progress with osa_status. Never call this step without the person's explicit yes. " +
@@ -303,6 +304,8 @@ export interface OsaToolDeps {
   readonly run?: typeof runOsaCommand;
   /** Extra pipeline collaborators (tests: fake model, fake research HTTP, fake preflight ...). */
   readonly pipeline?: Partial<OsaDeps>;
+  /** Replaces the check that this server's compiled code is not behind the source (tests). */
+  readonly buildWarning?: () => string | null;
 }
 
 const NO_TERMINAL = { show: (): void => undefined, edit: (): Promise<void> => Promise.resolve() };
@@ -369,6 +372,7 @@ export async function planOsaRun(input: PlanInput, deps: OsaToolDeps = {}): Prom
   const risky = prd.assumptions.filter((a) => a.risk === "risky").map((a) => a.text);
   const defaulted = prd.assumptions.filter((a) => a.risk === "defaulted").map((a) => a.text);
   const safe = prd.assumptions.filter((a) => a.risk === "safe").map((a) => a.text);
+  const staleBuild = (deps.buildWarning ?? buildFreshnessWarning)();
   const nextStepMain = "Show the person this plan (risky assumptions first), then after their explicit yes, call osa_spec (or call osa_plan again to refine it).";
   const nextStep = prd.recommendedQuestions.length > 0
     ? `Highly recommended: answer these questions (saves redoing a ~20 minute research and spec run): ${prd.recommendedQuestions.map(q => q.question).join("; ")}. ` +
@@ -384,7 +388,8 @@ export async function planOsaRun(input: PlanInput, deps: OsaToolDeps = {}): Prom
     risky_assumptions: risky,
     defaulted_assumptions: defaulted,
     safe_assumptions: safe,
-    warnings: [...report.warnings],
+    // First, so it is seen: every flow starts with osa_plan, and a stale build means the fixes in the source are not what is running.
+    warnings: [...(staleBuild === null ? [] : [staleBuild]), ...report.warnings],
     next_step: nextStep,
     seats: await readResolvedSeats(input.repo_dir, report.run_id),
   };
