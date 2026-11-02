@@ -26,7 +26,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { delimiter, join } from "node:path";
@@ -323,6 +323,38 @@ test("a string stdin payload is written to the child and the pipe is closed", as
   });
   assert.equal(result.exitCode, 0);
   assert.equal(result.stdout, "hello from the parent");
+});
+
+test("a timeout on Windows kills the whole tree behind a cmd.exe shim: the real process does not outlive it or delay the result", onlyWindows, async () => {
+  // cmd.exe stands in for the npm .cmd shim the provider CLIs sit behind: killing only it would leave the node process running.
+  const dir = await mkdtemp(`${tmpdir()}/osa-exec-timeout-`);
+  try {
+    const pidFile = join(dir, "pid.txt");
+    const script = join(dir, "sleeper.js");
+    await writeFile(script, `require("node:fs").writeFileSync(${JSON.stringify(pidFile)}, String(process.pid)); setTimeout(() => undefined, 60000);
+`);
+    const started = Date.now();
+    const result = await runProcess({ command: "cmd.exe", args: ["/d", "/c", process.execPath, script], cwd: process.cwd(), timeoutMs: 2500, noShellFallback: true });
+    assert.ok(Date.now() - started < 20_000, "returned after the timeout, not after the sleeper's 60 s sleep");
+    assert.equal(result.timedOut, true);
+    const pid = Number(await readFile(pidFile, "utf8"));
+    assert.ok(Number.isInteger(pid) && pid > 0, "the sleeper recorded its pid");
+    let alive = true;
+    for (let i = 0; i < 20 && alive; i++) {
+      try {
+        process.kill(pid, 0);
+        await new Promise((r) => setTimeout(r, 250));
+      } catch {
+        alive = false;
+      }
+    }
+    if (alive) {
+      try { process.kill(pid, "SIGKILL"); } catch { /* already gone */ }
+    }
+    assert.equal(alive, false, "the real process was taken down with the shim");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
 });
 
 test("runCancelScope: aborting kills a running child quickly (not after its timeout); a spawn started after the abort throws RunCancelledError; outside a scope nothing changes", async () => {

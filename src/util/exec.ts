@@ -321,6 +321,12 @@ function spawnOnce(
 
     const killTimer: NodeJS.Timeout = setTimeout(() => {
       timedOut = true;
+      if (process.platform === "win32") {
+        // The provider CLIs sit behind a cmd.exe shim: SIGTERM would end only the shim and leave the real process running (and holding
+        // the output pipes, so this call would not return). Take the whole tree down, as cancel does.
+        killProcessTree(child);
+        return;
+      }
       child.kill("SIGTERM");
       sigkillTimer = setTimeout(() => {
         child.kill("SIGKILL");
@@ -382,8 +388,9 @@ function spawnOnce(
  * prompt therefore reads EOF and fails fast instead of hanging the run.
  *
  * [DET, PRD §9 FM7] `timeoutMs` is mandatory and always armed: on expiry the process is sent
- * `SIGTERM`, escalated to `SIGKILL` after a 5 second grace, and the result always carries
- * `timedOut: true` regardless of what exit code the process eventually reports.
+ * `SIGTERM`, escalated to `SIGKILL` after a 5 second grace (on Windows the whole process tree is
+ * killed at once, see `killProcessTree`), and the result always carries `timedOut: true`
+ * regardless of what exit code the process eventually reports.
  */
 export function runProcess(o: RunProcessOptions): Promise<RawInvocationResult> {
   if (cancelScope.getStore()?.aborted === true) {
