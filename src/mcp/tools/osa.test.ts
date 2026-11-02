@@ -185,6 +185,42 @@ test("the whole flow: osa_plan -> osa_spec -> osa_status awaiting -> osa_build l
   assert.ok(names.indexOf("spec_written") < names.indexOf("step14_done"), "the spec came before the build");
 });
 
+test("the seats a run actually resolved are echoed by osa_plan, osa_status and osa_build (provider and model per seat), so a config edit that did not take effect is visible", async () => {
+  const repoDir = await tempGitRepo();
+  const base = realDeps(false);
+  const config = OsaConfig.parse({ providers: { pair: ["claude-code", "codex-cli"], seatModels: ["sonnet-x", "opus-y"], independence: "off" } });
+  const deps = withFakeBuild({ pipeline: { ...(base.pipeline ?? {}), config } }, repoDir);
+  const expected = [{ provider: "claude-code", model: "sonnet-x" }, { provider: "codex-cli", model: "opus-y" }];
+
+  const plan = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [], answers: {} }, deps);
+  assert.deepEqual(plan.seats?.seats, expected, "osa_plan shows the seats the planning stage resolved");
+  assert.equal(plan.seats?.chosen_automatically, false, "the config named the pair");
+  assert.equal(plan.seats?.model_note, null, "both seats name a model");
+  assert.deepEqual(plan.seats?.build_author, expected[1], "seat 1 writes the build");
+  assert.deepEqual(plan.seats?.build_reviewer, expected[0], "seat 0 reviews it");
+
+  await startOsaSpec({ repo_dir: repoDir, run_id: plan.run_id, plan_sha256: plan.plan_sha256, decision: "go" }, deps);
+  const st = await awaitingGate(repoDir, plan.run_id);
+  assert.deepEqual(st.seats?.seats, expected, "osa_status shows them for a run waiting at the gate");
+
+  const released = await startOsaBuild({ repo_dir: repoDir, run_id: plan.run_id, spec_sha256: st.spec_sha256 as string, decision: "lock", accept_risky_assumptions: false });
+  assert.ok(!("refusal" in released) && released.status === "started");
+  assert.deepEqual(released.seats?.seats, expected, "osa_build echoes the seats the build will use");
+  await waitForJobs();
+  const done = await osaRunStatus({ repo_dir: repoDir, run_id: plan.run_id });
+  assert.ok(!("refusal" in done));
+  assert.deepEqual(done.seats?.seats, expected, "and they are still shown once the run has ended");
+});
+
+test("a seat with no model named is called out: it runs on the provider's own default, which may not be the model the person expects", async () => {
+  const repoDir = await tempGitRepo();
+  const plan = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [], answers: {} }, realDeps());
+  assert.ok(plan.seats !== null);
+  assert.deepEqual(plan.seats.seats.map((x) => x.model), [null, null]);
+  assert.match(plan.seats.model_note ?? "", /own default model/);
+  assert.match(plan.seats.model_note ?? "", /providers.seatModels/);
+});
+
 test("only one run per repository at a time; a second must wait", async () => {
   const repoDir = await tempGitRepo();
   let release: () => void = () => undefined;

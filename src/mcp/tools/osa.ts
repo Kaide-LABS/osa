@@ -38,6 +38,30 @@ export const PlanInput = z.strictObject({
 });
 export type PlanInput = z.infer<typeof PlanInput>;
 
+/** One seat: which provider, and which model (null = the provider's own default model, whatever its CLI picks). */
+const SeatShape = z.strictObject({ provider: z.string(), model: z.string().nullable() });
+
+/**
+ * Who OSA actually put in which seat, read back from the run's own `seats_resolved` / `review_independence` events. The config is read each time a
+ * stage starts, so this is what the stage really used, not what the config file says now.
+ */
+export const ResolvedSeats = z.strictObject({
+  /** Seat 0 then seat 1. Seat 1 writes the build, seat 0 reviews it. */
+  seats: z.tuple([SeatShape, SeatShape]),
+  build_author: SeatShape.nullable(),
+  build_reviewer: SeatShape.nullable(),
+  /** How independent the reviewer is from the author (e.g. different-family, same-model). */
+  review_independence: z.string().nullable(),
+  /** True when OSA chose the providers from what is installed; false when osa.config.json named them. */
+  chosen_automatically: z.boolean(),
+  /** The config file that was read, or null when there was none (defaults). */
+  config_source: z.string().nullable(),
+  /** Set when a seat has no model named: it runs on the provider's own default, which may not be the model you expect. */
+  model_note: z.string().nullable(),
+  notes: z.array(z.string()),
+});
+export type ResolvedSeats = z.infer<typeof ResolvedSeats>;
+
 export const PlanOutput = z.strictObject({
   run_id: z.uuid(),
   /** Fingerprint of exactly this plan; osa_build must echo it. */
@@ -57,6 +81,8 @@ export const PlanOutput = z.strictObject({
   safe_assumptions: z.array(z.string()),
   warnings: z.array(z.string()),
   next_step: z.string(),
+  /** The seats the planning stage resolved. They are resolved again when osa_spec starts, so editing osa.config.json before osa_spec still takes effect. */
+  seats: ResolvedSeats.nullable(),
 });
 export type PlanOutput = z.infer<typeof PlanOutput>;
 
@@ -76,6 +102,8 @@ export const BuildOutput = z.strictObject({
   run_id: z.uuid(),
   status: z.enum(["started", "cancelled"]),
   message: z.string(),
+  /** The seats this run resolved when its research and spec started; the build uses these. Null when the run recorded none. */
+  seats: ResolvedSeats.nullable(),
 });
 export type BuildOutput = z.infer<typeof BuildOutput>;
 
@@ -138,6 +166,8 @@ export const StatusOutput = z.strictObject({
   risky_assumptions: z.array(z.string()),
   /** Defaulted assumptions (from unanswered recommended questions), empty array when not applicable. */
   defaulted_assumptions: z.array(z.string()),
+  /** The seats this run resolved (provider and model), null before any stage has started. */
+  seats: ResolvedSeats.nullable(),
 });
 export type StatusOutput = z.infer<typeof StatusOutput>;
 
@@ -145,7 +175,7 @@ export const PLAN_TOOL_DESCRIPTION =
   "Step 1 of OSA's one-shot build. Turns a request into a plain-language plan (TL;DR, scope, acceptance criteria, tagged assumptions) and writes it " +
   "into the repository. Show the person the plan (risky assumptions first) before proceeding. The plan lists up to 3 recommended questions when scope is broad; " +
   "answering them (by calling osa_plan again with answers) saves a ~20 minute research and spec run. NOTHING is built or locked. Skipping answers is fine: " +
-  "they become defaults listed as 'defaulted assumptions'. Only after the person has explicitly approved, call osa_spec to start research and spec. Takes about a minute.";
+  "they become defaults listed as 'defaulted assumptions'. The result's seats say which provider and model will do the work (model null = that provider's own default): show them too. Only after the person has explicitly approved, call osa_spec to start research and spec. Takes about a minute.";
 export const SPEC_TOOL_DESCRIPTION =
   "Step 2 of OSA's one-shot build: start research and spec in the background after the person has seen the plan from osa_plan. Returns immediately; the " +
   "run reaches the post-spec gate and stops there waiting for approval. Follow progress with osa_status. Never call this step without the person's explicit yes. " +
@@ -155,7 +185,7 @@ export const BUILD_TOOL_DESCRIPTION =
   "run the build in the background. Pass the spec_sha256 from osa_status; it must match the spec the person was shown. Show the person the TL;DR (risky " +
   "assumptions first) and call this only on their explicit yes. If risky assumptions are present, set accept_risky_assumptions to true only after the " +
   "person has read and accepted each one: never set accept_risky_assumptions yourself. decision \"cancel\" stops the run without building. Typically " +
-  "30 to 60 minutes. Follow with osa_status.";
+  "30 to 60 minutes. The result's seats echo the provider and model the build will use. Follow with osa_status.";
 export const CANCEL_TOOL_DESCRIPTION =
   "Stop a run that is working in the background (research, spec or build) right now: the agent processes it started are killed and nothing further is " +
   "started. Use it when the person says to stop, or a run is stuck. Work already committed to the repository stays there (it is not undone); research and spec " +
@@ -164,7 +194,7 @@ export const CANCEL_TOOL_DESCRIPTION =
 export const STATUS_TOOL_DESCRIPTION =
   "Progress and result of an OSA run: its state (awaiting_confirmation, running, finished, stopped, cancelled, interrupted), the stage, recent events, and, " +
   "when awaiting_confirmation at spec stage, the TL;DR, spec_sha256, and risky/defaulted assumptions. Once the run has ended, the report and the " +
-  "plain-language summary are attached. Poll it every few minutes while a run executes.";
+  "plain-language summary are attached. seats shows the provider and model each seat actually resolved to for this run. Poll it every few minutes while a run executes.";
 
 // ---- files of one run --------------------------------------------------------------------------------------------------------------
 
@@ -180,6 +210,53 @@ async function readJson<T>(path: string, schema: z.ZodType<T>): Promise<T | null
   } catch {
     return null;
   }
+}
+
+/** The seats the run last resolved, from its own events; null when it has not resolved any (or the file is unreadable). */
+export async function readResolvedSeats(repoDir: string, runId: string): Promise<ResolvedSeats | null> {
+  let lines: string[];
+  try {
+    lines = (await readFile(`${runDir(repoDir, runId)}/events.jsonl`, "utf8")).split("\n").filter((l) => l !== "");
+  } catch {
+    return null;
+  }
+  let resolved: Record<string, unknown> | null = null;
+  let independence: Record<string, unknown> | null = null;
+  let source: string | null = null;
+  for (const l of lines) {
+    try {
+      const e = JSON.parse(l) as { event?: unknown; data?: Record<string, unknown> };
+      if (e.data === undefined) continue;
+      if (e.event === "seats_resolved") resolved = e.data;
+      else if (e.event === "review_independence" && e.data["role"] === "build") independence = e.data;
+      else if (e.event === "config_loaded") source = typeof e.data["source"] === "string" ? e.data["source"] : null;
+    } catch {
+      // skip a damaged line
+    }
+  }
+  if (resolved === null) return null;
+  const pair = z.tuple([z.string(), z.string()]).safeParse(resolved["pair"]);
+  const models = z.tuple([z.string().nullable(), z.string().nullable()]).safeParse(resolved["seatModels"]);
+  if (!pair.success || !models.success) return null;
+  const seats: [z.infer<typeof SeatShape>, z.infer<typeof SeatShape>] = [
+    { provider: pair.data[0], model: models.data[0] },
+    { provider: pair.data[1], model: models.data[1] },
+  ];
+  const seat = (v: unknown): z.infer<typeof SeatShape> | null => {
+    const r = SeatShape.safeParse(v);
+    return r.success ? r.data : null;
+  };
+  const unnamed = seats.flatMap((s, i) => (s.model === null ? [`seat ${String(i)} (${s.provider})`] : []));
+  return {
+    seats,
+    build_author: seat(independence?.["author"]),
+    build_reviewer: seat(independence?.["reviewer"]),
+    review_independence: typeof independence?.["level"] === "string" ? independence["level"] : null,
+    chosen_automatically: resolved["auto"] === true,
+    config_source: source,
+    model_note: unnamed.length === 0 ? null : `No model is named for ${unnamed.join(" and ")}, so it runs on that provider's own default model. To pin one, set providers.seatModels in osa.config.json.`,
+    notes: Array.isArray(resolved["notes"]) ? resolved["notes"].filter((n): n is string => typeof n === "string") : [],
+  };
 }
 
 // ---- background jobs of THIS server process -------------------------------------------------------------------------------------
@@ -298,6 +375,7 @@ export async function planOsaRun(input: PlanInput, deps: OsaToolDeps = {}): Prom
     safe_assumptions: safe,
     warnings: [...report.warnings],
     next_step: nextStep,
+    seats: await readResolvedSeats(input.repo_dir, report.run_id),
   };
 }
 
@@ -371,7 +449,7 @@ export async function startOsaSpec(input: SpecInput, deps: OsaToolDeps = {}): Pr
   return {
     run_id: input.run_id,
     status: "started",
-    message: "Research and spec are running in the background (typically 15 to 20 minutes). Follow progress with osa_status, and once the spec is ready, call osa_build.",
+    message: "Research and spec are running in the background (typically 15 to 20 minutes). Follow progress with osa_status, and once the spec is ready, call osa_build. The providers and models it resolved are shown by osa_status (seats) as soon as the job starts.",
   };
 }
 
@@ -399,7 +477,7 @@ export async function startOsaBuild(input: BuildInput): Promise<BuildOutput | { 
   }
   if (input.decision === "cancel") {
     gate.resolve(false);
-    return { run_id: input.run_id, status: "cancelled", message: "The spec was declined; nothing was built. The research and spec are kept under runs/ for reference." };
+    return { run_id: input.run_id, status: "cancelled", message: "The spec was declined; nothing was built. The research and spec are kept under runs/ for reference.", seats: null };
   }
   let risky: string[] = [];
   try {
@@ -415,6 +493,7 @@ export async function startOsaBuild(input: BuildInput): Promise<BuildOutput | { 
     run_id: input.run_id,
     status: "started",
     message: "The spec is confirmed and the build is running in the background (typically 30 to 60 minutes, then a final check). Follow it with osa_status.",
+    seats: await readResolvedSeats(input.repo_dir, input.run_id),
   };
 }
 
@@ -496,6 +575,12 @@ async function latestRunId(repoDir: string): Promise<string | null> {
 
 /** The state of one run, from its own files plus this process's job table. */
 export async function osaRunStatus(input: StatusInput): Promise<StatusOutput | { readonly refusal: string }> {
+  const status = await runStatusWithoutSeats(input);
+  if ("refusal" in status) return status;
+  return { ...status, seats: await readResolvedSeats(input.repo_dir, status.run_id) };
+}
+
+async function runStatusWithoutSeats(input: StatusInput): Promise<Omit<StatusOutput, "seats"> | { readonly refusal: string }> {
   const runId = input.run_id ?? (await latestRunId(input.repo_dir));
   if (runId === null) return { refusal: `No OSA run found in ${input.repo_dir}.` };
   const dir = runDir(input.repo_dir, runId);
