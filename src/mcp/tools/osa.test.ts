@@ -301,6 +301,66 @@ test("a restarted run is NOT carried on when the spec changed since it was shown
   assert.ok("refusal" in again, "a declined run cannot be approved afterwards");
 });
 
+test("a run lost mid-research (no result, no live job) is carried on by calling osa_spec again with the same plan: finished research items are not redone and the spec is written once", async () => {
+  const repoDir = await tempGitRepo();
+  const first = realDeps(false);
+  const model = fakeModel({ prd: samplePrd({ risky: false }) });
+  let researchCalls = 0;
+  // the third research call never answers, as a hung provider call would
+  const hanging: OsaToolDeps = {
+    pipeline: {
+      ...(first.pipeline ?? {}),
+      textCall: (provider, req, purpose) => {
+        if (purpose.startsWith("research:") && ++researchCalls === 3) return new Promise(() => undefined);
+        return model.call(provider, req, purpose);
+      },
+    },
+  };
+  const plan = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [], answers: {} }, hanging);
+  const started = await startOsaSpec({ repo_dir: repoDir, run_id: plan.run_id, plan_sha256: plan.plan_sha256, decision: "go" }, hanging);
+  assert.ok(!("refusal" in started) && started.status === "started");
+
+  const resultsDir = `${repoDir}/runs/${plan.run_id}/research/results`;
+  const finished = async (): Promise<string[]> => {
+    try {
+      return (await readdir(resultsDir)).filter((f) => f.endsWith(".json") && f !== "academic-papers.json" && f !== "prior-art.json");
+    } catch {
+      return [];
+    }
+  };
+  for (let i = 0; i < 100 && (await finished()).length < 2; i++) await new Promise((r) => setTimeout(r, 100));
+  const survivors = await finished();
+  assert.equal(survivors.length, 2, "two research items finished before the hang");
+
+  forgetJobsAsIfRestarted();
+  const lost = await osaRunStatus({ repo_dir: repoDir, run_id: plan.run_id });
+  assert.ok(!("refusal" in lost));
+
+  const researched: string[] = [];
+  const second = realDeps(false);
+  const secondModel = fakeModel({ prd: samplePrd({ risky: false }) });
+  const again: OsaToolDeps = {
+    pipeline: {
+      ...(second.pipeline ?? {}),
+      textCall: (provider, req, purpose) => {
+        if (purpose.startsWith("research:")) researched.push(purpose.slice("research:".length));
+        return secondModel.call(provider, req, purpose);
+      },
+    },
+  };
+  const restarted = await startOsaSpec({ repo_dir: repoDir, run_id: plan.run_id, plan_sha256: plan.plan_sha256, decision: "go" }, again);
+  assert.ok(!("refusal" in restarted), "the second osa_spec is accepted");
+  const st = await awaitingGate(repoDir, plan.run_id);
+  assert.ok(st.tldr !== null);
+  assert.ok(researched.every((slug) => !survivors.includes(`${slug}.json`)), "no finished item was researched again");
+  assert.equal(researched.length, 1, "only the item that had not finished reached a model");
+  const names = await eventNames(repoDir, plan.run_id);
+  assert.equal(names.filter((n) => n === "spec_written").length, 1, "the spec was written once");
+  const done = await startOsaBuild({ repo_dir: repoDir, run_id: plan.run_id, spec_sha256: st.spec_sha256 as string, decision: "cancel", accept_risky_assumptions: false }, again);
+  assert.ok(!("refusal" in done));
+  await waitForJobs();
+});
+
 test("only one run per repository at a time; a second must wait", async () => {
   const repoDir = await tempGitRepo();
   let release: () => void = () => undefined;
