@@ -32,6 +32,9 @@ import type { LockIO, LockOutcome, GateIO, GateMode } from "./lock.ts";
 import { makeTerminalGateIO, makeTerminalNudgeIO, NUDGE_TEXT } from "./terminal.ts";
 import type { NudgeIO } from "./terminal.ts";
 import { writeSpecGate, verifySpecGate } from "./spec-gate.ts";
+import type { SpecGateRecord } from "./spec-gate.ts";
+import { readResumeState, writeResumeState } from "./resume-state.ts";
+import type { ResumeState } from "./resume-state.ts";
 import { buildApprovalTldr } from "./tldr.ts";
 import { runDrive } from "../dispatch/driver-loop.ts";
 import type { DriveDispatchDeps, DrivePhaseHooks } from "../dispatch/driver-loop.ts";
@@ -99,8 +102,9 @@ export interface OsaCommandOptions {
    */
   readonly stopAfterSpec?: boolean;
   /**
-   * Skip intake/research/spec: read the locked PRD and verify the spec-gate hashes before resuming at the gate/build.
-   * Requires the run to already have both `.osa/runs/<id>/prd.lock.json` and `.osa/runs/<id>/spec-gate.json`.
+   * Skip intake/research/spec and carry on from the post-spec gate: verify the spec-gate hashes, load the state saved when the run reached the gate
+   * (`.osa/runs/<id>/resume-state.json`), then gate and build as usual. Used with `fromDraft` and the run id in `deps.runId`, by `osa_build` for a
+   * run whose server was restarted while it waited for approval. Requires `prd.lock.json`, `spec-gate.json` and `resume-state.json` for the run.
    */
   readonly fromSpec?: boolean;
   /**
@@ -452,226 +456,240 @@ async function runOsaCommandInner(opts: OsaCommandOptions, deps: OsaDeps, track:
   // The harness hashes artifacts_read at head_before, so the locked PRD must be committed before dispatch.
   await commitPaths(opts.repoDir, `chore: lock baby PRD for OSA run ${runId}`, [prdPath]);
 
-  // ---- fromSpec: skip research/spec, verify spec-gate, resume at gate/build ----
-  // Note: fromSpec skips intake/research/spec entirely. It reads the locked PRD (already done above
-  // via fromDraft path), verifies both spec-gate hashes, and resumes at the gate/build. The spec
-  // artifacts are available on disk from the prior run; the TL;DR must be read back from
-  // event logs or persisted artifacts to avoid re-running spec. For now, return a scaffold.
-  // Full implementation deferred to Phase 2 Part B: read event log, reconstruct TldrInput,
-  // assemble TL;DR, and wire the real gate.
-  if (opts.fromSpec === true) {
-    try {
-      const specGateRecord = await verifySpecGate(opts.repoDir, runId, outcome.record.sha256);
-      // TODO (Phase 2 Part B): Read spec artifacts and event log, assemble tldrLines, wire gate.
-      return {
-        schema_version: 1,
-        generated_at: new Date().toISOString(),
-        run_id: runId,
-        ok: false,
-        exit_code: ExitCode.STAGE_FAILED,
-        stage: "spec",
-        lock: "locked",
-        prd_path: prdPath,
-        prd_sha256: outcome.record.sha256,
-        assumptions: counts(prd),
-        research: null,
-        spec: null,
-        spec_gate: { spec_gate_sha256: specGateRecord.spec_gate_sha256, prd_sha256: specGateRecord.prd_sha256 },
-        tldr: null,
-        build: null,
-        agents: null,
-        review: { author: seatKey(seatPlan.review.author), reviewer: seatKey(seatPlan.review.reviewer), level: seatPlan.review.level, text: reviewText },
-        summary_path: null,
-        warnings,
-        problems: ["fromSpec resumption: TL;DR assembly not yet implemented in Part B."],
-      };
-    } catch (err) {
-      return {
-        schema_version: 1,
-        generated_at: new Date().toISOString(),
-        run_id: runId,
-        ok: false,
-        exit_code: ExitCode.STAGE_FAILED,
-        stage: "spec",
-        lock: "locked",
-        prd_path: prdPath,
-        prd_sha256: outcome.record.sha256,
-        assumptions: counts(prd),
-        research: null,
-        spec: null,
-        spec_gate: null,
-        tldr: null,
-        build: null,
-        agents: null,
-        review: { author: seatKey(seatPlan.review.author), reviewer: seatKey(seatPlan.review.reviewer), level: seatPlan.review.level, text: reviewText },
-        summary_path: null,
-        warnings,
-        problems: [err instanceof Error ? err.message : String(err)],
-      };
-    }
-  }
-
   // ---- trimming engine, resolved once: used for every handoff from here on ----
   const resolved = deps.trimmer ?? (await resolveTrimmerLazily(config.trim, { cwd: opts.repoDir, ...(deps.trimSpawn !== undefined ? { runProcessFn: deps.trimSpawn } : {}) }));
   const trimDeps: HandoffDeps = { trimmer: resolved.trimmer, events, defaultBudgetTokens: config.trim.budgetTokens, engineNote: resolved.note };
 
-  // ---- research (unattended from here on; the locked PRD is re-verified between every stage) ----
-  await assertPrdUnchanged(opts.repoDir, runId, "before research", events, pinned);
-  const research: ResearchStageResult = await runResearchStage({
-    repoDir: opts.repoDir,
-    runId,
-    prd: outcome.prd,
-    config,
-    textCall,
-    events,
-    ...(deps.research ?? {}),
-  });
-  warnings.push(...research.warnings);
-  await assertPrdUnchanged(opts.repoDir, runId, "after research", events, pinned);
-
-  // ---- spec (research output -> spec input is a trimmed handoff; the PRD itself is passed verbatim) ----
-  track.stage = "spec";
-  const prdMarkdown = await readFile(prdAbs, "utf8");
-  const reportForSpec = await trimText("research-report", research.reportMd, briefOf(outcome.prd), trimDeps);
-  const spec: SpecStageResult = await runSpecStage({
-    repoDir: opts.repoDir,
-    runId,
-    prdMarkdown,
-    reportMarkdown: reportForSpec,
-    docs: research.docs,
-    flaggedClaims: (research.crosscheck?.flagged ?? []).map((c) => c.claim),
-    ...(memory !== null ? { extraSections: [{ title: "Project memory (earlier runs on this project)", body: memory }] } : {}),
-    config,
-    textCall,
-    events,
-  });
-  let architecture: { chosen: string; why: string; provider: string } | null = null;
-  let implications: { acceptanceAdded: number; outOfScopeAdded: number } | null = null;
-  // ---- agents between spec and build (each config-gated; a failure of an ADVISORY agent is warned, never silent) ----
-  const specAbs = repoRelToAbs(opts.repoDir, spec.specPath);
-  const contextAbs = repoRelToAbs(opts.repoDir, spec.contextPath);
+  // ---- research, spec and the agents between them -- or, for a run carried on from its gate, what was saved there ----
   const agentTimeout = config.providers.textTimeoutMs;
   const planner = config.providers.pair[0];
-  const plannerSeat: Seat = { provider: planner, model: modelFor(config, planner, 0) };
-
-  if (config.agents.lateralArchitecture) {
-    const choice = chooseLateralProvider(config.agents, plannerSeat, seatCandidates);
-    if (choice.warning !== null) warnings.push(choice.warning);
-    const lateral = await runLateralArchitectureAgent({
-      prdMarkdown,
-      contextMarkdown: await readFile(contextAbs, "utf8"),
-      researchDigest: reportForSpec,
-      choice,
+  const stoppedAtSpec = (problems: readonly string[]): OsaRunReport => ({
+    schema_version: 1,
+    generated_at: new Date().toISOString(),
+    run_id: runId,
+    ok: false,
+    exit_code: ExitCode.STAGE_FAILED,
+    stage: "spec",
+    lock: "locked",
+    prd_path: prdPath,
+    prd_sha256: outcome.record.sha256,
+    assumptions: counts(prd),
+    research: null,
+    spec: null,
+    spec_gate: null,
+    tldr: null,
+    build: null,
+    agents: null,
+    review: { author: seatKey(seatPlan.review.author), reviewer: seatKey(seatPlan.review.reviewer), level: seatPlan.review.level, text: reviewText },
+    summary_path: null,
+    warnings,
+    problems,
+  });
+  let carried: Pick<ResumeState, "spec" | "research" | "architecture" | "implications" | "tldr">;
+  let specGateRecord: SpecGateRecord;
+  if (opts.fromSpec === true) {
+    const saved = await readResumeState(opts.repoDir, runId);
+    if (saved === null) {
+      return stoppedAtSpec(["There is no saved state for this run to carry on from (resume-state.json is missing or unreadable), so it cannot continue without redoing the research and spec."]);
+    }
+    try {
+      specGateRecord = await verifySpecGate(opts.repoDir, runId, outcome.record.sha256);
+    } catch (err) {
+      return stoppedAtSpec([err instanceof Error ? err.message : String(err)]);
+    }
+    carried = { spec: saved.spec, research: saved.research, architecture: saved.architecture, implications: saved.implications, tldr: saved.tldr };
+    track.stage = "spec";
+    warnings.push("This run was carried on from its saved spec: intake, research and spec were not repeated.");
+    await events.emit("run_resumed", { spec_gate_sha256: specGateRecord.spec_gate_sha256 });
+  } else {
+    // ---- research (unattended from here on; the locked PRD is re-verified between every stage) ----
+    await assertPrdUnchanged(opts.repoDir, runId, "before research", events, pinned);
+    const research: ResearchStageResult = await runResearchStage({
+      repoDir: opts.repoDir,
+      runId,
+      prd: outcome.prd,
+      config,
       textCall,
       events,
-      cwd: opts.repoDir,
-      timeoutMs: agentTimeout,
-      modelOverride: choice.model ?? config.providers.modelOverrides?.[choice.provider] ?? null,
+      ...(deps.research ?? {}),
     });
-    if (lateral.report !== null) {
-      const decision = await runArchitectureDecision({
-        repoDir: opts.repoDir,
-        runId,
+    warnings.push(...research.warnings);
+    await assertPrdUnchanged(opts.repoDir, runId, "after research", events, pinned);
+
+    // ---- spec (research output -> spec input is a trimmed handoff; the PRD itself is passed verbatim) ----
+    track.stage = "spec";
+    const prdMarkdown = await readFile(prdAbs, "utf8");
+    const reportForSpec = await trimText("research-report", research.reportMd, briefOf(outcome.prd), trimDeps);
+    const spec: SpecStageResult = await runSpecStage({
+      repoDir: opts.repoDir,
+      runId,
+      prdMarkdown,
+      reportMarkdown: reportForSpec,
+      docs: research.docs,
+      flaggedClaims: (research.crosscheck?.flagged ?? []).map((c) => c.claim),
+      ...(memory !== null ? { extraSections: [{ title: "Project memory (earlier runs on this project)", body: memory }] } : {}),
+      config,
+      textCall,
+      events,
+    });
+    let architecture: { chosen: string; why: string; provider: string } | null = null;
+    let implications: { acceptanceAdded: number; outOfScopeAdded: number } | null = null;
+    // ---- agents between spec and build (each config-gated; a failure of an ADVISORY agent is warned, never silent) ----
+    const specAbs = repoRelToAbs(opts.repoDir, spec.specPath);
+    const contextAbs = repoRelToAbs(opts.repoDir, spec.contextPath);
+    const plannerSeat: Seat = { provider: planner, model: modelFor(config, planner, 0) };
+
+    if (config.agents.lateralArchitecture) {
+      const choice = chooseLateralProvider(config.agents, plannerSeat, seatCandidates);
+      if (choice.warning !== null) warnings.push(choice.warning);
+      const lateral = await runLateralArchitectureAgent({
+        prdMarkdown,
+        contextMarkdown: await readFile(contextAbs, "utf8"),
+        researchDigest: reportForSpec,
+        choice,
+        textCall,
+        events,
+        cwd: opts.repoDir,
+        timeoutMs: agentTimeout,
+        modelOverride: choice.model ?? config.providers.modelOverrides?.[choice.provider] ?? null,
+      });
+      if (lateral.report !== null) {
+        const decision = await runArchitectureDecision({
+          repoDir: opts.repoDir,
+          runId,
+          prdMarkdown,
+          contextMarkdown: await readFile(contextAbs, "utf8"),
+          specMarkdown: await readFile(specAbs, "utf8"),
+          alternativesText: renderAlternatives(lateral.report),
+          alternativeNames: lateral.report.alternatives.map((a) => a.name),
+          docs: research.docs,
+          config,
+          textCall,
+          events,
+          specPath: spec.specPath,
+          contextPath: spec.contextPath,
+        });
+        architecture = { chosen: decision.chosen, why: decision.why, provider: seatKey({ provider: choice.provider, model: choice.model }) };
+      } else {
+        warnings.push(`The independent architecture review (${choice.provider}) could not be completed (${lateral.failure ?? "unknown reason"}); ${planner}'s plan was not challenged.`);
+      }
+    }
+
+    if (config.agents.implication) {
+      const provider = config.agents.implicationProvider ?? config.providers.pair[1];
+      const implication = await runImplicationAgent({
         prdMarkdown,
         contextMarkdown: await readFile(contextAbs, "utf8"),
         specMarkdown: await readFile(specAbs, "utf8"),
-        alternativesText: renderAlternatives(lateral.report),
-        alternativeNames: lateral.report.alternatives.map((a) => a.name),
-        docs: research.docs,
-        config,
+        provider,
         textCall,
         events,
-        specPath: spec.specPath,
-        contextPath: spec.contextPath,
+        cwd: opts.repoDir,
+        timeoutMs: agentTimeout,
+        modelOverride: modelFor(config, provider, 1),
       });
-      architecture = { chosen: decision.chosen, why: decision.why, provider: seatKey({ provider: choice.provider, model: choice.model }) };
-    } else {
-      warnings.push(`The independent architecture review (${choice.provider}) could not be completed (${lateral.failure ?? "unknown reason"}); ${planner}'s plan was not challenged.`);
+      if (implication.ok) {
+        await writeFile(specAbs, implication.specMarkdown, "utf8");
+        implications = { acceptanceAdded: implication.acceptanceAdded, outOfScopeAdded: implication.outOfScopeAdded };
+      } else {
+        warnings.push(`The implication review (${provider}) could not be completed (${implication.failure ?? "unknown reason"}); the spec was built without it.`);
+      }
     }
-  }
 
-  if (config.agents.implication) {
-    const provider = config.agents.implicationProvider ?? config.providers.pair[1];
-    const implication = await runImplicationAgent({
-      prdMarkdown,
-      contextMarkdown: await readFile(contextAbs, "utf8"),
-      specMarkdown: await readFile(specAbs, "utf8"),
-      provider,
-      textCall,
-      events,
-      cwd: opts.repoDir,
-      timeoutMs: agentTimeout,
-      modelOverride: modelFor(config, provider, 1),
+    await commitPaths(opts.repoDir, `chore: spec for OSA run ${runId}`, [specDirRel(runId)]);
+    await assertPrdUnchanged(opts.repoDir, runId, "after spec", events, pinned);
+
+    // Write spec-gate.json after the spec is finalized (not committed, per AC 15).
+    specGateRecord = await writeSpecGate(opts.repoDir, runId, outcome.record.sha256);
+
+    const researchSummary: NonNullable<OsaRunReport["research"]> = {
+      skipped: research.skipped,
+      items: research.outcomes.length,
+      docSources: research.docs.sources.length,
+      papers: research.academic?.papers.length ?? 0,
+      repos: research.priorArt?.repos.length ?? 0,
+      crossChecked: research.crosscheck !== null,
+    };
+    const specSummary: NonNullable<OsaRunReport["spec"]> = {
+      spec_path: spec.specPath,
+      context_path: spec.contextPath,
+      total_phases: spec.totalPhases,
+      assumptions: spec.specAssumptions.length,
+    };
+
+    // Build the deterministic approval TL;DR from existing artifacts.
+    const tldrResult = buildApprovalTldr({
+      prd: outcome.prd,
+      specAssumptions: spec.specAssumptions,
+      totalPhases: spec.totalPhases,
+      risky: outcome.prd.assumptions.filter((a) => a.risk === "risky"),
+      defaulted: outcome.prd.assumptions.filter((a) => a.risk === "defaulted"),
+      researchSkipped: research.skipped,
+      flaggedClaims: (research.crosscheck?.flagged ?? []).map((c) => c.claim),
+      reviewText,
     });
-    if (implication.ok) {
-      await writeFile(specAbs, implication.specMarkdown, "utf8");
-      implications = { acceptanceAdded: implication.acceptanceAdded, outOfScopeAdded: implication.outOfScopeAdded };
-    } else {
-      warnings.push(`The implication review (${provider}) could not be completed (${implication.failure ?? "unknown reason"}); the spec was built without it.`);
+
+    if ("stop" in tldrResult) {
+      // Cannot assemble a readable TL;DR: report the failure and stop.
+      // (recordMemory not called for this early failure; it's a critical pipeline error)
+      return {
+        schema_version: 1,
+        generated_at: new Date().toISOString(),
+        run_id: runId,
+        ok: false,
+        exit_code: ExitCode.STAGE_FAILED,
+        stage: "spec",
+        lock: "locked",
+        prd_path: prdPath,
+        prd_sha256: outcome.record.sha256,
+        assumptions: counts(outcome.prd),
+        research: researchSummary,
+        spec: specSummary,
+        spec_gate: { spec_gate_sha256: specGateRecord.spec_gate_sha256, prd_sha256: specGateRecord.prd_sha256 },
+        tldr: null,
+        build: null,
+        agents: { architecture, implications, application: null },
+        review: { author: seatKey(seatPlan.review.author), reviewer: seatKey(seatPlan.review.reviewer), level: seatPlan.review.level, text: reviewText },
+        summary_path: null,
+        warnings,
+        problems: [tldrResult.stop],
+      };
     }
+
+    const tldrLines = tldrResult.lines;
+
+    carried = {
+      spec: { specPath: spec.specPath, contextPath: spec.contextPath, totalPhases: spec.totalPhases, specAssumptions: [...spec.specAssumptions] },
+      research: {
+        ...researchSummary,
+        degradedCheck: research.crosscheck?.degraded ?? false,
+        flaggedClaims: (research.crosscheck?.flagged ?? []).map((c) => c.claim),
+        failedItems: research.outcomes.filter((o) => o.status === "failed").map((o) => ({ slug: o.slug, problem: o.problems[0] ?? "unknown" })),
+      },
+      architecture,
+      implications,
+      tldr: [...tldrLines],
+    };
+    // Saved now, at the gate, so a server restart while the person decides does not cost the research and spec (see resume-state.ts).
+    await writeResumeState(opts.repoDir, { schema_version: 1, run_id: runId, ...carried, created_at: new Date().toISOString() });
   }
-
-  await commitPaths(opts.repoDir, `chore: spec for OSA run ${runId}`, [specDirRel(runId)]);
-  await assertPrdUnchanged(opts.repoDir, runId, "after spec", events, pinned);
-
-  // Write spec-gate.json after the spec is finalized (not committed, per AC 15).
-  const specGateRecord = await writeSpecGate(opts.repoDir, runId, outcome.record.sha256);
-
+  const { architecture, implications } = carried;
+  const tldrLines = carried.tldr;
+  const specAbs = repoRelToAbs(opts.repoDir, carried.spec.specPath);
   const researchSummary: NonNullable<OsaRunReport["research"]> = {
-    skipped: research.skipped,
-    items: research.outcomes.length,
-    docSources: research.docs.sources.length,
-    papers: research.academic?.papers.length ?? 0,
-    repos: research.priorArt?.repos.length ?? 0,
-    crossChecked: research.crosscheck !== null,
+    skipped: carried.research.skipped,
+    items: carried.research.items,
+    docSources: carried.research.docSources,
+    papers: carried.research.papers,
+    repos: carried.research.repos,
+    crossChecked: carried.research.crossChecked,
   };
   const specSummary: NonNullable<OsaRunReport["spec"]> = {
-    spec_path: spec.specPath,
-    context_path: spec.contextPath,
-    total_phases: spec.totalPhases,
-    assumptions: spec.specAssumptions.length,
+    spec_path: carried.spec.specPath,
+    context_path: carried.spec.contextPath,
+    total_phases: carried.spec.totalPhases,
+    assumptions: carried.spec.specAssumptions.length,
   };
-
-  // Build the deterministic approval TL;DR from existing artifacts.
-  const tldrResult = buildApprovalTldr({
-    prd: outcome.prd,
-    specAssumptions: spec.specAssumptions,
-    totalPhases: spec.totalPhases,
-    risky: outcome.prd.assumptions.filter((a) => a.risk === "risky"),
-    defaulted: outcome.prd.assumptions.filter((a) => a.risk === "defaulted"),
-    researchSkipped: research.skipped,
-    flaggedClaims: (research.crosscheck?.flagged ?? []).map((c) => c.claim),
-    reviewText,
-  });
-
-  if ("stop" in tldrResult) {
-    // Cannot assemble a readable TL;DR: report the failure and stop.
-    // (recordMemory not called for this early failure; it's a critical pipeline error)
-    return {
-      schema_version: 1,
-      generated_at: new Date().toISOString(),
-      run_id: runId,
-      ok: false,
-      exit_code: ExitCode.STAGE_FAILED,
-      stage: "spec",
-      lock: "locked",
-      prd_path: prdPath,
-      prd_sha256: outcome.record.sha256,
-      assumptions: counts(outcome.prd),
-      research: researchSummary,
-      spec: specSummary,
-      spec_gate: { spec_gate_sha256: specGateRecord.spec_gate_sha256, prd_sha256: specGateRecord.prd_sha256 },
-      tldr: null,
-      build: null,
-      agents: { architecture, implications, application: null },
-      review: { author: seatKey(seatPlan.review.author), reviewer: seatKey(seatPlan.review.reviewer), level: seatPlan.review.level, text: reviewText },
-      summary_path: null,
-      warnings,
-      problems: [tldrResult.stop],
-    };
-  }
-
-  const tldrLines = tldrResult.lines;
 
   const base = {
     review: { author: seatKey(seatPlan.review.author), reviewer: seatKey(seatPlan.review.reviewer), level: seatPlan.review.level, text: reviewText },
@@ -697,10 +715,10 @@ async function runOsaCommandInner(opts: OsaCommandOptions, deps: OsaDeps, track:
       prdLocked: outcome.prd,
       outcome: end.outcome,
       stoppedBecause: end.stoppedBecause,
-      specAssumptions: spec.specAssumptions,
+      specAssumptions: carried.spec.specAssumptions,
       architecture: architecture !== null ? { chosen: architecture.chosen, why: architecture.why } : null,
-      flaggedClaims: (research.crosscheck?.flagged ?? []).map((c) => c.claim),
-      failedResearchItems: research.outcomes.filter((o) => o.status === "failed").map((o) => ({ slug: o.slug, problem: o.problems[0] ?? "unknown" })),
+      flaggedClaims: carried.research.flaggedClaims,
+      failedResearchItems: carried.research.failedItems,
       phases: phaseRecords,
       applicationUnmet: end.application?.unmet.map((u) => ({ text: u.text, reason: u.reason })) ?? [],
       applicationCouldNotRun: end.application?.couldNotRun ?? null,
@@ -817,6 +835,7 @@ async function runOsaCommandInner(opts: OsaCommandOptions, deps: OsaDeps, track:
   }
 
   // ---- build: the existing cross-provider driver, with PRD-integrity and step-14 hooks around every phase ----
+  await events.emit("build_started", {});
   track.stage = "build";
   const stageNotes: StageNote[] = [];
   const oneLiners: string[] = [];
@@ -860,10 +879,10 @@ async function runOsaCommandInner(opts: OsaCommandOptions, deps: OsaDeps, track:
     repo_dir: opts.repoDir,
     driver_run_id: randomUUID(),
     starting_phase: 1,
-    starting_spec_path: spec.specPath,
+    starting_spec_path: carried.spec.specPath,
     baby_prd_path: prdPath,
-    context_path: spec.contextPath,
-    target_total_phases: spec.totalPhases,
+    context_path: carried.spec.contextPath,
+    target_total_phases: carried.spec.totalPhases,
     executor_providers: config.providers.pair,
     seat_models: config.providers.seatModels,
     turn_timeout_ms: config.providers.turnTimeoutMs,
@@ -937,8 +956,8 @@ async function runOsaCommandInner(opts: OsaCommandOptions, deps: OsaDeps, track:
       prd: outcome.prd,
       specMarkdown: await readFile(specAbs, "utf8"),
       prdPath,
-      specPath: spec.specPath,
-      contextPath: spec.contextPath,
+      specPath: carried.spec.specPath,
+      contextPath: carried.spec.contextPath,
       provider,
       textCall,
       events,
@@ -956,7 +975,7 @@ async function runOsaCommandInner(opts: OsaCommandOptions, deps: OsaDeps, track:
   // The spec's decisions are engineering text: rewrite the ones that matter to the person in plain words, and keep the raw
   // list for the summary's "For engineers" section only.
   const rawDecisions = [
-    ...spec.specAssumptions,
+    ...carried.spec.specAssumptions,
     ...(architecture !== null ? [`Architecture: ${architecture.chosen === "planned" ? "kept the original plan" : `switched to "${architecture.chosen}"`} after an independent review -- ${architecture.why}`] : []),
   ];
   const plain = await plainChoices({
@@ -978,7 +997,7 @@ async function runOsaCommandInner(opts: OsaCommandOptions, deps: OsaDeps, track:
     lockedRiskyAssumptions: outcome.prd.assumptions.filter((a) => a.risk === "risky").map((a) => a.text),
     ...(opts.acceptRisky === true ? { lockedDefaultedAssumptions: outcome.prd.assumptions.filter((a) => a.risk === "defaulted").map((a) => a.text) } : {}),
     specDecisions: plain.rewritten ? plain.bullets : [`${String(rawDecisions.length)} technical decision(s) were made while writing the spec; they are listed under "For engineers" at the end.`],
-    research: { ...researchSummary, degradedCheck: research.crosscheck?.degraded ?? false },
+    research: { ...researchSummary, degradedCheck: carried.research.degradedCheck },
     warnings,
     technicalDetail: [...driven.problems, ...rawDecisions.map((d) => `decision: ${d}`), `tokens (estimated): ${String(tb.total)} total -- ${TOKEN_CATEGORIES.map((c) => `${c} ${String(Math.round(tb.shares[c] * 100))}%`).join(", ")}`],
     ...(application !== null ? { applicationNotes: applicationNotes(application) } : {}),

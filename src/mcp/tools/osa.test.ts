@@ -12,7 +12,7 @@ import { NoopTrimmer } from "../../trim/trimmer.ts";
 import { sha256String } from "../../util/hash.ts";
 import { buildMcpServer } from "../server.ts";
 import { runProcess } from "../../util/exec.ts";
-import { cancelOsaRun, osaRunStatus, planOsaRun, runningJobs, startOsaBuild, startOsaSpec, waitForJobs } from "./osa.ts";
+import { cancelOsaRun, forgetJobsAsIfRestarted, osaRunStatus, planOsaRun, runningJobs, startOsaBuild, startOsaSpec, waitForJobs } from "./osa.ts";
 import type { OsaToolDeps } from "./osa.ts";
 
 /** The real pipeline with a scripted model and fake research HTTP; the config names a pair so no real provider is probed. */
@@ -219,6 +219,86 @@ test("a seat with no model named is called out: it runs on the provider's own de
   assert.deepEqual(plan.seats.seats.map((x) => x.model), [null, null]);
   assert.match(plan.seats.model_note ?? "", /own default model/);
   assert.match(plan.seats.model_note ?? "", /providers.seatModels/);
+});
+
+test("a run lost to a server restart while it waited for approval is approved and built from its saved spec: research and spec are not repeated", async () => {
+  const repoDir = await tempGitRepo();
+  const deps = withFakeBuild(realDeps(false), repoDir);
+  const plan = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [], answers: {} }, deps);
+  await startOsaSpec({ repo_dir: repoDir, run_id: plan.run_id, plan_sha256: plan.plan_sha256, decision: "go" }, deps);
+  const before = await awaitingGate(repoDir, plan.run_id);
+  const researchBefore = (await eventNames(repoDir, plan.run_id)).filter((n) => n === "research_item_done").length;
+  assert.ok(researchBefore > 0, "the research ran once");
+
+  forgetJobsAsIfRestarted();
+
+  const after = await osaRunStatus({ repo_dir: repoDir, run_id: plan.run_id });
+  assert.ok(!("refusal" in after));
+  assert.equal(after.state, "awaiting_confirmation", "a restart at the gate is not 'interrupted': the spec is intact");
+  assert.equal(after.stage, "spec");
+  assert.match(after.message, /restarted/);
+  assert.deepEqual(after.tldr, before.tldr);
+  assert.equal(after.spec_sha256, before.spec_sha256);
+
+  const released = await startOsaBuild({ repo_dir: repoDir, run_id: plan.run_id, spec_sha256: before.spec_sha256 as string, decision: "lock", accept_risky_assumptions: false }, deps);
+  assert.ok(!("refusal" in released) && released.status === "started");
+  assert.match(released.message, /carried on from its saved spec/);
+  await waitForJobs();
+
+  const done = await osaRunStatus({ repo_dir: repoDir, run_id: plan.run_id });
+  assert.ok(!("refusal" in done));
+  assert.equal(done.state, "finished", done.message);
+  const report = done.report as OsaRunReport;
+  assert.equal(report.ok, true, JSON.stringify(report.problems));
+  assert.notEqual(report.build, null, "the build ran after the approval");
+  assert.equal(report.prd_sha256, plan.plan_sha256, "the locked plan is still byte-identical to the one shown");
+  assert.deepEqual(report.tldr, before.tldr, "the person approved the TL;DR they were shown");
+  assert.ok(report.research !== null && report.spec !== null, "the report still describes the research and spec of the first pass");
+  assert.ok(report.warnings.some((w) => /carried on from its saved spec/.test(w)));
+  const names = await eventNames(repoDir, plan.run_id);
+  assert.equal(names.filter((n) => n === "research_item_done").length, researchBefore, "no research was repeated");
+  assert.equal(names.filter((n) => n === "spec_written").length, 1, "the spec was not written again");
+  assert.equal(names.filter((n) => n === "assumptions_generated").length, 1);
+  assert.equal(names.filter((n) => n === "run_resumed").length, 1);
+  assert.equal(names.filter((n) => n === "build_started").length, 1);
+});
+
+test("a restarted run is NOT carried on when the spec changed since it was shown, when the person declines, or when its build had already begun", async () => {
+  const repoDir = await tempGitRepo();
+  const deps = withFakeBuild(realDeps(false), repoDir);
+  const plan = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [], answers: {} }, deps);
+  await startOsaSpec({ repo_dir: repoDir, run_id: plan.run_id, plan_sha256: plan.plan_sha256, decision: "go" }, deps);
+  const st = await awaitingGate(repoDir, plan.run_id);
+  forgetJobsAsIfRestarted();
+  const base = { repo_dir: repoDir, run_id: plan.run_id, spec_sha256: st.spec_sha256 as string, decision: "lock" as const, accept_risky_assumptions: true };
+
+  const wrong = await startOsaBuild({ ...base, spec_sha256: "0".repeat(64) }, deps);
+  assert.ok("refusal" in wrong && /spec_sha256 does not match/.test(wrong.refusal));
+  const specFile = `${repoDir}/runs/${plan.run_id}/spec/PHASE_1_SPEC.md`;
+  const original = await readFile(specFile, "utf8");
+  await appendFile(specFile, "\n- sneaked in\n", "utf8");
+  const tampered = await startOsaBuild(base, deps);
+  assert.ok("refusal" in tampered && /spec_sha256 does not match/.test(tampered.refusal));
+  assert.ok(!(await eventNames(repoDir, plan.run_id)).includes("build_started"), "nothing was built by a refusal");
+  await writeFile(specFile, original, "utf8");
+
+  // the build had already begun when the server stopped: the repository has moved on, so the gate is not offered again
+  const events = `${repoDir}/.osa/runs/${plan.run_id}/events.jsonl`;
+  const saved = await readFile(events, "utf8");
+  await appendFile(events, JSON.stringify({ schema_version: 1, at: new Date().toISOString(), run_id: plan.run_id, event: "build_started", data: {} }) + "\n", "utf8");
+  const interrupted = await osaRunStatus({ repo_dir: repoDir, run_id: plan.run_id });
+  assert.ok(!("refusal" in interrupted) && interrupted.state === "interrupted");
+  const refused = await startOsaBuild(base, deps);
+  assert.ok("refusal" in refused && /No spec is waiting/.test(refused.refusal));
+  await writeFile(events, saved, "utf8");
+
+  const declined = await startOsaBuild({ ...base, decision: "cancel" }, deps);
+  assert.ok(!("refusal" in declined) && declined.status === "cancelled");
+  const after = await osaRunStatus({ repo_dir: repoDir, run_id: plan.run_id });
+  assert.ok(!("refusal" in after) && after.state === "cancelled");
+  assert.ok(!(await eventNames(repoDir, plan.run_id)).includes("build_started"), "declining built nothing");
+  const again = await startOsaBuild(base, deps);
+  assert.ok("refusal" in again, "a declined run cannot be approved afterwards");
 });
 
 test("only one run per repository at a time; a second must wait", async () => {

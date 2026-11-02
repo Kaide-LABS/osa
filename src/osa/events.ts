@@ -32,6 +32,8 @@ export const OSA_EVENT_NAMES = [
   "global_memory_failed",
   // additions
   "run_started",
+  "run_resumed",
+  "build_started",
   "config_loaded",
   "text_call",
   "prd_lock_refused",

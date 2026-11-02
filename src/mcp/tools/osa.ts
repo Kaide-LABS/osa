@@ -19,6 +19,8 @@ import { parseBabyPrd } from "../../osa/baby-prd.ts";
 import type { GateIO } from "../../osa/lock.ts";
 import type { OsaCommandOptions, OsaDeps, OsaRunReport } from "../../osa/pipeline.ts";
 import { runOsaCommand } from "../../osa/pipeline.ts";
+import { readResumeState } from "../../osa/resume-state.ts";
+import type { ResumeState } from "../../osa/resume-state.ts";
 import { SpecGateRecord, buildSpecManifest, specGateRecordPath } from "../../osa/spec-gate.ts";
 import { sha256String } from "../../util/hash.ts";
 import { runCancelScope } from "../../util/exec.ts";
@@ -184,7 +186,7 @@ export const BUILD_TOOL_DESCRIPTION =
   "Step 3 of OSA's one-shot build. Only after osa_status shows awaiting_confirmation at stage spec and the person has seen the TL;DR: lock the spec and " +
   "run the build in the background. Pass the spec_sha256 from osa_status; it must match the spec the person was shown. Show the person the TL;DR (risky " +
   "assumptions first) and call this only on their explicit yes. If risky assumptions are present, set accept_risky_assumptions to true only after the " +
-  "person has read and accepted each one: never set accept_risky_assumptions yourself. decision \"cancel\" stops the run without building. Typically " +
+  "person has read and accepted each one: never set accept_risky_assumptions yourself. decision \"cancel\" stops the run without building. Also works after the MCP server restarted, when osa_status still shows awaiting_confirmation at stage spec: the run is carried on from its saved spec. Typically " +
   "30 to 60 minutes. The result's seats echo the provider and model the build will use. Follow with osa_status.";
 export const CANCEL_TOOL_DESCRIPTION =
   "Stop a run that is working in the background (research, spec or build) right now: the agent processes it started are killed and nothing further is " +
@@ -278,6 +280,12 @@ const pendingGates = new Map<string, { resolve(approved: boolean): void }>();
 /** The run ids this process is currently building. */
 export function runningJobs(): string[] {
   return [...jobs.values()].map((j) => j.runId);
+}
+
+/** Forgets every job and pending gate of this process, as if the server had been restarted (tests). The run's files on disk are untouched. */
+export function forgetJobsAsIfRestarted(): void {
+  jobs.clear();
+  pendingGates.clear();
 }
 
 /** Resolves when every background job of this process has ended (tests; also lets a clean shutdown wait). */
@@ -379,6 +387,77 @@ export async function planOsaRun(input: PlanInput, deps: OsaToolDeps = {}): Prom
   };
 }
 
+type PlanRequest = z.infer<typeof PlanRequestFile>;
+
+/**
+ * Starts the pipeline for a run as a background job of this process and records its result when it ends. With `resume`, the pipeline skips intake,
+ * research and spec and carries on from the post-spec gate using the state saved there (see osa/resume-state.ts).
+ */
+function launchRunJob(a: { readonly repoDir: string; readonly runId: string; readonly request: PlanRequest; readonly resume: boolean; readonly gateIo: GateIO; readonly deps: OsaToolDeps }): void {
+  const run = a.deps.run ?? runOsaCommand;
+  const startedAt = new Date().toISOString();
+  const resultPath = `${runDir(a.repoDir, a.runId)}/mcp-result.json`;
+  const abort = new AbortController();
+
+  const promise = (async (): Promise<void> => {
+    let report: OsaRunReport | null = null;
+    let error: string | null = null;
+    try {
+      const baseOpts: OsaCommandOptions = {
+        prompt: a.request.prompt,
+        files: a.request.files,
+        repoDir: a.repoDir,
+        yes: false,
+        json: true,
+        build: true,
+        fromDraft: true,
+        ...(a.resume ? { fromSpec: true } : {}),
+      };
+      const opts = Object.keys(a.request.answers ?? {}).length > 0 ? { ...baseOpts, answers: a.request.answers } : baseOpts;
+      report = await runCancelScope(abort.signal, () =>
+        run(
+          opts,
+          { runId: a.runId, interactive: true, io: { ...NO_TERMINAL, choose: () => Promise.resolve("lock" as const) }, gateIo: a.gateIo, ...(a.deps.pipeline ?? {}) },
+        ),
+      );
+    } catch (err) {
+      error = err instanceof OsaError ? err.message : err instanceof Error ? err.message : String(err);
+    }
+    try {
+      // A cancel wins over whatever the pipeline reported as it unwound (usually a RunCancelledError or a killed turn).
+      const cancelled = abort.signal.aborted;
+      await writeFile(resultPath, JSON.stringify({ finished_at: new Date().toISOString(), report: cancelled ? null : report, error: cancelled ? null : error, cancelled }, null, 2) + "\n", "utf8");
+    } finally {
+      jobs.delete(a.runId);
+      // The pipeline has ended: nothing can be waiting on this gate any more (a still-pending one means it threw before the decision).
+      pendingGates.get(a.runId)?.resolve(false);
+      pendingGates.delete(a.runId);
+    }
+  })();
+
+  jobs.set(a.runId, { runId: a.runId, repoDir: a.repoDir, startedAt, promise, abort });
+}
+
+/**
+ * The saved state of a run that was lost while it waited at the post-spec gate (the server restarted, so its in-memory gate is gone), or null when
+ * the run is not in that situation: still alive here, already decided, never reached the gate, or already building (a build interrupted part-way is
+ * not carried on from the gate, because the repository has moved on).
+ */
+async function resumableState(repoDir: string, runId: string): Promise<ResumeState | null> {
+  if (pendingGates.has(runId) || jobs.has(runId)) return null;
+  if ((await readJson(`${runDir(repoDir, runId)}/mcp-result.json`, ResultFile)) !== null) return null;
+  const state = await readResumeState(repoDir, runId);
+  if (state === null) return null;
+  try {
+    await stat(specGateRecordPath(repoDir, runId));
+    const events = (await readFile(`${runDir(repoDir, runId)}/events.jsonl`, "utf8")).split("\n");
+    if (events.some((l) => l.includes('"event":"build_started"'))) return null;
+  } catch {
+    return null;
+  }
+  return state;
+}
+
 // ---- osa_spec -------------------------------------------------------------------------------------------------------------------
 
 /** Starts research and spec as a background job, waiting at the post-spec gate for approval. */
@@ -404,48 +483,7 @@ export async function startOsaSpec(input: SpecInput, deps: OsaToolDeps = {}): Pr
   const busy = [...jobs.values()].find((j) => normRepo(j.repoDir) === normRepo(input.repo_dir));
   if (busy !== undefined) return { refusal: `Run ${busy.runId} is still working in this repository (started ${busy.startedAt}). Wait for it to end (osa_status) before starting another.` };
 
-  const run = deps.run ?? runOsaCommand;
-  const startedAt = new Date().toISOString();
-  const resultPath = `${runDir(input.repo_dir, input.run_id)}/mcp-result.json`;
-  const gateIo = makeWaitingGate(input.repo_dir, input.run_id);
-  const abort = new AbortController();
-
-  const promise = (async (): Promise<void> => {
-    let report: OsaRunReport | null = null;
-    let error: string | null = null;
-    try {
-      const baseOpts: OsaCommandOptions = {
-        prompt: request.prompt,
-        files: request.files,
-        repoDir: input.repo_dir,
-        yes: false,
-        json: true,
-        build: true,
-        fromDraft: true,
-      };
-      const opts = Object.keys(request.answers ?? {}).length > 0 ? { ...baseOpts, answers: request.answers } : baseOpts;
-      report = await runCancelScope(abort.signal, () =>
-        run(
-          opts,
-          { runId: input.run_id, interactive: true, io: { ...NO_TERMINAL, choose: () => Promise.resolve("lock" as const) }, gateIo, ...(deps.pipeline ?? {}) },
-        ),
-      );
-    } catch (err) {
-      error = err instanceof OsaError ? err.message : err instanceof Error ? err.message : String(err);
-    }
-    try {
-      // A cancel wins over whatever the pipeline reported as it unwound (usually a RunCancelledError or a killed turn).
-      const cancelled = abort.signal.aborted;
-      await writeFile(resultPath, JSON.stringify({ finished_at: new Date().toISOString(), report: cancelled ? null : report, error: cancelled ? null : error, cancelled }, null, 2) + "\n", "utf8");
-    } finally {
-      jobs.delete(input.run_id);
-      // The pipeline has ended: nothing can be waiting on this gate any more (a still-pending one means it threw before the decision).
-      pendingGates.get(input.run_id)?.resolve(false);
-      pendingGates.delete(input.run_id);
-    }
-  })();
-
-  jobs.set(input.run_id, { runId: input.run_id, repoDir: input.repo_dir, startedAt, promise, abort });
+  launchRunJob({ repoDir: input.repo_dir, runId: input.run_id, request, resume: false, gateIo: makeWaitingGate(input.repo_dir, input.run_id), deps });
   return {
     run_id: input.run_id,
     status: "started",
@@ -460,10 +498,13 @@ export async function startOsaSpec(input: SpecInput, deps: OsaToolDeps = {}): Pr
  * spec_sha256 must equal the one recorded when the spec was written AND the one recomputed from the spec files on disk now, so a confirmation
  * cannot be applied to a spec that changed after it was shown. "lock" lets the pipeline carry on into the build in the same background job.
  */
-export async function startOsaBuild(input: BuildInput): Promise<BuildOutput | { readonly refusal: string }> {
+export async function startOsaBuild(input: BuildInput, deps: OsaToolDeps = {}): Promise<BuildOutput | { readonly refusal: string }> {
   const gate = pendingGates.get(input.run_id);
-  if (gate === undefined) {
-    return { refusal: `No spec is waiting for a decision for run ${input.run_id}. Call osa_plan, then osa_spec, and wait until osa_status shows awaiting_confirmation at stage spec. (If the MCP server was restarted since, the run was interrupted: start again with osa_plan.)` };
+  // No gate in memory: the run may have been lost to a server restart while it waited, with its spec and saved state on disk. It is then carried on
+  // from the gate, in a new job, instead of being redone.
+  const resumed = gate === undefined ? await resumableState(input.repo_dir, input.run_id) : null;
+  if (gate === undefined && resumed === null) {
+    return { refusal: `No spec is waiting for a decision for run ${input.run_id}. Call osa_plan, then osa_spec, and wait until osa_status shows awaiting_confirmation at stage spec. (A run whose build had already started when the MCP server stopped cannot be carried on from here: start again with osa_plan.)` };
   }
   let recorded: SpecGateRecord;
   try {
@@ -476,7 +517,11 @@ export async function startOsaBuild(input: BuildInput): Promise<BuildOutput | { 
     return { refusal: "The spec_sha256 does not match: either it is not the spec the person was shown, or a spec file changed after it was shown. Nothing was built. Read osa_status again and show the person the TL;DR it reports." };
   }
   if (input.decision === "cancel") {
-    gate.resolve(false);
+    if (gate !== undefined) {
+      gate.resolve(false);
+    } else {
+      await writeFile(`${runDir(input.repo_dir, input.run_id)}/mcp-result.json`, JSON.stringify({ finished_at: new Date().toISOString(), report: null, error: null, cancelled: true }, null, 2) + "\n", "utf8");
+    }
     return { run_id: input.run_id, status: "cancelled", message: "The spec was declined; nothing was built. The research and spec are kept under runs/ for reference.", seats: null };
   }
   let risky: string[] = [];
@@ -488,11 +533,22 @@ export async function startOsaBuild(input: BuildInput): Promise<BuildOutput | { 
   if (risky.length > 0 && !input.accept_risky_assumptions) {
     return { refusal: `The plan has ${String(risky.length)} risky assumption(s) that the person must accept explicitly before the build starts:\n${risky.map((a) => `- ${a}`).join("\n")}\nShow them, and call osa_build again with accept_risky_assumptions true only if the person accepts them.` };
   }
-  gate.resolve(true);
+  if (gate !== undefined) {
+    gate.resolve(true);
+  } else {
+    const request = await readJson(`${runDir(input.repo_dir, input.run_id)}/plan-request.json`, PlanRequestFile);
+    if (request === null) return { refusal: `The plan request for run ${input.run_id} is missing, so it cannot be carried on. Nothing was built.` };
+    const busy = [...jobs.values()].find((j) => normRepo(j.repoDir) === normRepo(input.repo_dir));
+    if (busy !== undefined) return { refusal: `Run ${busy.runId} is still working in this repository (started ${busy.startedAt}). Wait for it to end (osa_status) before starting another.` };
+    // The person's yes is this call (spec hash and risky assumptions checked above), so the carried-on run's gate approves at once.
+    launchRunJob({ repoDir: input.repo_dir, runId: input.run_id, request, resume: true, gateIo: { show: (): void => undefined, confirm: () => Promise.resolve(true) }, deps });
+  }
   return {
     run_id: input.run_id,
     status: "started",
-    message: "The spec is confirmed and the build is running in the background (typically 30 to 60 minutes, then a final check). Follow it with osa_status.",
+    message: gate !== undefined
+      ? "The spec is confirmed and the build is running in the background (typically 30 to 60 minutes, then a final check). Follow it with osa_status."
+      : "The spec is confirmed. The server had restarted since the spec was written, so the run is carried on from its saved spec (the research and spec are not repeated) and the build is running in the background (typically 30 to 60 minutes, then a final check). Follow it with osa_status.",
     seats: await readResolvedSeats(input.repo_dir, input.run_id),
   };
 }
@@ -606,12 +662,14 @@ async function runStatusWithoutSeats(input: StatusInput): Promise<Omit<StatusOut
   const request = await readJson(`${dir}/plan-request.json`, PlanRequestFile);
   const running = [...jobs.values()].some((j) => j.runId === runId);
 
-  // Check for spec gate: if pending and mcp-gate.json exists, return awaiting_confirmation
-  if (pendingGates.has(runId)) {
+  // Check for spec gate: if pending and mcp-gate.json exists, return awaiting_confirmation. A run lost to a server restart while it waited here is
+  // shown the same way: its saved spec is intact and osa_build carries it on (see resumableState).
+  const restarted = pendingGates.has(runId) ? null : await resumableState(input.repo_dir, runId);
+  if (pendingGates.has(runId) || restarted !== null) {
     try {
       const gateFileContent = await readFile(`${dir}/mcp-gate.json`, "utf8");
       const gateData = JSON.parse(gateFileContent) as { tldr?: string[] };
-      const tldr = gateData.tldr ?? [];
+      const tldr = gateData.tldr ?? restarted?.tldr ?? [];
 
       // Read the spec-gate.json to get spec_sha256 and extract risky/defaulted assumptions
       let specSha256: string | null = null;
@@ -639,7 +697,7 @@ async function runStatusWithoutSeats(input: StatusInput): Promise<Omit<StatusOut
         run_id: runId,
         state: "awaiting_confirmation",
         stage: "spec",
-        message: tldr.join("\n"),
+        message: (restarted !== null ? "The server was restarted since this spec was written; its research and spec were kept, so approving it carries on without repeating them.\n\n" : "") + tldr.join("\n"),
         recent_events: recent,
         report: null,
         summary_markdown: null,
@@ -691,7 +749,7 @@ async function runStatusWithoutSeats(input: StatusInput): Promise<Omit<StatusOut
     run_id: runId,
     state: "interrupted",
     stage,
-    message: "The run stopped without recording a result (the MCP server was probably restarted, or the process was killed). Its files up to the last stage are under runs/ and .osa/runs/; start again with osa_plan.",
+    message: "The run stopped without recording a result (the MCP server was probably restarted, or the process was killed) after its build had begun, or before it had a finished spec. Its files up to the last stage are under runs/ and .osa/runs/; start again with osa_plan.",
     recent_events: recent,
     report: null,
     summary_markdown: null,
@@ -723,7 +781,7 @@ export function registerOsaTools(server: McpServer, deps: OsaToolDeps = {}): voi
   });
   server.registerTool("osa_build", { description: BUILD_TOOL_DESCRIPTION, inputSchema: BuildInput, outputSchema: BuildOutput }, async (input) => {
     try {
-      const r = await startOsaBuild(input);
+      const r = await startOsaBuild(input, deps);
       return "refusal" in r ? refuse(r.refusal) : ok(r);
     } catch (err) {
       return errorResult(err);
