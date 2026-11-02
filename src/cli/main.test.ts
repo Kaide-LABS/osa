@@ -9,6 +9,8 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { mkdtemp, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import pkg from "../../package.json" with { type: "json" };
 import { PROVIDER_IDS } from "../domain/run.ts";
@@ -109,6 +111,28 @@ test("an unknown doctor flag is a usage error (exit 2)", async () => {
   const { exitCode, stderr } = await runMain(["doctor", "--not-a-real-flag"]);
   assert.equal(exitCode, 2);
   assert.match(stderr, /Unknown flag/);
+});
+
+test("doctor --repo-dir checks THAT folder, not the current one; a missing value or a folder that does not exist is a usage error (exit 2)", async () => {
+  // A project that breaks the boundary rules (a third-party runtime dependency): only a doctor that scanned this folder can see it, because the folder
+  // doctor runs from (this repository) is clean.
+  const dir = await mkdtemp(`${tmpdir()}/osa-doctor-dir-`);
+  await writeFile(`${dir}/package.json`, JSON.stringify({ name: "x", dependencies: { "left-pad": "1.0.0" } }), "utf8");
+  const there = await runMain(["doctor", "--boundary", "--repo-dir", dir, "--json"]);
+  const report = DoctorReport.parse(JSON.parse(there.stdout));
+  assert.ok(report.boundary.violations.some((v) => v.file === "package.json"), "the violation in the named folder was found");
+  assert.notEqual(there.exitCode, 0);
+
+  const here = await runMain(["doctor", "--boundary", "--json"]);
+  assert.equal(here.exitCode, 0, "and without the flag it still checks the current folder");
+
+  const noValue = await runMain(["doctor", "--repo-dir"]);
+  assert.equal(noValue.exitCode, 2);
+  assert.match(noValue.stderr, /--repo-dir requires a path/);
+
+  const missing = await runMain(["doctor", "--boundary", "--repo-dir", `${dir}/no-such-folder`]);
+  assert.equal(missing.exitCode, 2, "a folder that does not exist is not reported as healthy");
+  assert.match(missing.stderr, /not a folder/);
 });
 
 test("doctor --boundary --providers exits 2 (mutually exclusive)", async () => {

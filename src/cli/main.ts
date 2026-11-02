@@ -11,7 +11,7 @@ import { isEntryPoint } from "../util/entry.ts";
 import pkg from "../../package.json" with { type: "json" };
 import { ExitCode, InternalError, OsaError, UsageError } from "../domain/errors.ts";
 import type { DoctorOptions, DoctorReport } from "./doctor.ts";
-import { runDoctor } from "./doctor.ts";
+import { assertDoctorFolder, runDoctor } from "./doctor.ts";
 import type { RunCommandOptions, RunReport } from "./run.ts";
 import { runRunCommand } from "./run.ts";
 import type { EvidenceCommandOptions, EvidenceReport } from "./evidence.ts";
@@ -74,8 +74,9 @@ Optional plug-ins (each has one switch; OFF means none of its code runs):
 Commands:
   osa --version | -v                        Print the version and exit.
   osa --help | -h                           Print this usage text and exit.
-  osa doctor [--json]                       Full health check: toolchain, all provider identities,
-                                            boundary scan, and a lock smoke test.
+  osa doctor [--repo-dir <path>] [--json]   Full health check: toolchain, all provider identities,
+                                            boundary scan, and a lock smoke test. Checks the current
+                                            folder unless --repo-dir names another project.
   osa doctor --boundary [--json]            Boundary scan only (fast, no provider probes).
   osa doctor --providers [--json]           Provider preflight only.
   osa doctor --live [--providers] [--json]  Also make ONE tiny real call to each usable provider, to
@@ -121,7 +122,7 @@ export function renderMcpConfig(entryPath: string): string {
 type Command =
   | { readonly kind: "version" }
   | { readonly kind: "help" }
-  | ({ readonly kind: "doctor" } & DoctorOptions)
+  | ({ readonly kind: "doctor"; readonly repoDir: string } & DoctorOptions)
   | ({ readonly kind: "run" } & RunCommandOptions)
   | ({ readonly kind: "evidence" } & EvidenceCommandOptions)
   | ({ readonly kind: "drive" } & DriveCommandOptions)
@@ -145,6 +146,7 @@ function parseDoctorArgs(rest: readonly string[]): Command {
   let boundaryFlag = false;
   let providersFlag = false;
   let liveFlag = false;
+  let repoDir = process.cwd();
   let features: FeatureFlags = {};
 
   for (let i = 0; i < rest.length; i++) {
@@ -155,6 +157,11 @@ function parseDoctorArgs(rest: readonly string[]): Command {
       i = feature.last;
     } else if (arg === "--json") {
       json = true;
+    } else if (arg === "--repo-dir") {
+      const v = rest[i + 1];
+      if (v === undefined) throw new UsageError("doctor --repo-dir requires a path argument.", { flag: "--repo-dir" });
+      repoDir = v;
+      i += 1;
     } else if (arg === "--boundary") {
       boundaryFlag = true;
     } else if (arg === "--providers") {
@@ -176,7 +183,7 @@ function parseDoctorArgs(rest: readonly string[]): Command {
   }
 
   const only: DoctorOptions["only"] = boundaryFlag ? "boundary" : providersFlag ? "providers" : "all";
-  return { kind: "doctor", json, only, ...(liveFlag ? { live: true } : {}), ...(Object.keys(features).length > 0 ? { features } : {}) };
+  return { kind: "doctor", repoDir: resolve(repoDir), json, only, ...(liveFlag ? { live: true } : {}), ...(Object.keys(features).length > 0 ? { features } : {}) };
 }
 
 /**
@@ -844,7 +851,8 @@ export async function main(argv: readonly string[]): Promise<number> {
         return ExitCode.OK;
       }
       case "doctor": {
-        const { report, exitCode } = await runDoctor(process.cwd(), doctorOptionsOf(command));
+        assertDoctorFolder(command.repoDir);
+        const { report, exitCode } = await runDoctor(command.repoDir, doctorOptionsOf(command));
         process.stdout.write(command.json ? JSON.stringify(report, null, 2) + "\n" : renderHumanReport(report));
         return exitCode;
       }
