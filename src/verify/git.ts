@@ -156,6 +156,19 @@ export async function commitsBetween(repoDir: string, fromOid: string, toOid: st
 }
 
 /**
+ * The newest commit in HEAD's history whose message contains `text` (a fixed string, not a pattern), or `null` when there is none. Used to find the
+ * commit OSA made to close a build phase. A non-zero exit throws {@link InternalError}.
+ */
+export async function findCommitByMessage(repoDir: string, text: string): Promise<string | null> {
+  const result = await git(repoDir, ["log", "--fixed-strings", `--grep=${text}`, "--format=%H", "-n", "1"]);
+  if (result.exitCode !== 0) {
+    throw new InternalError(`git log --grep failed in ${repoDir}: ${result.stderr.trim()}`, { repoDir, exitCode: result.exitCode, stderr: result.stderr });
+  }
+  const oid = result.stdout.trim();
+  return oid === "" ? null : oid;
+}
+
+/**
  * `git diff <fromOid>..<toOid>` -- the full unified diff body (no `--name-only`), unlike
  * {@link changedPaths}, which intentionally returns only names. Exit non-zero -> {@link InternalError},
  * matching this file's existing wrapper convention exactly. Implements PHASE_3_SPEC.md §1.6.

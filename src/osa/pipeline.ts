@@ -31,8 +31,9 @@ import { assertPrdUnchanged, autoLockBabyPrd, exitCodeForLockOutcome, gateIoFrom
 import type { LockIO, LockOutcome, GateIO, GateMode } from "./lock.ts";
 import { makeTerminalGateIO, makeTerminalNudgeIO, NUDGE_TEXT } from "./terminal.ts";
 import type { NudgeIO } from "./terminal.ts";
-import { writeSpecGate, verifySpecGate } from "./spec-gate.ts";
+import { writeSpecGate, verifyApprovedSpecIntact, verifySpecGate } from "./spec-gate.ts";
 import type { SpecGateRecord } from "./spec-gate.ts";
+import { planBuildResume } from "./build-resume.ts";
 import { readResumeState, writeResumeState } from "./resume-state.ts";
 import type { ResumeState } from "./resume-state.ts";
 import { buildApprovalTldr } from "./tldr.ts";
@@ -107,6 +108,11 @@ export interface OsaCommandOptions {
    * run whose server was restarted while it waited for approval. Requires `prd.lock.json`, `spec-gate.json` and `resume-state.json` for the run.
    */
   readonly fromSpec?: boolean;
+  /**
+   * With `fromSpec`: the build had already begun when the run was lost. Carry it on from the phase after the last one that finished (see
+   * build-resume.ts) instead of from phase 1: the phases already built are kept, and the interrupted phase is folded back and redone.
+   */
+  readonly resumeBuild?: boolean;
   /**
    * For the post-spec gate: proceed only if zero risky assumptions (default --yes behaviour); with this flag, proceed regardless
    * of risky items and record them in the report/summary. `--accept-risky` without `--yes` is a usage error (exit 2).
@@ -493,7 +499,8 @@ async function runOsaCommandInner(opts: OsaCommandOptions, deps: OsaDeps, track:
       return stoppedAtSpec(["There is no saved state for this run to carry on from (resume-state.json is missing or unreadable), so it cannot continue without redoing the research and spec."]);
     }
     try {
-      specGateRecord = await verifySpecGate(opts.repoDir, runId, outcome.record.sha256);
+      // A build that had begun has added later phases' specs beside the approved ones, so what must still hold is that the approved files are intact.
+      specGateRecord = opts.resumeBuild === true ? await verifyApprovedSpecIntact(opts.repoDir, runId, outcome.record.sha256) : await verifySpecGate(opts.repoDir, runId, outcome.record.sha256);
     } catch (err) {
       return stoppedAtSpec([err instanceof Error ? err.message : String(err)]);
     }
@@ -866,20 +873,59 @@ async function runOsaCommandInner(opts: OsaCommandOptions, deps: OsaDeps, track:
       return "";
     }
   };
-  try {
-    const firstQuery = `${outcome.prd.tldr.join(" ")} ${await readFile(specAbs, "utf8")}`;
-    await writeFile(repoRelToAbs(opts.repoDir, ctxRel), initialExecutorContext(await indexContextFor(firstQuery)), "utf8");
-    await commitPaths(opts.repoDir, `chore: initial phase context for OSA run ${runId}`, [step14DirRel(runId)]);
-  } catch (err) {
+  // A build carried on after an interruption keeps the context the finished phases already handed on; only a new build starts it.
+  const buildResume = opts.resumeBuild === true ? await planBuildResume({ repoDir: opts.repoDir, runId, specPath: carried.spec.specPath, totalPhases: carried.spec.totalPhases }) : null;
+  if (buildResume === null) {
+    try {
+      const firstQuery = `${outcome.prd.tldr.join(" ")} ${await readFile(specAbs, "utf8")}`;
+      await writeFile(repoRelToAbs(opts.repoDir, ctxRel), initialExecutorContext(await indexContextFor(firstQuery)), "utf8");
+      await commitPaths(opts.repoDir, `chore: initial phase context for OSA run ${runId}`, [step14DirRel(runId)]);
+    } catch (err) {
+      await searcher.close();
+      throw err;
+    }
+  } else if (buildResume.kind === "refused") {
     await searcher.close();
-    throw err;
+    return {
+      ...base,
+      generated_at: new Date().toISOString(),
+      ok: false,
+      exit_code: ExitCode.STAGE_FAILED,
+      stage: "build",
+      spec_gate: { spec_gate_sha256: specGateRecord.spec_gate_sha256, prd_sha256: specGateRecord.prd_sha256 },
+      tldr: tldrLines,
+      build: null,
+      agents: { architecture, implications, application: null },
+      summary_path: null,
+      warnings,
+      problems: [buildResume.reason],
+    };
+  } else {
+    // The phases already built: their notes feed the summary and the recap each later phase is given, and the project memory.
+    for (let p = 1; p <= buildResume.lastFinishedPhase; p++) {
+      let text = "";
+      try {
+        text = await readFile(repoRelToAbs(opts.repoDir, `${step14DirRel(runId)}/phase-${String(p)}-summary.md`), "utf8");
+      } catch {
+        text = "";
+      }
+      const summary = text.replace(/^# Stage[^\n]*\n+/, "").trim();
+      stageNotes.push({ phase: p, ok: true, summary: summary === "" ? "(this phase finished before the build was interrupted; its note was not kept)" : summary });
+      oneLiners.push(`phase ${String(p)}: ${firstBullet(summary)}`);
+      phaseRecords.push({ phase: p, ok: true, retriedTurns: 0, problems: [] });
+    }
+    warnings.push(
+      buildResume.kind === "finished"
+        ? `The build was carried on after it had finished all ${String(carried.spec.totalPhases)} phases: only the final check and the summary were still to do.`
+        : `The build was carried on from phase ${String(buildResume.startingPhase)}: phases 1 to ${String(buildResume.lastFinishedPhase)} were already finished and kept.${buildResume.foldedCommits > 0 ? ` ${String(buildResume.foldedCommits)} commit(s) from the interrupted attempt were folded back into the working tree so the reviewer still sees that work.` : ""}`,
+    );
   }
 
   const driveConfig = DriveConfig.parse({
     repo_dir: opts.repoDir,
     driver_run_id: randomUUID(),
-    starting_phase: 1,
-    starting_spec_path: carried.spec.specPath,
+    starting_phase: buildResume?.kind === "drive" ? buildResume.startingPhase : 1,
+    starting_spec_path: buildResume?.kind === "drive" ? buildResume.startingSpecPath : carried.spec.specPath,
     baby_prd_path: prdPath,
     context_path: carried.spec.contextPath,
     target_total_phases: carried.spec.totalPhases,
@@ -939,7 +985,10 @@ async function runOsaCommandInner(opts: OsaCommandOptions, deps: OsaDeps, track:
 
   let driven: Awaited<ReturnType<typeof runDrive>>;
   try {
-    driven = await runDrive(driveConfig, { ...(deps.drive ?? {}), runProcessFn: accountedRunProcess(deps.drive?.runProcessFn ?? runProcess, acct), hooks });
+    driven =
+      buildResume?.kind === "finished"
+        ? { ok: true, exitCode: ExitCode.OK, finalStateId: "D3_BUILD_COMPLETE_PRESENT", phases: [], problems: [], warnings: [] }
+        : await runDrive(driveConfig, { ...(deps.drive ?? {}), runProcessFn: accountedRunProcess(deps.drive?.runProcessFn ?? runProcess, acct), hooks });
   } finally {
     // The semantic index (when index.engine is "cbm") holds a child process; it never outlives the build.
     await searcher.close();

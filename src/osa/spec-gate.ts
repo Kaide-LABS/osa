@@ -93,6 +93,49 @@ export async function writeSpecGate(repoDir: string, runId: string, prdSha256: s
 }
 
 /**
+ * The repo-relative paths of the files the person approved (those in the gate record) that are now missing or different. A build ADDS files to the
+ * spec folder as it goes (each phase's reviewer writes the next phase's spec beside the approved ones), so once a build has begun the folder's whole
+ * hash no longer equals the approved one even though nothing approved changed: what a build-time check must ask is whether the approved files
+ * themselves are intact. Empty means intact.
+ */
+export async function changedApprovedSpecFiles(repoDir: string, record: SpecGateRecord): Promise<string[]> {
+  const changed: string[] = [];
+  for (const f of record.spec_files) {
+    try {
+      if ((await sha256File(repoRelToAbs(repoDir, f.path))) !== f.sha256) changed.push(f.path);
+    } catch {
+      changed.push(f.path);
+    }
+  }
+  return changed;
+}
+
+/**
+ * Like {@link verifySpecGate}, for a build that has already begun: the locked PRD must still be the one the gate was bound to, and every file the
+ * person approved must be unchanged. Files added since (later phases' specs) are expected. Throws StageError naming what changed.
+ */
+export async function verifyApprovedSpecIntact(repoDir: string, runId: string, expectedPrdSha256: string): Promise<SpecGateRecord> {
+  const path = specGateRecordPath(repoDir, runId);
+  let record: SpecGateRecord;
+  try {
+    record = SpecGateRecord.parse(JSON.parse(await readFile(path, "utf8")));
+  } catch (err) {
+    throw new StageError(`Failed to read or parse spec-gate.json for run ${runId}: ${err instanceof Error ? err.message : String(err)}`, { runId, where: "spec-gate verification" });
+  }
+  if (record.prd_sha256 !== expectedPrdSha256) {
+    throw new StageError(
+      `The locked PRD sha256 stored in spec-gate.json (${record.prd_sha256}) does not match the expected sha256 (${expectedPrdSha256}). The spec gate is bound to the locked PRD; if the PRD changed, the spec is no longer valid.`,
+      { runId, expected: expectedPrdSha256, found: record.prd_sha256, field: "prd_sha256" },
+    );
+  }
+  const changed = await changedApprovedSpecFiles(repoDir, record);
+  if (changed.length > 0) {
+    throw new StageError(`Spec file(s) the person approved changed since the approval: ${changed.join(", ")}. The build cannot be carried on from a different spec than the one that was approved.`, { runId, changed, field: "spec_files" });
+  }
+  return record;
+}
+
+/**
  * Verifies the spec-gate record by recomputing the manifest hash and comparing both hashes.
  * Throws StageError naming which hash failed if either prd_sha256 or spec_gate_sha256 doesn't match.
  */

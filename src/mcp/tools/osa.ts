@@ -19,9 +19,10 @@ import { parseBabyPrd } from "../../osa/baby-prd.ts";
 import type { GateIO } from "../../osa/lock.ts";
 import type { OsaCommandOptions, OsaDeps, OsaRunReport } from "../../osa/pipeline.ts";
 import { runOsaCommand } from "../../osa/pipeline.ts";
+import { lastFinishedPhase } from "../../osa/build-resume.ts";
 import { readResumeState } from "../../osa/resume-state.ts";
 import type { ResumeState } from "../../osa/resume-state.ts";
-import { SpecGateRecord, buildSpecManifest, specGateRecordPath } from "../../osa/spec-gate.ts";
+import { SpecGateRecord, buildSpecManifest, changedApprovedSpecFiles, specGateRecordPath } from "../../osa/spec-gate.ts";
 import { sha256String } from "../../util/hash.ts";
 import { buildFreshnessWarning } from "../../verify/build-stamp.ts";
 import { runCancelScope } from "../../util/exec.ts";
@@ -189,7 +190,7 @@ export const BUILD_TOOL_DESCRIPTION =
   "Step 3 of OSA's one-shot build. Only after osa_status shows awaiting_confirmation at stage spec and the person has seen the TL;DR: lock the spec and " +
   "run the build in the background. Pass the spec_sha256 from osa_status; it must match the spec the person was shown. Show the person the TL;DR (risky " +
   "assumptions first) and call this only on their explicit yes. If risky assumptions are present, set accept_risky_assumptions to true only after the " +
-  "person has read and accepted each one: never set accept_risky_assumptions yourself. decision \"cancel\" stops the run without building. Also works after the MCP server restarted, when osa_status still shows awaiting_confirmation at stage spec: the run is carried on from its saved spec. Typically " +
+  "person has read and accepted each one: never set accept_risky_assumptions yourself. decision \"cancel\" stops the run without building. Also works after the MCP server restarted, when osa_status still shows awaiting_confirmation at stage spec: the run is carried on from its saved spec. And it carries on a build that was interrupted part-way (osa_status says so and gives the spec_sha256): finished phases are kept. Typically " +
   "30 to 60 minutes. The result's seats echo the provider and model the build will use. Follow with osa_status.";
 export const CANCEL_TOOL_DESCRIPTION =
   "Stop a run that is working in the background (research, spec or build) right now: the agent processes it started are killed and nothing further is " +
@@ -437,7 +438,7 @@ function carryOnAdvice(runId: string, request: PlanRequest): string {
  * Starts the pipeline for a run as a background job of this process and records its result when it ends. With `resume`, the pipeline skips intake,
  * research and spec and carries on from the post-spec gate using the state saved there (see osa/resume-state.ts).
  */
-function launchRunJob(a: { readonly repoDir: string; readonly runId: string; readonly request: PlanRequest; readonly resume: boolean; readonly gateIo: GateIO; readonly deps: OsaToolDeps }): void {
+function launchRunJob(a: { readonly repoDir: string; readonly runId: string; readonly request: PlanRequest; readonly resume: boolean; readonly resumeBuild?: boolean; readonly gateIo: GateIO; readonly deps: OsaToolDeps }): void {
   const run = a.deps.run ?? runOsaCommand;
   const startedAt = new Date().toISOString();
   const resultPath = `${runDir(a.repoDir, a.runId)}/mcp-result.json`;
@@ -459,6 +460,7 @@ function launchRunJob(a: { readonly repoDir: string; readonly runId: string; rea
         build: true,
         fromDraft: true,
         ...(a.resume ? { fromSpec: true } : {}),
+        ...(a.resumeBuild === true ? { resumeBuild: true } : {}),
       };
       const opts = Object.keys(a.request.answers ?? {}).length > 0 ? { ...baseOpts, answers: a.request.answers } : baseOpts;
       report = await runCancelScope(abort.signal, () =>
@@ -495,6 +497,18 @@ function launchRunJob(a: { readonly repoDir: string; readonly runId: string; rea
  * not carried on from the gate, because the repository has moved on).
  */
 async function resumableState(repoDir: string, runId: string): Promise<ResumeState | null> {
+  return savedRunState(repoDir, runId, false);
+}
+
+/**
+ * The saved state of a run whose BUILD had begun when it was lost (no result, no live job here), or null. osa_build carries it on from the phase after
+ * the last one that finished (see osa/build-resume.ts). A run stopped with osa_cancel has a result, so it is not offered: that stop was deliberate.
+ */
+async function resumableBuild(repoDir: string, runId: string): Promise<ResumeState | null> {
+  return savedRunState(repoDir, runId, true);
+}
+
+async function savedRunState(repoDir: string, runId: string, buildBegun: boolean): Promise<ResumeState | null> {
   if (pendingGates.has(runId) || jobs.has(runId)) return null;
   if ((await readJson(`${runDir(repoDir, runId)}/mcp-result.json`, ResultFile)) !== null) return null;
   const state = await readResumeState(repoDir, runId);
@@ -502,7 +516,7 @@ async function resumableState(repoDir: string, runId: string): Promise<ResumeSta
   try {
     await stat(specGateRecordPath(repoDir, runId));
     const events = (await readFile(`${runDir(repoDir, runId)}/events.jsonl`, "utf8")).split("\n");
-    if (events.some((l) => l.includes('"event":"build_started"'))) return null;
+    if (events.some((l) => l.includes('"event":"build_started"')) !== buildBegun) return null;
   } catch {
     return null;
   }
@@ -560,8 +574,10 @@ export async function startOsaBuild(input: BuildInput, deps: OsaToolDeps = {}): 
   // No gate in memory: the run may have been lost to a server restart while it waited, with its spec and saved state on disk. It is then carried on
   // from the gate, in a new job, instead of being redone.
   const resumed = gate === undefined ? await resumableState(input.repo_dir, input.run_id) : null;
-  if (gate === undefined && resumed === null) {
-    return { refusal: `No spec is waiting for a decision for run ${input.run_id}. Call osa_plan, then osa_spec, and wait until osa_status shows awaiting_confirmation at stage spec. (A run whose build had already started when the MCP server stopped cannot be carried on from here: start again with osa_plan.)` };
+  // Or the build had already begun: it is carried on from the phase after the last one that finished.
+  const resumedBuild = gate === undefined && resumed === null ? await resumableBuild(input.repo_dir, input.run_id) : null;
+  if (gate === undefined && resumed === null && resumedBuild === null) {
+    return { refusal: `No spec is waiting for a decision for run ${input.run_id}. Call osa_plan, then osa_spec, and wait until osa_status shows awaiting_confirmation at stage spec. (A run whose build had begun when the MCP server stopped can be carried on only if it has a saved spec and was not stopped with osa_cancel; otherwise start again with osa_plan.)` };
   }
   let recorded: SpecGateRecord;
   try {
@@ -569,8 +585,10 @@ export async function startOsaBuild(input: BuildInput, deps: OsaToolDeps = {}): 
   } catch {
     return { refusal: `The spec record for run ${input.run_id} is missing or unreadable, so the spec cannot be confirmed. Nothing was built.` };
   }
-  const current = await buildSpecManifest(input.repo_dir, input.run_id);
-  if (input.spec_sha256 !== recorded.spec_gate_sha256 || current.gateHash !== recorded.spec_gate_sha256) {
+  // Before the build the whole spec folder must be as it was shown; once a build has begun it also holds later phases' specs, so only the approved files
+  // themselves are compared.
+  const specIntact = resumedBuild !== null ? (await changedApprovedSpecFiles(input.repo_dir, recorded)).length === 0 : (await buildSpecManifest(input.repo_dir, input.run_id)).gateHash === recorded.spec_gate_sha256;
+  if (input.spec_sha256 !== recorded.spec_gate_sha256 || !specIntact) {
     return { refusal: "The spec_sha256 does not match: either it is not the spec the person was shown, or a spec file changed after it was shown. Nothing was built. Read osa_status again and show the person the TL;DR it reports." };
   }
   if (input.decision === "cancel") {
@@ -598,14 +616,17 @@ export async function startOsaBuild(input: BuildInput, deps: OsaToolDeps = {}): 
     const busy = [...jobs.values()].find((j) => normRepo(j.repoDir) === normRepo(input.repo_dir));
     if (busy !== undefined) return { refusal: `Run ${busy.runId} is still working in this repository (started ${busy.startedAt}). Wait for it to end (osa_status) before starting another.` };
     // The person's yes is this call (spec hash and risky assumptions checked above), so the carried-on run's gate approves at once.
-    launchRunJob({ repoDir: input.repo_dir, runId: input.run_id, request, resume: true, gateIo: { show: (): void => undefined, confirm: () => Promise.resolve(true) }, deps });
+    launchRunJob({ repoDir: input.repo_dir, runId: input.run_id, request, resume: true, resumeBuild: resumedBuild !== null, gateIo: { show: (): void => undefined, confirm: () => Promise.resolve(true) }, deps });
   }
+  const finishedBefore = resumedBuild !== null ? await lastFinishedPhase(input.repo_dir, input.run_id) : 0;
   return {
     run_id: input.run_id,
     status: "started",
     message: gate !== undefined
       ? "The spec is confirmed and the build is running in the background (typically 30 to 60 minutes, then a final check). Follow it with osa_status."
-      : "The spec is confirmed. The server had restarted since the spec was written, so the run is carried on from its saved spec (the research and spec are not repeated) and the build is running in the background (typically 30 to 60 minutes, then a final check). Follow it with osa_status.",
+      : resumedBuild !== null
+        ? `The build is carried on: ${finishedBefore === 0 ? "no phase had finished, so it restarts from phase 1" : `phases 1 to ${String(finishedBefore)} had finished and are kept`}; work left by the interrupted phase is folded back and that phase is redone. It is running in the background (a phase takes a few minutes, then a final check). Follow it with osa_status.`
+        : "The spec is confirmed. The server had restarted since the spec was written, so the run is carried on from its saved spec (the research and spec are not repeated) and the build is running in the background (typically 30 to 60 minutes, then a final check). Follow it with osa_status.",
     seats: await readResolvedSeats(input.repo_dir, input.run_id),
   };
 }
@@ -844,6 +865,27 @@ async function runStatusWithoutSeats(input: StatusInput): Promise<Omit<StatusOut
       summary_markdown: null,
       tldr: null,
       spec_sha256: null,
+      risky_assumptions: [],
+      defaulted_assumptions: [],
+    };
+  }
+  const buildState = await resumableBuild(input.repo_dir, runId);
+  if (buildState !== null) {
+    const recorded = await readJson(specGateRecordPath(input.repo_dir, runId), SpecGateRecord);
+    const finished = await lastFinishedPhase(input.repo_dir, runId);
+    return {
+      run_id: runId,
+      state: "interrupted",
+      stage: "build",
+      message:
+        `The build was interrupted after ${finished === 0 ? "no finished phase" : `phase ${String(finished)} of ${String(buildState.spec.totalPhases)}`} (the MCP server was probably restarted, or the process was killed). It can be carried on instead of redone: ` +
+        `with the person's go-ahead, call osa_build with run_id ${runId}, decision "lock" and the spec_sha256 below (accept_risky_assumptions true only if the person accepted the plan's risky assumptions). ` +
+        `The phases already built are kept; work left by the interrupted phase is folded back so the reviewer still sees it, and that phase is redone.`,
+      recent_events: recent,
+      report: null,
+      summary_markdown: null,
+      tldr: null,
+      spec_sha256: recorded?.spec_gate_sha256 ?? null,
       risky_assumptions: [],
       defaulted_assumptions: [],
     };

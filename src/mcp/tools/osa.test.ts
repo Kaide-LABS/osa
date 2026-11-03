@@ -1,12 +1,13 @@
 // The one-shot MCP flow: osa_plan -> osa_spec -> (the person confirms the spec) -> osa_build -> osa_status. Runs the real pipeline against a scripted model.
 
 import assert from "node:assert/strict";
-import { appendFile, mkdir, readFile, readdir, writeFile } from "node:fs/promises";
+import { appendFile, mkdir, readFile, readdir, rm, writeFile } from "node:fs/promises";
 import { test } from "node:test";
 import { RunCancelledError } from "../../domain/errors.ts";
 import { OsaConfig } from "../../domain/osa-config.ts";
 import { parseBabyPrd, renderBabyPrd } from "../../osa/baby-prd.ts";
-import { fakeModel, researchFetch, samplePrd, tempGitRepo } from "../../osa/fixtures.test.ts";
+import { execFileSync } from "node:child_process";
+import { FAKE_SPEC_REPLY, fakeModel, researchFetch, samplePrd, tempGitRepo } from "../../osa/fixtures.test.ts";
 import type { OsaDeps, OsaRunReport } from "../../osa/pipeline.ts";
 import { MinIntervalLimiter } from "../../research/net/http.ts";
 import { NoopTrimmer } from "../../trim/trimmer.ts";
@@ -291,16 +292,26 @@ test("a restarted run is NOT carried on when the spec changed since it was shown
   assert.ok(!(await eventNames(repoDir, plan.run_id)).includes("build_started"), "nothing was built by a refusal");
   await writeFile(specFile, original, "utf8");
 
-  // the build had already begun when the server stopped: the repository has moved on, so the gate is not offered again
+  // the build had already begun when the server stopped: the gate is not offered again (the repository has moved on); with its saved spec the build
+  // is carried on from the last finished phase instead (see the build-resume tests), and without one there is nothing to carry on from
   const events = `${repoDir}/.osa/runs/${plan.run_id}/events.jsonl`;
   const saved = await readFile(events, "utf8");
   await appendFile(events, JSON.stringify({ schema_version: 1, at: new Date().toISOString(), run_id: plan.run_id, event: "build_started", data: {} }) + "\n", "utf8");
   const interrupted = await osaRunStatus({ repo_dir: repoDir, run_id: plan.run_id });
   assert.ok(!("refusal" in interrupted) && interrupted.state === "interrupted");
-  assert.match(interrupted.message, /start again with osa_plan/, "a build that had begun is not offered a carry-on");
+  assert.equal(interrupted.stage, "build");
+  assert.match(interrupted.message, /call osa_build/, "a build with a saved spec is offered a carry-on, through osa_build");
+  assert.equal(interrupted.spec_sha256, st.spec_sha256, "with the spec hash to confirm");
   assert.doesNotMatch(interrupted.message, /call osa_spec again/);
+  const stateFile = `${repoDir}/.osa/runs/${plan.run_id}/resume-state.json`;
+  const savedState = await readFile(stateFile, "utf8");
+  await rm(stateFile);
+  const noState = await osaRunStatus({ repo_dir: repoDir, run_id: plan.run_id });
+  assert.ok(!("refusal" in noState) && noState.state === "interrupted");
+  assert.match(noState.message, /start again with osa_plan/, "a build with no saved spec cannot be carried on");
   const refused = await startOsaBuild(base, deps);
   assert.ok("refusal" in refused && /No spec is waiting/.test(refused.refusal));
+  await writeFile(stateFile, savedState, "utf8");
   await writeFile(events, saved, "utf8");
 
   const declined = await startOsaBuild({ ...base, decision: "cancel" }, deps);
@@ -534,6 +545,89 @@ test("osa_cancel on a job stuck on something that is not a child process gives t
 
   releaseSecond();
   await waitForJobs();
+});
+
+test("a build interrupted inside phase 2 is carried on from phase 2: phase 1 is kept, the half-done phase 2 is folded back and redone, and the run finishes", async () => {
+  const repoDir = await tempGitRepo();
+  const git = (...args: string[]): string => execFileSync("git", args, { cwd: repoDir, encoding: "utf8" }).trim();
+  const base = realDeps(false);
+  const three = FAKE_SPEC_REPLY.replace("=== TOTAL_PHASES ===\n2\n", "=== TOTAL_PHASES ===\n3\n");
+  assert.notEqual(three, FAKE_SPEC_REPLY, "the scripted spec now plans three phases");
+  const model = fakeModel({ prd: samplePrd({ risky: false }), spec: three });
+  const dispatched: number[] = [];
+  let hangInPhase2 = true;
+  // A build that "works" without a provider: each phase commits a file and writes the next phase's spec (the last writes BUILD_COMPLETE.md). The
+  // first time phase 2 runs it commits half its work and then hangs, as a run lost to a restart would.
+  const runDispatchFn = (async (rc: { spec_path: string; phase: number; is_final_phase: boolean }) => {
+    dispatched.push(rc.phase);
+    const dir = rc.spec_path.slice(0, rc.spec_path.lastIndexOf("/") + 1);
+    await mkdir(`${repoDir}/${dir}`, { recursive: true });
+    if (rc.phase === 2 && hangInPhase2) {
+      await writeFile(`${repoDir}/work-phase2.txt`, "half of phase 2\n", "utf8");
+      git("add", "-A");
+      git("commit", "-q", "-m", "phase 2 turn 1 (interrupted)");
+      return new Promise(() => undefined);
+    }
+    await writeFile(`${repoDir}/work-phase${String(rc.phase)}.txt`, `phase ${String(rc.phase)} done\n`, "utf8");
+    await writeFile(rc.is_final_phase ? `${repoDir}/BUILD_COMPLETE.md` : `${repoDir}/${dir}PHASE_${String(rc.phase + 1)}_SPEC.md`, "x\n", "utf8");
+    git("add", "-A");
+    git("commit", "-q", "-m", `phase ${String(rc.phase)} work`);
+    return { ok: true, exitCode: 0, turns: [], halt: null, problems: [], warnings: [] };
+  }) as never;
+  const deps: OsaToolDeps = { pipeline: { ...(base.pipeline ?? {}), textCall: model.call, drive: { runDispatchFn } } };
+
+  const plan = await planOsaRun({ repo_dir: repoDir, prompt: "make a word counter", files: [], answers: {} }, deps);
+  await startOsaSpec({ repo_dir: repoDir, run_id: plan.run_id, plan_sha256: plan.plan_sha256, decision: "go" }, deps);
+  const gate = await awaitingGate(repoDir, plan.run_id);
+  const approved = await startOsaBuild({ repo_dir: repoDir, run_id: plan.run_id, spec_sha256: gate.spec_sha256 as string, decision: "lock", accept_risky_assumptions: false }, deps);
+  assert.ok(!("refusal" in approved) && approved.status === "started");
+  for (let i = 0; i < 300 && dispatched.length < 2; i++) await new Promise((r) => setTimeout(r, 100));
+  assert.deepEqual(dispatched, [1, 2], "phase 1 finished and phase 2 began");
+  assert.equal((await eventNames(repoDir, plan.run_id)).filter((n) => n === "step14_done").length, 1, "only phase 1 was closed out");
+
+  forgetJobsAsIfRestarted();
+
+  const lost = await osaRunStatus({ repo_dir: repoDir, run_id: plan.run_id });
+  assert.ok(!("refusal" in lost));
+  assert.equal(lost.state, "interrupted");
+  assert.equal(lost.stage, "build");
+  assert.match(lost.message, /after phase 1 of 3/);
+  assert.match(lost.message, /call osa_build/);
+  assert.equal(lost.spec_sha256, gate.spec_sha256);
+
+  // an approved spec file edited after the approval blocks the carry-on; the later phases' specs the build added beside it do not
+  const approvedSpec = `${repoDir}/runs/${plan.run_id}/spec/PHASE_1_SPEC.md`;
+  const original = await readFile(approvedSpec, "utf8");
+  assert.ok((await readdir(`${repoDir}/runs/${plan.run_id}/spec`)).includes("PHASE_2_SPEC.md"), "the build had added phase 2's spec beside the approved files");
+  await appendFile(approvedSpec, "\n- changed after approval\n", "utf8");
+  const tampered = await startOsaBuild({ repo_dir: repoDir, run_id: plan.run_id, spec_sha256: gate.spec_sha256 as string, decision: "lock", accept_risky_assumptions: false }, deps);
+  assert.ok("refusal" in tampered && /spec_sha256 does not match/.test(tampered.refusal));
+  await writeFile(approvedSpec, original, "utf8");
+
+  hangInPhase2 = false;
+  dispatched.length = 0;
+  const carried = await startOsaBuild({ repo_dir: repoDir, run_id: plan.run_id, spec_sha256: gate.spec_sha256 as string, decision: "lock", accept_risky_assumptions: false }, deps);
+  assert.ok(!("refusal" in carried) && carried.status === "started", JSON.stringify(carried));
+  assert.match(carried.message, /phases 1 to 1 had finished and are kept/);
+  await waitForJobs();
+
+  assert.deepEqual(dispatched, [2, 3], "phase 1 was not built again; phases 2 and 3 were");
+  const done = await osaRunStatus({ repo_dir: repoDir, run_id: plan.run_id });
+  assert.ok(!("refusal" in done));
+  assert.equal(done.state, "finished", done.message);
+  const report = done.report as OsaRunReport;
+  assert.equal(report.ok, true, JSON.stringify(report.problems));
+  assert.ok(report.warnings.some((w) => /carried on from phase 2: phases 1 to 1 were already finished/.test(w) && /1 commit\(s\) from the interrupted attempt were folded back/.test(w)), JSON.stringify(report.warnings));
+  assert.equal(report.build?.phases_run, 2, "this pass ran the two remaining phases");
+  assert.ok(done.summary_markdown !== null, "the run summary was written");
+
+  const subjects = git("log", "--format=%s").split("\n");
+  assert.ok(!subjects.includes("phase 2 turn 1 (interrupted)"), "the interrupted phase's commit was folded into the retry's commit, not kept as it was");
+  assert.ok(subjects.includes("phase 2 work") && subjects.includes("phase 3 work"));
+  assert.equal(await readFile(`${repoDir}/work-phase2.txt`, "utf8"), "phase 2 done\n", "phase 2 was redone on top of what the interrupted attempt left");
+  for (const p of [1, 2, 3]) assert.ok(subjects.some((s) => s.startsWith(`chore: step 14 handoff for phase ${String(p)} of OSA run`)), `phase ${String(p)} was closed out`);
+  const names = await eventNames(repoDir, plan.run_id);
+  assert.equal(names.filter((n) => n === "step14_done").length, 3, "one closing pass per phase, none repeated for phase 1");
 });
 
 test("only one run per repository at a time; a second must wait", async () => {
