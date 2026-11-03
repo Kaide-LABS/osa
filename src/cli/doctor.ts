@@ -3,12 +3,12 @@
 // The `doctor` command: composes preflight + boundary + a lock smoke test into one report.
 // `runDoctor` only ever *returns* an exit code; it never calls `process.exit` -- only `main.ts` does.
 
-import { existsSync } from "node:fs";
+import { existsSync, statSync } from "node:fs";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import { ExitCode, LockHeldError } from "../domain/errors.ts";
+import { ExitCode, LockHeldError, UsageError } from "../domain/errors.ts";
 import { IsoUtc } from "../domain/relay.ts";
 import { AuthProbeStateSchema, ProviderIdSchema } from "../domain/run.ts";
 import type { PreflightReport } from "../ports/provider-adapter.ts";
@@ -19,6 +19,7 @@ import { checkBuildFreshness } from "../verify/build-stamp.ts";
 import type { PreflightSummary, ToolCheck } from "../verify/preflight.ts";
 import { MIN_HEALTHY_PROVIDERS, experimentalProviderWarnings, runPreflight } from "../verify/preflight.ts";
 import type { ProviderProbe } from "../osa/seats.ts";
+import { projectDependencyWarnings } from "../verify/project-deps.ts";
 import { acquireRunLock, releaseRunLock } from "../util/lock.ts";
 import { loadOsaConfig } from "../util/config-file.ts";
 import { applyFeatureFlags, describeFeatures } from "../features/features.ts";
@@ -273,6 +274,21 @@ function computeExitCode(input: {
  * for a given mode are reported with neutral placeholders that never contribute to `problems` or
  * the exit code.
  */
+/**
+ * Refuses a project folder that does not exist. Without it every section passes and the report says OK for a typo in the path. Called by the two entry
+ * points that take a folder from a person (`osa doctor --repo-dir` and the `doctor` MCP tool); `runDoctor` itself does not touch the disk for this,
+ * so tests can hand it a placeholder path with stubbed checks.
+ */
+export function assertDoctorFolder(repoRoot: string): void {
+  let isFolder = false;
+  try {
+    isFolder = statSync(repoRoot).isDirectory();
+  } catch {
+    // not there
+  }
+  if (!isFolder) throw new UsageError(`doctor: "${repoRoot}" is not a folder, so there is nothing to check. Name an existing project folder.`, { repoDir: repoRoot });
+}
+
 export async function runDoctor(
   repoRoot: string,
   opts: DoctorOptions,
@@ -340,6 +356,7 @@ export async function runDoctor(
   warnings.push(...experimentalProviderWarnings(providerReports));
   const featureInfo = await featureReport(repoRoot, opts.features ?? {});
   warnings.push(...featureInfo.warnings);
+  if (opts.only === "all") warnings.push(...projectDependencyWarnings(repoRoot));
 
   let lockAcquirable = true;
   let lockDetail = "not checked";

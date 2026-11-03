@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { BoundaryViolationError, InternalError, IsolationLeakError, LooprArtifactBypassError, RelaySchemaError } from "../domain/errors.ts";
+import { BoundaryViolationError, InternalError, IsolationLeakError, LooprArtifactBypassError, MissingHandoffError, RelaySchemaError } from "../domain/errors.ts";
 import type { FileRef, HandoffRecord } from "../domain/relay.ts";
 import { writeHandoffRecord } from "../domain/relay.ts";
 import type { RawInvocationResult, TurnOutcome, TurnRequest } from "../domain/run.ts";
@@ -501,6 +501,29 @@ test("runTurn: when either new guard throws, writeHandoffRecord is never called 
     const onDisk = await readFile(path, "utf8");
     const parsed = JSON.parse(onDisk) as { readonly spec_ref: { readonly path: string } };
     assert.equal(parsed.spec_ref.path, "WRONG.md");
+  } finally {
+    await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
+  }
+});
+
+test("runTurn: a turn that ends without writing its hand-over record is a modelled MissingHandoffError failure, not a raw ENOENT throw", async () => {
+  const dir = await freshRepo();
+  try {
+    await commitFile(dir, "foo.txt", "v0\n", "initial");
+    const req = baseReq({ repoDir: dir });
+    const path = handoffPath(dir, req.runId, req.phase, req.turnIndex, req.archetype, req.provider);
+
+    // The agent exits cleanly (as a headless session does when it stops to wait on a background
+    // command) but never writes the record it owed.
+    const fakeRunProcess: typeof runProcess = async () => ({ exitCode: 0, signal: null, stdout: "", stderr: "", durationMs: 1, timedOut: false });
+
+    const result = await runTurn(req, { adapter: new FakeAdapter(), runProcessFn: fakeRunProcess });
+
+    assert.equal(result.outcome.ok, false);
+    assert.equal(result.record, null);
+    assert.ok(result.outcome.failure instanceof MissingHandoffError);
+    assert.ok(result.outcome.failure.message.includes(path));
+    assert.ok(result.outcome.failure.message.toLowerCase().includes("background"));
   } finally {
     await rm(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
   }

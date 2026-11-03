@@ -10,6 +10,7 @@ import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js"
 import pkg from "../../package.json" with { type: "json" };
 import { registerRunTool } from "./tools/run.ts";
 import { registerDriveTool } from "./tools/drive.ts";
+import { buildFreshnessWarning } from "../verify/build-stamp.ts";
 import { registerDoctorTool } from "./tools/doctor.ts";
 import { registerEvidenceTool } from "./tools/evidence.ts";
 import { registerCodeSearchTool } from "./tools/code-search.ts";
@@ -59,4 +60,7 @@ export async function runMcpServer(): Promise<void> {
     void closeCodeSearchers();
   };
   await server.connect(transport);
+  // stderr is the client's server log (stdout carries the protocol): a stale build is visible there the moment the server starts.
+  const stale = buildFreshnessWarning();
+  if (stale !== null) process.stderr.write(`osa: ${stale}\n`);
 }

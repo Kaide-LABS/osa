@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdir, mkdtemp, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { runDoctor } from "../cli/doctor.ts";
-import { checkBuildFreshness, computeSourceHash, packageRoot, readBuildStamp, writeBuildStamp } from "./build-stamp.ts";
+import { buildFreshnessWarning, checkBuildFreshness, computeSourceHash, packageRoot, readBuildStamp, writeBuildStamp } from "./build-stamp.ts";
 
 async function fakePackage(): Promise<string> {
   const root = await mkdtemp(`${tmpdir()}/osa-stamp-`);
@@ -59,6 +59,22 @@ test("a RUNNING process that started from an older build is flagged even though 
   assert.equal(f.status, "process-stale");
   assert.match(f.detail, /restart/);
   assert.equal(checkBuildFreshness({ root, startupStamp: readBuildStamp(root), runningFromDist: true }).status, "fresh");
+});
+
+test("buildFreshnessWarning: a server running a stale or missing build says so; a fresh build, a packaged install and a process running from src/ say nothing", async () => {
+  const root = await fakePackage();
+  const warn = (runningFromDist: boolean): string | null => buildFreshnessWarning({ root, startupStamp: null, runningFromDist });
+  assert.match(warn(true) ?? "", /out of date.*npm run build/s, "no stamp at all: missing");
+  writeBuildStamp(root);
+  assert.equal(warn(true), null, "fresh");
+  await writeFile(`${root}/src/two.ts`, "export const two = 99;\n", "utf8");
+  assert.match(warn(true) ?? "", /older than src/, "stale");
+  assert.equal(warn(false), null, "a process running from src/ is never behind its own source");
+  const old = readBuildStamp(root);
+  writeBuildStamp(root);
+  assert.match(buildFreshnessWarning({ root, startupStamp: old, runningFromDist: true }) ?? "", /restart/, "rebuilt on disk but this process is the old one");
+  const packaged = await mkdtemp(`${tmpdir()}/osa-stamp-pkg-`);
+  assert.equal(buildFreshnessWarning({ root: packaged, startupStamp: null, runningFromDist: true }), null, "a packaged install has no src/ to compare");
 });
 
 test("a packaged install (no src/) is not-applicable, never a warning", async () => {

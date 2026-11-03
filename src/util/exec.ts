@@ -55,7 +55,37 @@
 
 import { spawn } from "node:child_process";
 import type { ChildProcess } from "node:child_process";
+import { AsyncLocalStorage } from "node:async_hooks";
+import { RunCancelledError } from "../domain/errors.ts";
 import type { RawInvocationResult } from "../domain/run.ts";
+
+// ---- cancellation ----------------------------------------------------------------------------------------------------------------
+// A run is cancelled from outside the pipeline (osa_cancel), and the pipeline has no signal parameter threaded through its dozens of call
+// sites. Instead the job runs inside `runCancelScope`, and every `runProcess` started within that async context watches the scope's signal:
+// on abort it kills its child's whole process tree, and any spawn attempted after the abort throws `RunCancelledError`, so the pipeline
+// unwinds at its next step rather than starting more work.
+const cancelScope = new AsyncLocalStorage<AbortSignal>();
+
+/** Runs `fn` so that every child process it starts is stopped when `signal` aborts. */
+export function runCancelScope<T>(signal: AbortSignal, fn: () => Promise<T>): Promise<T> {
+  return cancelScope.run(signal, fn);
+}
+
+/**
+ * Stops a child and everything it started. On Windows the provider CLIs run under a `cmd.exe` shim, and `child.kill()` ends only the shim,
+ * leaving the real process running, so the tree is taken down with `taskkill /T /F`. Elsewhere SIGKILL on the child.
+ */
+function killProcessTree(child: ChildProcess): void {
+  if (process.platform === "win32" && child.pid !== undefined) {
+    try {
+      spawn("taskkill", ["/pid", String(child.pid), "/T", "/F"], { windowsHide: true, stdio: "ignore" }).on("error", () => child.kill("SIGKILL"));
+    } catch {
+      child.kill("SIGKILL");
+    }
+    return;
+  }
+  child.kill("SIGKILL");
+}
 
 /** Options for {@link runProcess}. */
 export interface RunProcessOptions {
@@ -277,8 +307,26 @@ function spawnOnce(
       child.stdin?.end();
     }
 
+    const cancelSignal = cancelScope.getStore();
+    const onAbort = (): void => {
+      killProcessTree(child);
+    };
+    if (cancelSignal !== undefined) {
+      if (cancelSignal.aborted) {
+        onAbort();
+      } else {
+        cancelSignal.addEventListener("abort", onAbort, { once: true });
+      }
+    }
+
     const killTimer: NodeJS.Timeout = setTimeout(() => {
       timedOut = true;
+      if (process.platform === "win32") {
+        // The provider CLIs sit behind a cmd.exe shim: SIGTERM would end only the shim and leave the real process running (and holding
+        // the output pipes, so this call would not return). Take the whole tree down, as cancel does.
+        killProcessTree(child);
+        return;
+      }
       child.kill("SIGTERM");
       sigkillTimer = setTimeout(() => {
         child.kill("SIGKILL");
@@ -291,6 +339,7 @@ function spawnOnce(
       }
       settled = true;
       clearTimeout(killTimer);
+      cancelSignal?.removeEventListener("abort", onAbort);
       if (sigkillTimer !== null) {
         clearTimeout(sigkillTimer);
       }
@@ -339,10 +388,14 @@ function spawnOnce(
  * prompt therefore reads EOF and fails fast instead of hanging the run.
  *
  * [DET, PRD §9 FM7] `timeoutMs` is mandatory and always armed: on expiry the process is sent
- * `SIGTERM`, escalated to `SIGKILL` after a 5 second grace, and the result always carries
- * `timedOut: true` regardless of what exit code the process eventually reports.
+ * `SIGTERM`, escalated to `SIGKILL` after a 5 second grace (on Windows the whole process tree is
+ * killed at once, see `killProcessTree`), and the result always carries `timedOut: true`
+ * regardless of what exit code the process eventually reports.
  */
 export function runProcess(o: RunProcessOptions): Promise<RawInvocationResult> {
+  if (cancelScope.getStore()?.aborted === true) {
+    return Promise.reject(new RunCancelledError("The run was cancelled; no further process was started."));
+  }
   return spawnOnce(o, o.command, o.args, o.noShellFallback !== true);
 }
 

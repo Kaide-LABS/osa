@@ -6,7 +6,7 @@
 import type { RawInvocationResult, TurnOutcome, TurnRequest } from "../domain/run.ts";
 import type { HandoffRecord } from "../domain/relay.ts";
 import { readHandoffRecord, writeHandoffRecord } from "../domain/relay.ts";
-import { IsolationLeakError, RelaySchemaError } from "../domain/errors.ts";
+import { IsolationLeakError, MissingHandoffError, RelaySchemaError } from "../domain/errors.ts";
 import type { ProviderAdapter } from "../ports/provider-adapter.ts";
 import { runProcess } from "../util/exec.ts";
 import { OSA_DIR_NAME, chatLogPath, handoffPath } from "../util/paths.ts";
@@ -181,7 +181,12 @@ async function captureTurnLeftovers(req: TurnRequest): Promise<string | null> {
  *    everything else rather than being trusted for having been machine-composed.
  * 9. Persist the reconciled record at the same path, overwriting the agent's own draft. Both new
  *    guards run before this step, so a bypassed or non-produced-artifact turn's record is never
- *    persisted to `.osa/runs/**` -- only a turn that cleared every hard invariant ever
+ *    persisted to `.osa/runs/** True for a Node filesystem error saying the file does not exist (`ENOENT`). */
+function isFileNotFound(err: unknown): boolean {
+  return typeof err === "object" && err !== null && "code" in err && (err as { code?: unknown }).code === "ENOENT";
+}
+
+/**` -- only a turn that cleared every hard invariant ever
  *    reaches disk.
  * Phase 10 (PHASE_10_SPEC.md §6.4) inserts exactly two chat-log capture points and a local
  * `chatLogWarnings` accumulator into this otherwise-unchanged lifecycle: capture point 1 sits
@@ -240,6 +245,16 @@ export async function runTurn(req: TurnRequest, deps: RunTurnDeps): Promise<RunT
   } catch (err) {
     if (err instanceof RelaySchemaError || err instanceof IsolationLeakError) {
       return { outcome: { ok: false, record: null, failure: err }, record: null, chatLogWarnings };
+    }
+    if (isFileNotFound(err)) {
+      const failure = new MissingHandoffError(
+        `The ${req.archetype} turn (${req.provider}) ended without writing its hand-over record at ${path}. ` +
+          `This usually means the agent stopped to wait on a command it had started in the background; ` +
+          `a headless session ends when the agent's turn ends. Check that the project's dependencies are installed ` +
+          `(for example node_modules) and run the phase again.`,
+        { path, archetype: req.archetype, provider: req.provider, phase: req.phase, turnIndex: req.turnIndex },
+      );
+      return { outcome: { ok: false, record: null, failure }, record: null, chatLogWarnings };
     }
     throw err;
   }

@@ -8,7 +8,7 @@ import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { OsaError, UsageError } from "../../domain/errors.ts";
-import { DoctorReport, runDoctor } from "../../cli/doctor.ts";
+import { DoctorReport, assertDoctorFolder, runDoctor } from "../../cli/doctor.ts";
 
 /**
  * Maps 1:1 onto `DoctorOptions` (`src/cli/doctor.ts`) minus `json` -- the tool handler always
@@ -71,6 +71,7 @@ export function registerDoctorTool(server: McpServer): void {
     async (input) => {
       try {
         if (input.live && input.only === "boundary") throw new UsageError("doctor live checks providers, so it cannot be combined with only: \"boundary\".");
+        assertDoctorFolder(input.repo_dir);
         const { report } = await runDoctor(input.repo_dir, { json: true, only: input.only, ...(input.live ? { live: true } : {}) });
         return doctorReportToCallToolResult(report);
       } catch (err) {

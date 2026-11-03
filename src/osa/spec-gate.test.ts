@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
-import { buildSpecManifest, specGateRecordPath, verifySpecGate, writeSpecGate } from "./spec-gate.ts";
+import { buildSpecManifest, changedApprovedSpecFiles, specGateRecordPath, verifyApprovedSpecIntact, verifySpecGate, writeSpecGate } from "./spec-gate.ts";
 import { tempGitRepo } from "./fixtures.test.ts";
 import { sha256File } from "../util/hash.ts";
 
@@ -116,4 +116,24 @@ test("specGateRecordPath is correctly formatted", async () => {
 
   assert.match(path, /\.osa\/runs\/[\da-f-]+\/spec-gate\.json$/);
   assert.ok(path.includes(runId));
+});
+
+test("verifyApprovedSpecIntact: later phases' specs added beside the approved files are expected; an approved file edited, removed or a different PRD is not", async () => {
+  const s = await setupSpec();
+  const prd = "a".repeat(64);
+  const record = await writeSpecGate(s.repoDir, s.runId, prd);
+  assert.deepEqual(await changedApprovedSpecFiles(s.repoDir, record), []);
+
+  // a build adds the next phase's spec to the same folder: the folder's hash moves, the approved files do not
+  await writeFile(`${s.specDir}/PHASE_2_SPEC.md`, "# Phase 2\n", "utf8");
+  await assert.rejects(verifySpecGate(s.repoDir, s.runId, prd), /spec-gate hash has changed/, "the whole-folder check is for before the build");
+  assert.equal((await verifyApprovedSpecIntact(s.repoDir, s.runId, prd)).spec_gate_sha256, record.spec_gate_sha256);
+
+  await assert.rejects(verifyApprovedSpecIntact(s.repoDir, s.runId, "b".repeat(64)), /locked PRD sha256/);
+
+  await writeFile(`${s.specDir}/PHASE_1_SPEC.md`, "# Phase 1 Spec\n\nEdited.", "utf8");
+  await assert.rejects(verifyApprovedSpecIntact(s.repoDir, s.runId, prd), /approved changed since the approval.*PHASE_1_SPEC\.md/s);
+  const changed = await changedApprovedSpecFiles(s.repoDir, record);
+  assert.equal(changed.length, 1);
+  assert.match(changed[0] ?? "", /PHASE_1_SPEC\.md/);
 });

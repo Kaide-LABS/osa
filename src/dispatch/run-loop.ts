@@ -23,11 +23,11 @@ import type { AdapterRegistry, ProviderAdapter } from "../ports/provider-adapter
 import { ADAPTER_REGISTRY } from "../adapters/registry.ts";
 import type { FileRef, HaltSignal, HandoffRecord } from "../domain/relay.ts";
 import type { ProviderId, RunConfig, TurnRequest } from "../domain/run.ts";
-import { ExitCode, LockHeldError, exitCodeFor } from "../domain/errors.ts";
+import { ExitCode, LockHeldError, MissingHandoffError, exitCodeFor } from "../domain/errors.ts";
 import { getRole } from "../domain/roles.ts";
 import type { ContinuityVerdict, ContinuityVerdictLabel } from "../verify/continuity.ts";
 import { verifyContinuation } from "../verify/continuity.ts";
-import { diffText, resetHard } from "../verify/git.ts";
+import { diffText, resetHard, resetSoft, revParse } from "../verify/git.ts";
 import { runPreflight } from "../verify/preflight.ts";
 import { acquireRunLock, releaseRunLock } from "../util/lock.ts";
 import { readFile } from "node:fs/promises";
@@ -100,6 +100,24 @@ export interface RunDispatchDeps {
   readonly adapters?: Readonly<Partial<AdapterRegistry>>;
   readonly runProcessFn?: typeof runProcess;
   readonly preflightFn?: typeof runPreflight;
+}
+
+/**
+ * The notice for the one bounded retry after a turn that ended without writing its hand-over
+ * record (`MissingHandoffError`). The usual cause is the agent starting a long command in the
+ * background and ending its turn to wait for it, so the note says to do the opposite. The failed
+ * attempt's work is kept (see the soft rewind at the call site), and the note says so.
+ */
+function buildMissingHandoffNote(): string {
+  return [
+    "RETRY NOTICE: your prior attempt ended without writing its hand-over record, so OSA could not " +
+      "continue. This session is headless: nobody will resume you after you stop.",
+    "Do not start a command in the background and end your turn to wait for it. Run it in the " +
+      "foreground, or run a narrower one. Write the hand-over record before you stop, even when the " +
+      "work is only partly done.",
+    "Whatever the failed attempt already wrote is still in the working tree, uncommitted; check it " +
+      "and carry on from it rather than starting again.",
+  ].join("\n");
 }
 
 function buildRetryNote(verdict: ContinuityVerdict): string {
@@ -398,9 +416,15 @@ async function runTurnLoop(
       diff = await diffText(config.repo_dir, firstTurnHeadBefore ?? "", (prevRecord as HandoffRecord).repo.head_after);
     }
 
-    const turnIndex = attemptCounter;
+    // The first slot's baseline for the reviewer's diff. Read before the turn starts because a
+    // retry after a missing hand-over record keeps the failed attempt's work, so the retry's own
+    // `head_before` would no longer be where the slot began.
+    const slotHeadBefore = slotIndex === 0 ? await revParse(config.repo_dir, "HEAD") : null;
+
+    let turnIndex = attemptCounter;
     attemptCounter += 1;
-    const { result } = await dispatchOneAttempt({
+    const roleInstructions = slot.archetype === "executor" ? roleTaskInstructions.executor : roleTaskInstructions.reviewer;
+    let { result } = await dispatchOneAttempt({
       config,
       deps: buildTurnDeps(adapter, runProcessFn),
       slot,
@@ -410,12 +434,41 @@ async function runTurnLoop(
       diff,
       nextArtifactPath,
       retryNote: null,
-      roleTaskInstructions: slot.archetype === "executor" ? roleTaskInstructions.executor : roleTaskInstructions.reviewer,
+      roleTaskInstructions: roleInstructions,
     });
     warnings.push(...result.chatLogWarnings);
 
-    if (!result.outcome.ok) {
+    // One bounded re-prompt when the turn ended without its hand-over record (almost always a
+    // command left running in the background). Any other failure -- timeout, schema, boundary --
+    // is not recoverable by asking again and still ends the run below.
+    let retriedForMissingHandoff = false;
+    if (!result.outcome.ok && result.outcome.failure instanceof MissingHandoffError) {
       turns.push(nonCompleteSummary(turnIndex, slot, "failed", false));
+      // Soft-rewind to where the slot began (the last good commit, or the first slot's starting
+      // commit): the failed attempt's work is kept, staged, so the retry's own commit covers it and
+      // its `head_before` is the baseline the continuity checks expect. A retry that only finishes
+      // what was already committed would otherwise report no commits and fail reconciliation.
+      await resetSoft(config.repo_dir, prevRecord !== null ? prevRecord.repo.head_after : (slotHeadBefore as string));
+      turnIndex = attemptCounter;
+      attemptCounter += 1;
+      retriedForMissingHandoff = true;
+      ({ result } = await dispatchOneAttempt({
+        config,
+        deps: buildTurnDeps(adapter, runProcessFn),
+        slot,
+        turnIndex,
+        specRef,
+        prevRecord,
+        diff,
+        nextArtifactPath,
+        retryNote: buildMissingHandoffNote(),
+        roleTaskInstructions: roleInstructions,
+      }));
+      warnings.push(...result.chatLogWarnings);
+    }
+
+    if (!result.outcome.ok) {
+      turns.push(nonCompleteSummary(turnIndex, slot, "failed", retriedForMissingHandoff));
       return {
         ok: false,
         exitCode: exitCodeFor(result.outcome.failure),
@@ -428,7 +481,7 @@ async function runTurnLoop(
 
     const record = result.record as HandoffRecord;
     if (record.status !== "completed") {
-      turns.push(nonCompleteSummary(turnIndex, slot, record.status, false));
+      turns.push(nonCompleteSummary(turnIndex, slot, record.status, retriedForMissingHandoff));
       return {
         ok: false,
         exitCode: ExitCode.RUN_HALTED,
@@ -440,7 +493,7 @@ async function runTurnLoop(
     }
 
     if (slotIndex === 0) {
-      firstTurnHeadBefore = record.repo.head_before;
+      firstTurnHeadBefore = slotHeadBefore ?? record.repo.head_before;
     }
 
     if (prevRecord === null) {
@@ -450,7 +503,7 @@ async function runTurnLoop(
         provider: slot.provider,
         status: "completed",
         continuityVerdict: null,
-        retried: false,
+        retried: retriedForMissingHandoff,
       });
       prevRecord = record;
       continue;
@@ -464,7 +517,7 @@ async function runTurnLoop(
         provider: slot.provider,
         status: "completed",
         continuityVerdict: "CONTINUED",
-        retried: false,
+        retried: retriedForMissingHandoff,
       });
       prevRecord = record;
       continue;

@@ -156,6 +156,19 @@ export async function commitsBetween(repoDir: string, fromOid: string, toOid: st
 }
 
 /**
+ * The newest commit in HEAD's history whose message contains `text` (a fixed string, not a pattern), or `null` when there is none. Used to find the
+ * commit OSA made to close a build phase. A non-zero exit throws {@link InternalError}.
+ */
+export async function findCommitByMessage(repoDir: string, text: string): Promise<string | null> {
+  const result = await git(repoDir, ["log", "--fixed-strings", `--grep=${text}`, "--format=%H", "-n", "1"]);
+  if (result.exitCode !== 0) {
+    throw new InternalError(`git log --grep failed in ${repoDir}: ${result.stderr.trim()}`, { repoDir, exitCode: result.exitCode, stderr: result.stderr });
+  }
+  const oid = result.stdout.trim();
+  return oid === "" ? null : oid;
+}
+
+/**
  * `git diff <fromOid>..<toOid>` -- the full unified diff body (no `--name-only`), unlike
  * {@link changedPaths}, which intentionally returns only names. Exit non-zero -> {@link InternalError},
  * matching this file's existing wrapper convention exactly. Implements PHASE_3_SPEC.md §1.6.
@@ -372,6 +385,27 @@ export async function resetHard(repoDir: string, rev: string): Promise<void> {
   const result = await git(repoDir, ["reset", "--hard", "--quiet", rev]);
   if (result.exitCode !== 0) {
     throw new InternalError(`git reset --hard ${rev} failed in ${repoDir}: ${result.stderr.trim()}`, {
+      repoDir,
+      rev,
+      exitCode: result.exitCode,
+      stderr: result.stderr,
+    });
+  }
+}
+
+/**
+ * `git reset --soft <rev>`: move `HEAD` back to `rev` but keep every change from the commits it
+ * steps over staged in the index and the working tree. Used when a turn ended without its
+ * hand-over record: the work is not judged invalid (unlike {@link resetHard}'s caller), so it is
+ * kept, while the retry is made to start from the commit the slot began at -- its own commit then
+ * covers all of that work, and its `head_before` is the baseline the continuity checks expect.
+ *
+ * A non-zero exit throws {@link InternalError}, as {@link resetHard} does.
+ */
+export async function resetSoft(repoDir: string, rev: string): Promise<void> {
+  const result = await git(repoDir, ["reset", "--soft", "--quiet", rev]);
+  if (result.exitCode !== 0) {
+    throw new InternalError(`git reset --soft ${rev} failed in ${repoDir}: ${result.stderr.trim()}`, {
       repoDir,
       rev,
       exitCode: result.exitCode,

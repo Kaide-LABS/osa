@@ -226,6 +226,21 @@ test("buildProtocolInstructions keeps the commit requirement separate from, and 
   assert.ok(advisoryLine.includes("accuracy of those two fields' values"));
 });
 
+test("buildProtocolInstructions tells every role the session is headless: write the record, never background a command and stop to wait (found by two self-built runs that ended 'waiting on the background test run' with no record)", () => {
+  for (const role of ["executor", "reviewer"] as const) {
+    const out = buildProtocolInstructions({
+      handoffAbsPath: "/repo/handoff.json",
+      role,
+      specRepoRelPath: "PHASE_2_SPEC.md",
+      babyPrdRepoRelPath: ".claude/loopr/baby_prd.md",
+      contextRepoRelPath: ".claude/loopr/context.md",
+    });
+    assert.ok(out.includes("Your turn is not finished until the hand-over record exists"), role);
+    assert.ok(out.includes("never start a command in the background and then end your turn to wait for it"), role);
+    assert.ok(out.indexOf("Your turn is not finished") < out.indexOf("You must commit your work to git"), "stated before the commit mandate");
+  }
+});
+
 test("buildProtocolInstructions pairs the commit requirement with the neutral-commit-message constraint (I4)", () => {
   const out = buildProtocolInstructions({
     handoffAbsPath: "/repo/handoff.json",

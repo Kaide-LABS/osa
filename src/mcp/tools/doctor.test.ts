@@ -71,3 +71,10 @@ test("doctor MCP tool <-> CLI `doctor --boundary --json` equivalence for this re
   assert.equal(mcpReport.exit_code, 0);
   assert.deepStrictEqual(mcpReport.boundary.violations, []);
 });
+
+test("doctor MCP tool: a repo_dir that is not a folder is an error result, not a report that says everything is fine", async () => {
+  const handler = captureDoctorHandler();
+  const result = await handler({ repo_dir: `${process.cwd()}/no-such-folder-for-doctor`, only: "boundary" });
+  assert.equal(result.isError, true);
+  assert.match(JSON.stringify(result.content), /not a folder/);
+});

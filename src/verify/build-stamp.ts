@@ -99,6 +99,16 @@ export interface FreshnessOptions {
   readonly runningFromDist?: boolean;
 }
 
+/**
+ * One line for the person, or null: set only when this process runs the compiled `dist/` and that build is missing, older than `src/`, or older than
+ * the build now on disk. A process running straight from `src/` (development, tests) is never behind its own source, so it gets null.
+ */
+export function buildFreshnessWarning(opts: FreshnessOptions = {}): string | null {
+  if (!(opts.runningFromDist ?? RUNNING_FROM_DIST)) return null;
+  const f = checkBuildFreshness(opts);
+  return f.status === "fresh" || f.status === "not-applicable" ? null : `OSA's compiled code is out of date, so fixes in the source may not be in this server: ${f.detail}.`;
+}
+
 /** Compares `dist/` with `src/` (and the running process with `dist/`). Never throws. */
 export function checkBuildFreshness(opts: FreshnessOptions = {}): BuildFreshness {
   const root = opts.root ?? packageRoot();
